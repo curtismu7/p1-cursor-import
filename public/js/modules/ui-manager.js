@@ -24,22 +24,89 @@ class UIManager {
      * Update the connection status display
      * @param {string} status - The connection status ('connected', 'disconnected', 'error')
      * @param {string} message - The status message to display
+     * @param {boolean} [updateSettingsStatus=true] - Whether to also update the settings page status
      */
-    updateConnectionStatus(status, message) {
-        if (!this.connectionStatusElement) {
-            this.connectionStatusElement = document.getElementById('connection-status');
-            if (!this.connectionStatusElement) return;
+    updateConnectionStatus(status, message, updateSettingsStatus = true) {
+        console.log(`Updating connection status: ${status} - ${message}`);
+        
+        // Update main status
+        this._updateStatusElement('connection-status', status, message);
+        
+        // Also update settings status if we're on the settings page
+        if (updateSettingsStatus && this.currentView === 'settings') {
+            this.updateSettingsConnectionStatus(status, message);
+        }
+    }
+    
+    /**
+     * Update the settings page connection status
+     * @param {string} status - The connection status ('connected', 'disconnected', 'error')
+     * @param {string} message - The status message to display
+     */
+    updateSettingsConnectionStatus(status, message) {
+        // Default messages for statuses if not provided
+        if (!message) {
+            switch(status) {
+                case 'connected':
+                    message = 'Successfully connected to PingOne';
+                    break;
+                case 'error':
+                    message = 'Connection error. Please check your settings.';
+                    break;
+                case 'disconnected':
+                default:
+                    message = 'Not connected. Please save your API credentials and test the connection.';
+            }
+        }
+        
+        this._updateStatusElement('settings-connection-status', status, message, false);
+    }
+    
+    /**
+     * Internal method to update a status element
+     * @private
+     */
+    _updateStatusElement(elementId, status, message, autoHide = true) {
+        let element = document.getElementById(elementId);
+        if (!element) {
+            console.warn(`Status element with ID '${elementId}' not found`);
+            return;
         }
         
         // Clear existing classes
-        this.connectionStatusElement.className = 'connection-status';
+        element.className = 'connection-status';
         
-        // Add status class and update text
-        this.connectionStatusElement.classList.add(`status-${status}`);
-        this.connectionStatusElement.textContent = message;
+        // Add status class
+        element.classList.add(`status-${status}`);
+        
+        // Add icon based on status
+        let icon = '';
+        switch(status) {
+            case 'connected':
+                icon = '✓';
+                break;
+            case 'error':
+                icon = '⚠️';
+                break;
+            case 'disconnected':
+            default:
+                icon = '⚠️';
+        }
+        
+        // Update with icon and message
+        element.innerHTML = `<span class="status-icon">${icon}</span> <span class="status-message">${message}</span>`;
         
         // Show the status element
-        this.connectionStatusElement.style.display = 'block';
+        element.style.display = 'flex';
+        
+        // If connected and auto-hide is enabled, hide after 5 seconds
+        if (status === 'connected' && autoHide) {
+            setTimeout(() => {
+                if (element) {
+                    element.style.display = 'none';
+                }
+            }, 5000);
+        }
     }
 
     /**
@@ -51,39 +118,43 @@ class UIManager {
         
         // Hide all views
         Object.values(this.views).forEach(view => {
-            if (view) view.style.display = 'none';
+            if (view) view.classList.remove('active');
         });
-
+        
         // Deactivate all nav items
         this.navItems.forEach(item => {
-            if (item && item.classList) {
-                item.classList.remove('active');
-            }
+            if (item) item.classList.remove('active');
         });
-
-        // Show the selected view and activate its nav item
-        const view = this.views[viewName];
-        if (view) {
-            view.style.display = 'block';
+        
+        // Show the selected view
+        if (this.views[viewName]) {
+            this.views[viewName].classList.add('active');
+            this.currentView = viewName;
+            
+            // Activate the corresponding nav item
             const navItem = document.querySelector(`[data-view="${viewName}"]`);
             if (navItem) {
                 navItem.classList.add('active');
             }
-            this.currentView = viewName;
-
-            // Save the current view to localStorage
-            try {
-                localStorage.setItem('currentView', viewName);
-            } catch (e) {
-                console.warn('Could not save view to localStorage:', e);
+            
+            // Special handling for specific views
+            switch(viewName) {
+                case 'logs':
+                    this.scrollLogsToBottom();
+                    await this.loadAndDisplayLogs();
+                    break;
+                case 'settings':
+                    // Update settings connection status when switching to settings view
+                    const currentStatus = this.connectionStatusElement?.classList.contains('status-connected') ? 'connected' : 'disconnected';
+                    const currentMessage = this.connectionStatusElement?.querySelector('.status-message')?.textContent || '';
+                    this.updateSettingsConnectionStatus(currentStatus, currentMessage);
+                    break;
             }
-
-            // Special handling for logs view
-            if (viewName === 'logs' && this.logger) {
-                await this.loadAndDisplayLogs();
-            }
+            
+            return true;
         } else {
             console.warn(`View '${viewName}' not found`);
+            return false;
         }
     }
 
@@ -321,7 +392,10 @@ class UIManager {
         });
     }
 
-    init() {
+    init(callbacks = {}) {
+        // Store callbacks
+        this.callbacks = callbacks;
+        
         // Initialize navigation event listeners
         this.navItems.forEach(item => {
             if (item) {
@@ -335,9 +409,85 @@ class UIManager {
             }
         });
         
+        // Set up Start Import button
+        const startImportBtn = document.getElementById('start-import-btn');
+        if (startImportBtn) {
+            startImportBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (this.callbacks.onImport) {
+                    this.callbacks.onImport();
+                }
+            });
+        }
+        
+        // Set up Cancel Import button
+        const cancelImportBtn = document.getElementById('cancel-import-btn');
+        if (cancelImportBtn && this.callbacks.onCancelImport) {
+            cancelImportBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.callbacks.onCancelImport();
+            });
+        }
+        
         // Make sure the current view is visible
         const currentView = this.getLastView();
         this.showView(currentView);
+    }
+    
+    /**
+     * Show loading state
+     * @param {boolean} [show=true] - Whether to show or hide the loading state
+     * @param {string} [message='Loading...'] - Optional loading message
+     */
+    showLoading(show = true, message = 'Loading...') {
+        let loadingElement = document.getElementById('loading-overlay');
+        
+        if (show) {
+            // Create loading overlay if it doesn't exist
+            if (!loadingElement) {
+                loadingElement = document.createElement('div');
+                loadingElement.id = 'loading-overlay';
+                loadingElement.style.position = 'fixed';
+                loadingElement.style.top = '0';
+                loadingElement.style.left = '0';
+                loadingElement.style.width = '100%';
+                loadingElement.style.height = '100%';
+                loadingElement.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+                loadingElement.style.display = 'flex';
+                loadingElement.style.justifyContent = 'center';
+                loadingElement.style.alignItems = 'center';
+                loadingElement.style.zIndex = '9999';
+                
+                const spinner = document.createElement('div');
+                spinner.className = 'spinner-border text-light';
+                spinner.role = 'status';
+                
+                const srOnly = document.createElement('span');
+                srOnly.className = 'visually-hidden';
+                srOnly.textContent = 'Loading...';
+                
+                spinner.appendChild(srOnly);
+                
+                const messageElement = document.createElement('div');
+                messageElement.className = 'ms-3 text-light';
+                messageElement.textContent = message;
+                messageElement.id = 'loading-message';
+                
+                loadingElement.appendChild(spinner);
+                loadingElement.appendChild(messageElement);
+                document.body.appendChild(loadingElement);
+            } else {
+                // Update existing loading message if needed
+                const messageElement = document.getElementById('loading-message');
+                if (messageElement) {
+                    messageElement.textContent = message;
+                }
+                loadingElement.style.display = 'flex';
+            }
+        } else if (loadingElement) {
+            // Hide loading overlay
+            loadingElement.style.display = 'none';
+        }
     }
     
     /**

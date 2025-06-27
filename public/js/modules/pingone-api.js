@@ -135,7 +135,7 @@ class PingOneAPI {
             this.logger.log(`API ${method} ${url}`, 'info');
             
             // Determine content type - use custom type if provided, otherwise default to application/json
-            const contentType = options.contentType || 'application/json';
+            const requestContentType = options.contentType || 'application/json';
             
             // Make the request to our proxy
             const headers = {
@@ -147,10 +147,10 @@ class PingOneAPI {
             let requestBody = null;
             if (data) {
                 // Set Content-Type header based on the content type
-                headers['Content-Type'] = contentType;
+                headers['Content-Type'] = requestContentType;
                 
                 // For user import, we need to send the exact JSON string without additional processing
-                if (contentType === 'application/vnd.pingone.import.users+json') {
+                if (requestContentType === 'application/vnd.pingone.import.users+json') {
                     // Ensure we're sending the exact format PingOne expects
                     requestBody = JSON.stringify({
                         users: data.users || data
@@ -185,41 +185,64 @@ class PingOneAPI {
             if (!response.ok) {
                 let errorMessage = `API request failed with status ${response.status} (${response.statusText})`;
                 let errorDetails = null;
+                let responseText = '';
                 
                 try {
-                    const errorData = await response.json();
-                    errorMessage = errorData.error || errorData.message || errorMessage;
-                    errorDetails = errorData;
+                    // First try to get the response as text
+                    responseText = await response.text();
                     
-                    // For 400 Bad Request, include validation errors if available
-                    if (response.status === 400 && errorData.details) {
-                        errorMessage += ': ' + JSON.stringify(errorData.details);
+                    // Try to parse as JSON if possible
+                    if (responseText) {
+                        try {
+                            const errorData = JSON.parse(responseText);
+                            errorMessage = errorData.error || errorData.message || errorMessage;
+                            errorDetails = errorData;
+                            
+                            // For 400 Bad Request, include validation errors if available
+                            if (response.status === 400 && errorData.details) {
+                                errorMessage += ': ' + JSON.stringify(errorData.details);
+                            }
+                        } catch (e) {
+                            // If not JSON, use the raw text as the error message
+                            errorMessage += `: ${responseText}`;
+                        }
                     }
                 } catch (e) {
-                    // If we can't parse the error as JSON, try to get the text
-                    const errorText = await response.text().catch(() => '');
-                    if (errorText) {
-                        errorMessage += `: ${errorText}`;
-                    }
+                    // If we can't get the response text, just use the status
+                    console.error('Error reading error response:', e);
                 }
                 
                 const error = new Error(errorMessage);
                 error.status = response.status;
-                error.details = errorDetails;
+                error.details = errorDetails || responseText;
                 throw error;
             }
-            // Check if response has content before trying to parse as JSON
-            const responseText = await response.text();
-            if (!responseText) {
-                return {}; // Return empty object for empty responses
-            }
             
-            try {
-                return JSON.parse(responseText);
-            } catch (e) {
-                // If not JSON, return as text
-                return responseText;
+            // For successful responses, handle based on content type
+            const responseContentType = response.headers.get('content-type') || '';
+            
+            // For user import endpoint, we expect a JSON response
+            if (responseContentType.includes('application/json') || endpoint.includes('/users/import')) {
+                try {
+                    const responseData = await response.json();
+                    return responseData;
+                } catch (e) {
+                    // If we can't parse as JSON, try to get the text
+                    const text = await response.text().catch(() => '');
+                    console.error('Failed to parse JSON response:', e, 'Response text:', text);
+                    throw new Error(`Invalid JSON response: ${e.message}`);
+                }
+            } 
+            // For text responses
+            else if (contentType.includes('text/')) {
+                return await response.text();
             }
+            // For empty responses
+            else if (response.status === 204) {
+                return {};
+            }
+            // For other content types, return as array buffer
+            return await response.arrayBuffer();
             
         } catch (error) {
             this.logger.error(`API request failed: ${error.message}`, 'error');

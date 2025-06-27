@@ -214,39 +214,73 @@ const proxyRequest = async (req, res) => {
             }
         }
         
-        // Forward the request
+        // Forward the request with a timeout
         console.log('Sending request to PingOne API...');
-        const response = await fetch(targetUrl.toString(), {
-            method: req.method,
-            headers,
-            body: requestBody
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
         
-        console.log('Received response with status:', response.status);
-        console.log('Response headers:', JSON.stringify([...response.headers.entries()], null, 2));
-        
-        // Forward the response
-        const responseData = await response.text();
-        console.log('Response body:', responseData.substring(0, 500) + (responseData.length > 500 ? '...' : ''));
-        
-        // Set response headers
-        res.status(response.status);
-        response.headers.forEach((value, key) => {
-            if (key.toLowerCase() !== 'content-encoding') {
-                res.setHeader(key, value);
-            }
-        });
-        
-        // Send the response
         try {
-            // Try to parse as JSON, if it fails send as text
-            console.log('Attempting to parse response as JSON...');
-            const jsonData = JSON.parse(responseData);
-            console.log('Successfully parsed JSON response');
-            res.json(jsonData);
-        } catch (e) {
-            console.log('Response is not JSON, sending as text');
-            res.send(responseData);
+            const response = await fetch(targetUrl.toString(), {
+                method: req.method,
+                headers,
+                body: requestBody,
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            console.log('Received response with status:', response.status);
+            console.log('Response headers:', JSON.stringify([...response.headers.entries()], null, 2));
+            
+            // Get the content type
+            const contentType = response.headers.get('content-type') || '';
+            
+            // Set response headers
+            res.status(response.status);
+            response.headers.forEach((value, key) => {
+                if (key.toLowerCase() !== 'content-encoding' && key.toLowerCase() !== 'content-length') {
+                    res.setHeader(key, value);
+                }
+            });
+            
+            // Handle different response types
+            if (contentType.includes('application/json')) {
+                try {
+                    const data = await response.json();
+                    console.log('Successfully parsed JSON response');
+                    return res.json(data);
+                } catch (e) {
+                    console.error('Error parsing JSON response:', e);
+                    const text = await response.text();
+                    console.error('Response text:', text);
+                    return res.status(500).json({
+                        error: 'Invalid JSON response',
+                        details: e.message,
+                        response: text
+                    });
+                }
+            } else if (contentType.includes('text/')) {
+                const text = await response.text();
+                console.log('Sending text response');
+                return res.send(text);
+            } else {
+                // For binary data or other content types, pipe the response
+                console.log('Piping binary/unknown response');
+                response.body.pipe(res);
+                return;
+            }
+        } catch (error) {
+            clearTimeout(timeoutId);
+            console.error('Fetch error:', error);
+            
+            if (error.name === 'AbortError') {
+                return res.status(504).json({
+                    error: 'Request Timeout',
+                    message: 'The request to PingOne API timed out after 30 seconds'
+                });
+            }
+            
+            throw error; // Let the error handler deal with it
         }
     } catch (error) {
         console.error('Proxy error:', error);

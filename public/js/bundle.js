@@ -46,6 +46,13 @@ class App {
             this.logger.log('Logger initialized', 'debug');
             this.logger.log('Initializing UI components', 'info');
             
+            // Listen for file selection events
+            window.addEventListener('fileSelected', (event) => {
+                this.logger.debug('File selected event received');
+                const { file } = event.detail;
+                this.handleFileSelect(file);
+            });
+            
             // Initialize UI
             this.uiManager.init({
                 onFileSelect: (file) => this.handleFileSelect(file),
@@ -173,15 +180,13 @@ class App {
     async handleFileSelect(file) {
         if (!file) {
             this.logger.error('No file selected');
+            this.uiManager.setImportButtonState(false);
             return;
         }
         
         try {
             this.logger.log(`Processing file: ${file.name}`, 'info');
             this.uiManager.setImportButtonState(false);
-            
-            // Update file info in the UI
-            this.fileHandler.updateFileInfo(file);
             
             // Clear any previous data
             this.processedData = null;
@@ -649,6 +654,11 @@ class FileHandler {
             warnings: 0
         };
         
+        // Store UI elements
+        this.fileInput = document.getElementById('csv-file');
+        this.fileInfo = document.getElementById('file-info');
+        this.previewContainer = document.getElementById('preview-container');
+        
         // Load last file info from localStorage
         this.lastFileInfo = this.loadLastFileInfo();
         
@@ -729,9 +739,21 @@ class FileHandler {
      * Initialize file input change handler
      */
     initializeFileInput() {
-        const fileInput = document.getElementById('csv-file');
-        if (fileInput) {
-            fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+        if (this.fileInput) {
+            // Remove any existing event listeners to prevent duplicates
+            const newFileInput = this.fileInput.cloneNode(true);
+            this.fileInput.parentNode.replaceChild(newFileInput, this.fileInput);
+            this.fileInput = newFileInput;
+            
+            // Add change event listener
+            this.fileInput.addEventListener('change', (e) => {
+                this.logger.debug('File input changed');
+                this.handleFileSelect(e);
+            });
+            
+            this.logger.debug('File input initialized');
+        } else {
+            this.logger.warn('File input element not found');
         }
     }
     
@@ -740,33 +762,62 @@ class FileHandler {
      * @param {Event} event - The file input change event
      */
     handleFileSelect(event) {
+        this.logger.debug('Handling file selection');
+        
         const fileInput = event.target;
-        if (fileInput.files && fileInput.files.length > 0) {
-            const file = fileInput.files[0];
-            this.saveFileInfo(file);
-            this.updateFileInfo(file);
-            
-            // Read the file content
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const content = e.target.result;
-                // Process the file content if needed
-                this.logger.debug('File content loaded:', content.substring(0, 100) + '...');
-                
-                // Update preview if needed
-                if (this.uiManager.updatePreview) {
-                    this.uiManager.updatePreview(content);
-                }
-            };
-            
-            // Read the file as text
-            reader.readAsText(file);
-        } else {
-            this.uiManager.fileInfo.innerHTML = '';
-            if (this.uiManager.updatePreview) {
-                this.uiManager.updatePreview('');
-            }
+        if (!fileInput.files || fileInput.files.length === 0) {
+            this.logger.debug('No file selected');
+            this.updateFileInfo(null);
+            return;
         }
+        
+        const file = fileInput.files[0];
+        this.logger.debug(`Selected file: ${file.name} (${file.size} bytes)`);
+        
+        // Save file info and update UI
+        this.saveFileInfo(file);
+        this.updateFileInfo(file);
+        
+        // Read the file content
+        const reader = new FileReader();
+        
+        reader.onload = (e) => {
+            try {
+                const content = e.target.result;
+                this.logger.debug('File content loaded, first 100 chars:', content.substring(0, 100) + '...');
+                
+                // Update preview if preview container exists
+                if (this.previewContainer) {
+                    this.previewContainer.innerHTML = `
+                        <div class="preview-header">
+                            <h3>File Preview (first 100 characters)</h3>
+                        </div>
+                        <div class="preview-content">
+                            <pre>${content.substring(0, 100)}</pre>
+                        </div>
+                    `;
+                }
+                
+                // Trigger the file selected event on the window
+                const fileSelectedEvent = new CustomEvent('fileSelected', { 
+                    detail: { file, content } 
+                });
+                window.dispatchEvent(fileSelectedEvent);
+                
+            } catch (error) {
+                this.logger.error('Error processing file content:', error);
+                this.uiManager.showError('Error processing file: ' + error.message);
+            }
+        };
+        
+        reader.onerror = (error) => {
+            this.logger.error('Error reading file:', error);
+            this.uiManager.showError('Error reading file: ' + error.message);
+            this.updateFileInfo(null);
+        };
+        
+        // Read the file as text
+        reader.readAsText(file);
     }
     
     /**
@@ -811,7 +862,19 @@ class FileHandler {
      * @param {File} file - The selected file
      */
     updateFileInfo(file) {
-        if (!file || !this.uiManager.fileInfo) return;
+        this.logger.debug('Updating file info for:', file ? file.name : 'no file');
+        
+        if (!file) {
+            if (this.fileInfo) {
+                this.fileInfo.innerHTML = '';
+            }
+            return;
+        }
+        
+        if (!this.fileInfo) {
+            this.logger.warn('File info element not found');
+            return;
+        }
         
         const fileInfoHtml = `
             <div class="file-details">
@@ -824,7 +887,8 @@ class FileHandler {
             </div>
         `;
         
-        this.uiManager.fileInfo.innerHTML = fileInfoHtml;
+        this.fileInfo.innerHTML = fileInfoHtml;
+        this.logger.debug('File info updated in UI');
     }
 
     /**
@@ -1917,7 +1981,7 @@ class PingOneAPI {
             this.logger.log(`API ${method} ${url}`, 'info');
             
             // Determine content type - use custom type if provided, otherwise default to application/json
-            const contentType = options.contentType || 'application/json';
+            const requestContentType = options.contentType || 'application/json';
             
             // Make the request to our proxy
             const headers = {
@@ -1929,10 +1993,10 @@ class PingOneAPI {
             let requestBody = null;
             if (data) {
                 // Set Content-Type header based on the content type
-                headers['Content-Type'] = contentType;
+                headers['Content-Type'] = requestContentType;
                 
                 // For user import, we need to send the exact JSON string without additional processing
-                if (contentType === 'application/vnd.pingone.import.users+json') {
+                if (requestContentType === 'application/vnd.pingone.import.users+json') {
                     // Ensure we're sending the exact format PingOne expects
                     requestBody = JSON.stringify({
                         users: data.users || data
@@ -1967,41 +2031,64 @@ class PingOneAPI {
             if (!response.ok) {
                 let errorMessage = `API request failed with status ${response.status} (${response.statusText})`;
                 let errorDetails = null;
+                let responseText = '';
                 
                 try {
-                    const errorData = await response.json();
-                    errorMessage = errorData.error || errorData.message || errorMessage;
-                    errorDetails = errorData;
+                    // First try to get the response as text
+                    responseText = await response.text();
                     
-                    // For 400 Bad Request, include validation errors if available
-                    if (response.status === 400 && errorData.details) {
-                        errorMessage += ': ' + JSON.stringify(errorData.details);
+                    // Try to parse as JSON if possible
+                    if (responseText) {
+                        try {
+                            const errorData = JSON.parse(responseText);
+                            errorMessage = errorData.error || errorData.message || errorMessage;
+                            errorDetails = errorData;
+                            
+                            // For 400 Bad Request, include validation errors if available
+                            if (response.status === 400 && errorData.details) {
+                                errorMessage += ': ' + JSON.stringify(errorData.details);
+                            }
+                        } catch (e) {
+                            // If not JSON, use the raw text as the error message
+                            errorMessage += `: ${responseText}`;
+                        }
                     }
                 } catch (e) {
-                    // If we can't parse the error as JSON, try to get the text
-                    const errorText = await response.text().catch(() => '');
-                    if (errorText) {
-                        errorMessage += `: ${errorText}`;
-                    }
+                    // If we can't get the response text, just use the status
+                    console.error('Error reading error response:', e);
                 }
                 
                 const error = new Error(errorMessage);
                 error.status = response.status;
-                error.details = errorDetails;
+                error.details = errorDetails || responseText;
                 throw error;
             }
-            // Check if response has content before trying to parse as JSON
-            const responseText = await response.text();
-            if (!responseText) {
-                return {}; // Return empty object for empty responses
-            }
             
-            try {
-                return JSON.parse(responseText);
-            } catch (e) {
-                // If not JSON, return as text
-                return responseText;
+            // For successful responses, handle based on content type
+            const responseContentType = response.headers.get('content-type') || '';
+            
+            // For user import endpoint, we expect a JSON response
+            if (responseContentType.includes('application/json') || endpoint.includes('/users/import')) {
+                try {
+                    const responseData = await response.json();
+                    return responseData;
+                } catch (e) {
+                    // If we can't parse as JSON, try to get the text
+                    const text = await response.text().catch(() => '');
+                    console.error('Failed to parse JSON response:', e, 'Response text:', text);
+                    throw new Error(`Invalid JSON response: ${e.message}`);
+                }
+            } 
+            // For text responses
+            else if (contentType.includes('text/')) {
+                return await response.text();
             }
+            // For empty responses
+            else if (response.status === 204) {
+                return {};
+            }
+            // For other content types, return as array buffer
+            return await response.arrayBuffer();
             
         } catch (error) {
             this.logger.error(`API request failed: ${error.message}`, 'error');
@@ -2940,22 +3027,89 @@ class UIManager {
      * Update the connection status display
      * @param {string} status - The connection status ('connected', 'disconnected', 'error')
      * @param {string} message - The status message to display
+     * @param {boolean} [updateSettingsStatus=true] - Whether to also update the settings page status
      */
-    updateConnectionStatus(status, message) {
-        if (!this.connectionStatusElement) {
-            this.connectionStatusElement = document.getElementById('connection-status');
-            if (!this.connectionStatusElement) return;
+    updateConnectionStatus(status, message, updateSettingsStatus = true) {
+        console.log(`Updating connection status: ${status} - ${message}`);
+        
+        // Update main status
+        this._updateStatusElement('connection-status', status, message);
+        
+        // Also update settings status if we're on the settings page
+        if (updateSettingsStatus && this.currentView === 'settings') {
+            this.updateSettingsConnectionStatus(status, message);
+        }
+    }
+    
+    /**
+     * Update the settings page connection status
+     * @param {string} status - The connection status ('connected', 'disconnected', 'error')
+     * @param {string} message - The status message to display
+     */
+    updateSettingsConnectionStatus(status, message) {
+        // Default messages for statuses if not provided
+        if (!message) {
+            switch(status) {
+                case 'connected':
+                    message = 'Successfully connected to PingOne';
+                    break;
+                case 'error':
+                    message = 'Connection error. Please check your settings.';
+                    break;
+                case 'disconnected':
+                default:
+                    message = 'Not connected. Please save your API credentials and test the connection.';
+            }
+        }
+        
+        this._updateStatusElement('settings-connection-status', status, message, false);
+    }
+    
+    /**
+     * Internal method to update a status element
+     * @private
+     */
+    _updateStatusElement(elementId, status, message, autoHide = true) {
+        let element = document.getElementById(elementId);
+        if (!element) {
+            console.warn(`Status element with ID '${elementId}' not found`);
+            return;
         }
         
         // Clear existing classes
-        this.connectionStatusElement.className = 'connection-status';
+        element.className = 'connection-status';
         
-        // Add status class and update text
-        this.connectionStatusElement.classList.add(`status-${status}`);
-        this.connectionStatusElement.textContent = message;
+        // Add status class
+        element.classList.add(`status-${status}`);
+        
+        // Add icon based on status
+        let icon = '';
+        switch(status) {
+            case 'connected':
+                icon = '✓';
+                break;
+            case 'error':
+                icon = '⚠️';
+                break;
+            case 'disconnected':
+            default:
+                icon = '⚠️';
+        }
+        
+        // Update with icon and message
+        element.innerHTML = `<span class="status-icon">${icon}</span> <span class="status-message">${message}</span>`;
         
         // Show the status element
-        this.connectionStatusElement.style.display = 'block';
+        element.style.display = 'flex';
+        
+        // If connected and auto-hide is enabled, hide after 5 seconds
+        if (status === 'connected' && autoHide) {
+            setTimeout(() => {
+                if (element) {
+                    element.style.display = 'none';
+                }
+            }, 5000);
+        }
     }
 
     /**
@@ -2967,39 +3121,43 @@ class UIManager {
         
         // Hide all views
         Object.values(this.views).forEach(view => {
-            if (view) view.style.display = 'none';
+            if (view) view.classList.remove('active');
         });
-
+        
         // Deactivate all nav items
         this.navItems.forEach(item => {
-            if (item && item.classList) {
-                item.classList.remove('active');
-            }
+            if (item) item.classList.remove('active');
         });
-
-        // Show the selected view and activate its nav item
-        const view = this.views[viewName];
-        if (view) {
-            view.style.display = 'block';
+        
+        // Show the selected view
+        if (this.views[viewName]) {
+            this.views[viewName].classList.add('active');
+            this.currentView = viewName;
+            
+            // Activate the corresponding nav item
             const navItem = document.querySelector(`[data-view="${viewName}"]`);
             if (navItem) {
                 navItem.classList.add('active');
             }
-            this.currentView = viewName;
-
-            // Save the current view to localStorage
-            try {
-                localStorage.setItem('currentView', viewName);
-            } catch (e) {
-                console.warn('Could not save view to localStorage:', e);
+            
+            // Special handling for specific views
+            switch(viewName) {
+                case 'logs':
+                    this.scrollLogsToBottom();
+                    await this.loadAndDisplayLogs();
+                    break;
+                case 'settings':
+                    // Update settings connection status when switching to settings view
+                    const currentStatus = this.connectionStatusElement?.classList.contains('status-connected') ? 'connected' : 'disconnected';
+                    const currentMessage = this.connectionStatusElement?.querySelector('.status-message')?.textContent || '';
+                    this.updateSettingsConnectionStatus(currentStatus, currentMessage);
+                    break;
             }
-
-            // Special handling for logs view
-            if (viewName === 'logs' && this.logger) {
-                await this.loadAndDisplayLogs();
-            }
+            
+            return true;
         } else {
             console.warn(`View '${viewName}' not found`);
+            return false;
         }
     }
 
@@ -3237,7 +3395,10 @@ class UIManager {
         });
     }
 
-    init() {
+    init(callbacks = {}) {
+        // Store callbacks
+        this.callbacks = callbacks;
+        
         // Initialize navigation event listeners
         this.navItems.forEach(item => {
             if (item) {
@@ -3251,9 +3412,85 @@ class UIManager {
             }
         });
         
+        // Set up Start Import button
+        const startImportBtn = document.getElementById('start-import-btn');
+        if (startImportBtn) {
+            startImportBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (this.callbacks.onImport) {
+                    this.callbacks.onImport();
+                }
+            });
+        }
+        
+        // Set up Cancel Import button
+        const cancelImportBtn = document.getElementById('cancel-import-btn');
+        if (cancelImportBtn && this.callbacks.onCancelImport) {
+            cancelImportBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.callbacks.onCancelImport();
+            });
+        }
+        
         // Make sure the current view is visible
         const currentView = this.getLastView();
         this.showView(currentView);
+    }
+    
+    /**
+     * Show loading state
+     * @param {boolean} [show=true] - Whether to show or hide the loading state
+     * @param {string} [message='Loading...'] - Optional loading message
+     */
+    showLoading(show = true, message = 'Loading...') {
+        let loadingElement = document.getElementById('loading-overlay');
+        
+        if (show) {
+            // Create loading overlay if it doesn't exist
+            if (!loadingElement) {
+                loadingElement = document.createElement('div');
+                loadingElement.id = 'loading-overlay';
+                loadingElement.style.position = 'fixed';
+                loadingElement.style.top = '0';
+                loadingElement.style.left = '0';
+                loadingElement.style.width = '100%';
+                loadingElement.style.height = '100%';
+                loadingElement.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+                loadingElement.style.display = 'flex';
+                loadingElement.style.justifyContent = 'center';
+                loadingElement.style.alignItems = 'center';
+                loadingElement.style.zIndex = '9999';
+                
+                const spinner = document.createElement('div');
+                spinner.className = 'spinner-border text-light';
+                spinner.role = 'status';
+                
+                const srOnly = document.createElement('span');
+                srOnly.className = 'visually-hidden';
+                srOnly.textContent = 'Loading...';
+                
+                spinner.appendChild(srOnly);
+                
+                const messageElement = document.createElement('div');
+                messageElement.className = 'ms-3 text-light';
+                messageElement.textContent = message;
+                messageElement.id = 'loading-message';
+                
+                loadingElement.appendChild(spinner);
+                loadingElement.appendChild(messageElement);
+                document.body.appendChild(loadingElement);
+            } else {
+                // Update existing loading message if needed
+                const messageElement = document.getElementById('loading-message');
+                if (messageElement) {
+                    messageElement.textContent = message;
+                }
+                loadingElement.style.display = 'flex';
+            }
+        } else if (loadingElement) {
+            // Hide loading overlay
+            loadingElement.style.display = 'none';
+        }
     }
     
     /**

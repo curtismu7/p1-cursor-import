@@ -1,11 +1,11 @@
 {
   "name": "pingone-import",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "A modern web application for importing users into PingOne using the PingOne Admin API.",
-  "main": "server.js",
+  "main": "server.cjs",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "start": "node server.cjs",
+    "dev": "nodemon server.cjs",
     "build": "browserify public/js/app.js -o public/js/bundle.js",
     "build:prod": "browserify public/js/app.js | uglifyjs -c -m > public/js/bundle.min.js",
     "watch": "watchify public/js/app.js -o public/js/bundle.js --debug --verbose",

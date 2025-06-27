@@ -1,9 +1,8 @@
 const express = require('express');
-const path = require('path');
+const { join, dirname } = require('path');
 const fs = require('fs').promises;
 
 const router = express.Router();
-const join = path.join;
 
 // Path to settings file
 const SETTINGS_PATH = join(__dirname, "../data/settings.json");

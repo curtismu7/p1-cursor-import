@@ -538,11 +538,64 @@ label {
 
 /* Connection result styles */
 /* Connection Status Styles */
+/* Connection Status */
 .connection-status {
-    margin-top: 1.5rem;
-    padding: 1rem;
-    background-color: #f8f9fa;
+    margin: 1rem 1.5rem 0;
+    padding: 0.75rem 1rem;
     border-radius: var(--border-radius);
+    font-size: 0.9rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    position: relative;
+    overflow: hidden;
+    z-index: 1000;
+    
+    /* Status indicators */
+    &.status-connected {
+        background-color: #e6f7e6;
+        color: #1a7f37;
+        border-left: 4px solid #2ea043;
+    }
+    
+    &.status-disconnected {
+        background-color: #fff8e6;
+        color: #7d5a01;
+        border-left: 4px solid #d4a72c;
+    }
+    
+    &.status-error {
+        background-color: #ffebee;
+        color: #cf222e;
+        border-left: 4px solid #cf222e;
+    }
+    
+    .status-icon {
+        font-size: 1.1em;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    
+    .status-message {
+        flex: 1;
+    }
+    
+    /* Settings specific status */
+    .settings-status-container {
+        margin-top: 2rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid #e9ecef;
+    }
+    
+    #settings-connection-status {
+        margin: 0;
+        transition: all 0.3s ease;
+    }
     border-left: 4px solid #6c757d;
 }
 

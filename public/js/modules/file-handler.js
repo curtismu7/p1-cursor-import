@@ -10,6 +10,11 @@ class FileHandler {
             warnings: 0
         };
         
+        // Store UI elements
+        this.fileInput = document.getElementById('csv-file');
+        this.fileInfo = document.getElementById('file-info');
+        this.previewContainer = document.getElementById('preview-container');
+        
         // Load last file info from localStorage
         this.lastFileInfo = this.loadLastFileInfo();
         
@@ -90,9 +95,21 @@ class FileHandler {
      * Initialize file input change handler
      */
     initializeFileInput() {
-        const fileInput = document.getElementById('csv-file');
-        if (fileInput) {
-            fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+        if (this.fileInput) {
+            // Remove any existing event listeners to prevent duplicates
+            const newFileInput = this.fileInput.cloneNode(true);
+            this.fileInput.parentNode.replaceChild(newFileInput, this.fileInput);
+            this.fileInput = newFileInput;
+            
+            // Add change event listener
+            this.fileInput.addEventListener('change', (e) => {
+                this.logger.debug('File input changed');
+                this.handleFileSelect(e);
+            });
+            
+            this.logger.debug('File input initialized');
+        } else {
+            this.logger.warn('File input element not found');
         }
     }
     
@@ -101,33 +118,62 @@ class FileHandler {
      * @param {Event} event - The file input change event
      */
     handleFileSelect(event) {
+        this.logger.debug('Handling file selection');
+        
         const fileInput = event.target;
-        if (fileInput.files && fileInput.files.length > 0) {
-            const file = fileInput.files[0];
-            this.saveFileInfo(file);
-            this.updateFileInfo(file);
-            
-            // Read the file content
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const content = e.target.result;
-                // Process the file content if needed
-                this.logger.debug('File content loaded:', content.substring(0, 100) + '...');
-                
-                // Update preview if needed
-                if (this.uiManager.updatePreview) {
-                    this.uiManager.updatePreview(content);
-                }
-            };
-            
-            // Read the file as text
-            reader.readAsText(file);
-        } else {
-            this.uiManager.fileInfo.innerHTML = '';
-            if (this.uiManager.updatePreview) {
-                this.uiManager.updatePreview('');
-            }
+        if (!fileInput.files || fileInput.files.length === 0) {
+            this.logger.debug('No file selected');
+            this.updateFileInfo(null);
+            return;
         }
+        
+        const file = fileInput.files[0];
+        this.logger.debug(`Selected file: ${file.name} (${file.size} bytes)`);
+        
+        // Save file info and update UI
+        this.saveFileInfo(file);
+        this.updateFileInfo(file);
+        
+        // Read the file content
+        const reader = new FileReader();
+        
+        reader.onload = (e) => {
+            try {
+                const content = e.target.result;
+                this.logger.debug('File content loaded, first 100 chars:', content.substring(0, 100) + '...');
+                
+                // Update preview if preview container exists
+                if (this.previewContainer) {
+                    this.previewContainer.innerHTML = `
+                        <div class="preview-header">
+                            <h3>File Preview (first 100 characters)</h3>
+                        </div>
+                        <div class="preview-content">
+                            <pre>${content.substring(0, 100)}</pre>
+                        </div>
+                    `;
+                }
+                
+                // Trigger the file selected event on the window
+                const fileSelectedEvent = new CustomEvent('fileSelected', { 
+                    detail: { file, content } 
+                });
+                window.dispatchEvent(fileSelectedEvent);
+                
+            } catch (error) {
+                this.logger.error('Error processing file content:', error);
+                this.uiManager.showError('Error processing file: ' + error.message);
+            }
+        };
+        
+        reader.onerror = (error) => {
+            this.logger.error('Error reading file:', error);
+            this.uiManager.showError('Error reading file: ' + error.message);
+            this.updateFileInfo(null);
+        };
+        
+        // Read the file as text
+        reader.readAsText(file);
     }
     
     /**
@@ -172,7 +218,19 @@ class FileHandler {
      * @param {File} file - The selected file
      */
     updateFileInfo(file) {
-        if (!file || !this.uiManager.fileInfo) return;
+        this.logger.debug('Updating file info for:', file ? file.name : 'no file');
+        
+        if (!file) {
+            if (this.fileInfo) {
+                this.fileInfo.innerHTML = '';
+            }
+            return;
+        }
+        
+        if (!this.fileInfo) {
+            this.logger.warn('File info element not found');
+            return;
+        }
         
         const fileInfoHtml = `
             <div class="file-details">
@@ -185,7 +243,8 @@ class FileHandler {
             </div>
         `;
         
-        this.uiManager.fileInfo.innerHTML = fileInfoHtml;
+        this.fileInfo.innerHTML = fileInfoHtml;
+        this.logger.debug('File info updated in UI');
     }
 
     /**

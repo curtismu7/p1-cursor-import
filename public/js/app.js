@@ -45,6 +45,13 @@ class App {
             this.logger.log('Logger initialized', 'debug');
             this.logger.log('Initializing UI components', 'info');
             
+            // Listen for file selection events
+            window.addEventListener('fileSelected', (event) => {
+                this.logger.debug('File selected event received');
+                const { file } = event.detail;
+                this.handleFileSelect(file);
+            });
+            
             // Initialize UI
             this.uiManager.init({
                 onFileSelect: (file) => this.handleFileSelect(file),
@@ -172,15 +179,13 @@ class App {
     async handleFileSelect(file) {
         if (!file) {
             this.logger.error('No file selected');
+            this.uiManager.setImportButtonState(false);
             return;
         }
         
         try {
             this.logger.log(`Processing file: ${file.name}`, 'info');
             this.uiManager.setImportButtonState(false);
-            
-            // Update file info in the UI
-            this.fileHandler.updateFileInfo(file);
             
             // Clear any previous data
             this.processedData = null;
