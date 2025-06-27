@@ -2003,7 +2003,7 @@ class PingOneAPI {
                     });
                 } 
                 // For regular JSON requests, stringify the data
-                else if (contentType === 'application/json') {
+                else if (requestContentType === 'application/json') {
                     requestBody = JSON.stringify(data);
                 }
                 // For other content types, send as-is (e.g., FormData)
@@ -2016,7 +2016,7 @@ class PingOneAPI {
             this.logger.log(`Sending ${method} request to ${url}`, 'debug', {
                 headers,
                 body: requestBody ? JSON.parse(requestBody) : null,
-                contentType
+                requestContentType
             });
             
             const response = await fetch(url, {
