@@ -1,0 +1,476 @@
+const { CryptoUtils } = require('./crypto-utils.js');
+
+class SettingsManager {
+    constructor(logger) {
+        // Initialize settings and storage key
+        this.settings = this.getDefaultSettings();
+        this.storageKey = 'pingone-import-settings';
+        this.crypto = new CryptoUtils();
+        this.encryptionKey = null;
+        
+        // Initialize logger
+        this.initializeLogger(logger);
+        
+        // Initialize encryption
+        this.initializeEncryption();
+    }
+    
+    /**
+     * Initialize the logger
+     * @param {Object} logger - Optional logger instance
+     */
+    initializeLogger(logger) {
+        if (logger && typeof logger === 'object') {
+            this.logger = logger;
+        } else {
+            // Create a minimal safe console logger
+            const safeLog = (level, message, ...args) => {
+                const logFn = console[level] || console.log;
+                try {
+                    if (typeof message === 'string') {
+                        logFn(`[${level.toUpperCase()}] ${message}`, ...args);
+                    } else {
+                        logFn(message, ...args);
+                    }
+                } catch (e) {
+                    console.error('Logger error:', e);
+                }
+            };
+            
+            this.logger = {
+                debug: (msg, ...args) => safeLog('debug', msg, ...args),
+                log: (msg, ...args) => safeLog('log', msg, ...args),
+                info: (msg, ...args) => safeLog('info', msg, ...args),
+                warn: (msg, ...args) => safeLog('warn', msg, ...args),
+                error: (msg, ...args) => safeLog('error', msg, ...args)
+            };
+        }
+    }
+    
+    /**
+     * Initialize encryption with a key derived from browser and user-specific data
+     */
+    async initializeEncryption() {
+        try {
+            const deviceId = await this.getDeviceId();
+            // Use the static method from CryptoUtils
+            this.encryptionKey = await CryptoUtils.generateKey(deviceId);
+        } catch (error) {
+            this.logger.error('Failed to initialize encryption:', error);
+            // Fallback to a less secure but functional approach
+            this.encryptionKey = await CryptoUtils.generateKey('fallback-encryption-key');
+        }
+    }
+    
+    /**
+     * Generate a device ID based on browser and system information
+     * @returns {Promise<string>} A unique device ID
+     */
+    async getDeviceId() {
+        try {
+            const navigatorInfo = {
+                userAgent: navigator.userAgent,
+                platform: navigator.platform,
+                hardwareConcurrency: navigator.hardwareConcurrency,
+                deviceMemory: navigator.deviceMemory,
+                maxTouchPoints: navigator.maxTouchPoints
+            };
+            
+            // Create a hash of the navigator info
+            const encoder = new TextEncoder();
+            const data = encoder.encode(JSON.stringify(navigatorInfo));
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        } catch (error) {
+            this.logger.error('Failed to generate device ID:', error);
+            // Fallback to a random string if crypto API fails
+            return 'fallback-' + Math.random().toString(36).substring(2, 15);
+        }
+    }
+
+    /**
+     * Get required settings fields
+     * @returns {Array<string>} Array of required setting keys
+     */
+    getRequiredSettings() {
+        return ['apiClientId', 'apiSecret', 'environmentId'];
+    }
+
+    /**
+     * Get default settings
+     * @returns {Object} Default settings object
+     */
+    getDefaultSettings() {
+        return {
+            // Connection settings
+            apiClientId: '',
+            apiSecret: '',
+            environmentId: '',
+            populationId: '',
+            region: 'NorthAmerica',
+            
+            // Connection status
+            connectionStatus: 'disconnected',
+            connectionMessage: 'Not connected',
+            lastConnectionTest: null,
+            
+            // UI settings
+            autoSave: true,
+            lastUsedDirectory: '',
+            theme: 'light',
+            pageSize: 50,
+            showNotifications: true
+        };
+    }
+    
+    /**
+     * Check if all required settings are filled
+     * @param {Object} [settings] - Optional settings to validate (uses current settings if not provided)
+     * @returns {{isValid: boolean, missingFields: Array<string>}} Validation result
+     */
+    validateSettings(settings = null) {
+        const settingsToValidate = settings || this.settings;
+        const requiredFields = this.getRequiredSettings();
+        const missingFields = [];
+        
+        requiredFields.forEach(field => {
+            if (!settingsToValidate[field] || String(settingsToValidate[field]).trim() === '') {
+                missingFields.push(field);
+            }
+        });
+        
+        return {
+            isValid: missingFields.length === 0,
+            missingFields
+        };
+    }
+
+    /**
+     * Check if localStorage is available
+     * @returns {boolean} True if localStorage is available
+     */
+    isLocalStorageAvailable() {
+        try {
+            const testKey = '__test__';
+            localStorage.setItem(testKey, testKey);
+            localStorage.removeItem(testKey);
+            return true;
+        } catch (e) {
+            this.logger.error('localStorage is not available', 'error');
+            return false;
+        }
+    }
+
+    /**
+     * Load settings from server with localStorage fallback
+     * @returns {Promise<Object>} Loaded settings
+     */
+    async loadSettings() {
+        try {
+            // Try to load from server first
+            try {
+                const response = await fetch('/api/settings');
+                
+                if (response.ok) {
+                    const serverSettings = await response.json();
+                    
+                    if (serverSettings.success && serverSettings.data) {
+                        // Server settings are available, use them
+                        const parsedSettings = serverSettings.data;
+                        
+                        // Decrypt sensitive fields if they exist
+                        if (parsedSettings.apiSecret) {
+                            try {
+                                parsedSettings.apiSecret = await this.decryptIfNeeded(parsedSettings.apiSecret);
+                            } catch (error) {
+                                this.logger.error('Failed to decrypt API secret', error);
+                                parsedSettings.apiSecret = '';
+                            }
+                        }
+                        
+                        // Deep merge with defaults
+                        this.settings = this.deepMerge(this.getDefaultSettings(), parsedSettings);
+                        
+                        // Save to localStorage as cache
+                        if (this.isLocalStorageAvailable()) {
+                            localStorage.setItem(this.storageKey, JSON.stringify(this.settings));
+                        }
+                        
+                        this.logger.log('Settings loaded from server', 'success');
+                        return this.settings;
+                    }
+                }
+                
+                // If we get here, server load failed or returned invalid data
+                throw new Error('Invalid server response');
+                
+            } catch (serverError) {
+                this.logger.warn('Failed to load settings from server, falling back to localStorage', serverError);
+                
+                // Fall back to localStorage if available
+                if (this.isLocalStorageAvailable()) {
+                    const savedSettings = localStorage.getItem(this.storageKey);
+                    
+                    if (savedSettings) {
+                        const parsedSettings = JSON.parse(savedSettings);
+                        
+                        // Decrypt sensitive fields
+                        if (parsedSettings.apiSecret) {
+                            try {
+                                parsedSettings.apiSecret = await this.decryptIfNeeded(parsedSettings.apiSecret);
+                            } catch (error) {
+                                this.logger.error('Failed to decrypt API secret from localStorage', error);
+                                parsedSettings.apiSecret = '';
+                            }
+                        }
+                        
+                        // Deep merge with defaults
+                        this.settings = this.deepMerge(this.getDefaultSettings(), parsedSettings);
+                        this.logger.log('Settings loaded from localStorage (fallback)', 'warning');
+                        
+                        // Try to save to server for next time
+                        this.saveSettings(this.settings, false).catch(e => 
+                            this.logger.warn('Failed to sync settings to server', e)
+                        );
+                        
+                        return this.settings;
+                    }
+                }
+                
+                // If we get here, both server and localStorage failed or are empty
+                this.settings = this.getDefaultSettings();
+                this.logger.log('No saved settings found, using defaults', 'info');
+                return this.settings;
+            }
+            
+        } catch (error) {
+            this.logger.error('Error loading settings:', error);
+            return this.getDefaultSettings();
+        }
+    }
+    
+    /**
+     * Save settings to localStorage and server
+     * @param {Object} newSettings - Settings to save
+     * @param {boolean} [validate=true] - Whether to validate settings before saving
+     * @returns {Promise<boolean>} True if settings were saved successfully
+     */
+    async saveSettings(newSettings, validate = true) {
+        try {
+            // Create a deep copy of current settings
+            const updatedSettings = this.deepMerge({}, this.settings);
+            
+            // Preserve connection status fields
+            const connectionFields = ['connectionStatus', 'connectionMessage', 'lastConnectionTest'];
+            const preservedConnectionFields = {};
+            
+            // Extract connection fields from new settings
+            connectionFields.forEach(field => {
+                if (newSettings[field] !== undefined) {
+                    preservedConnectionFields[field] = newSettings[field];
+                }
+            });
+            
+            // Update with new settings
+            Object.assign(updatedSettings, newSettings);
+            
+            // Restore preserved connection fields
+            Object.assign(updatedSettings, preservedConnectionFields);
+            
+            // Validate settings if needed
+            if (validate) {
+                const validation = this.validateSettings(updatedSettings);
+                if (!validation.isValid) {
+                    this.logger.warn(`Cannot save settings: Missing required fields - ${validation.missingFields.join(', ')}`);
+                    return false;
+                }
+            }
+            
+            // Create a copy of settings for saving (without connection fields)
+            const settingsToSave = { ...updatedSettings };
+            
+            // Only encrypt API secret if it's not already encrypted and not empty
+            if (settingsToSave.apiSecret && !settingsToSave.apiSecret.startsWith('enc:')) {
+                try {
+                    settingsToSave.apiSecret = await this.encrypt(settingsToSave.apiSecret);
+                } catch (error) {
+                    this.logger.error('Failed to encrypt API secret', error);
+                    throw new Error('Failed to secure API secret');
+                }
+            }
+            
+            // Save to server first
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(settingsToSave)
+                });
+                
+                if (!response.ok) {
+                    const error = await response.text();
+                    throw new Error(`Server responded with status ${response.status}: ${error}`);
+                }
+                
+                // Update in-memory settings
+                this.settings = updatedSettings;
+                
+                // Also save to localStorage as a backup
+                if (this.isLocalStorageAvailable()) {
+                    localStorage.setItem(this.storageKey, JSON.stringify(settingsToSave));
+                }
+                
+                this.logger.log('Settings saved successfully', 'success');
+                return true;
+                
+            } catch (error) {
+                this.logger.error('Failed to save settings to server, falling back to localStorage', error);
+                
+                // Fall back to localStorage if server save fails
+                if (this.isLocalStorageAvailable()) {
+                    try {
+                        localStorage.setItem(this.storageKey, JSON.stringify(settingsToSave));
+                        this.settings = updatedSettings;
+                        this.logger.log('Settings saved to localStorage (fallback)', 'warning');
+                        return true;
+                    } catch (localError) {
+                        this.logger.error('Failed to save settings to localStorage', localError);
+                        throw new Error('Failed to save settings to any storage');
+                    }
+                }
+                
+                return false;
+            }
+        } catch (error) {
+            this.logger.error('Error in saveSettings:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Encrypt a string value
+     * @param {string} value - The value to encrypt
+     * @returns {Promise<string>} Encrypted value with 'enc:' prefix
+     */
+    async encrypt(value) {
+        if (!value || typeof value !== 'string') return value;
+        if (value.startsWith('enc:')) return value; // Already encrypted
+        
+        try {
+            if (!this.encryptionKey) {
+                await this.initializeEncryption();
+            }
+            
+            const encrypted = await CryptoUtils.encrypt(value, this.encryptionKey);
+            return `enc:${encrypted}`;
+        } catch (error) {
+            this.logger.error('Encryption failed:', error);
+            throw new Error('Failed to encrypt sensitive data');
+        }
+    }
+    
+    /**
+     * Decrypt a value if it's encrypted
+     * @param {string} value - Value to decrypt
+     * @returns {Promise<string>} Decrypted value
+     */
+    async decryptIfNeeded(value) {
+        if (!value || typeof value !== 'string') return value;
+        if (!value.startsWith('enc:')) return value; // Not encrypted
+        
+        try {
+            if (!this.encryptionKey) {
+                await this.initializeEncryption();
+            }
+            
+            const encryptedValue = value.substring(4); // Remove 'enc:' prefix
+            return await CryptoUtils.decrypt(encryptedValue, this.encryptionKey);
+        } catch (error) {
+            this.logger.error('Decryption failed:', error);
+            throw new Error('Failed to decrypt sensitive data');
+        }
+    }
+    
+    /**
+     * Deep merge objects
+     * @param {Object} target - Target object
+     * @param {Object} source - Source object
+     * @returns {Object} Merged object
+     */
+    deepMerge(target, source) {
+        const output = { ...target };
+        
+        if (this.isObject(target) && this.isObject(source)) {
+            Object.keys(source).forEach(key => {
+                if (this.isObject(source[key])) {
+                    if (!(key in target)) {
+                        Object.assign(output, { [key]: source[key] });
+                    } else {
+                        output[key] = this.deepMerge(target[key], source[key]);
+                    }
+                } else {
+                    Object.assign(output, { [key]: source[key] });
+                }
+            });
+        }
+        
+        return output;
+    }
+    
+    /**
+     * Check if a value is an object
+     * @param {*} item - Value to check
+     * @returns {boolean} True if the value is an object
+     */
+    isObject(item) {
+        return item && typeof item === 'object' && !Array.isArray(item);
+    }
+    
+    /**
+     * Clear all settings and reset to defaults
+     * @returns {Promise<boolean>} True if settings were cleared successfully
+     */
+    async clearSettings() {
+        try {
+            if (this.isLocalStorageAvailable()) {
+                localStorage.removeItem(this.storageKey);
+            }
+            
+            this.settings = this.getDefaultSettings();
+            this.logger.log('Settings cleared successfully', 'success');
+            return true;
+        } catch (error) {
+            this.logger.error(`Error clearing settings: ${error.message}`, 'error');
+            return false;
+        }
+    }
+    
+    /**
+     * Get a setting value
+     * @param {string} key - Setting key
+     * @param {*} defaultValue - Default value if setting doesn't exist
+     * @returns {*} Setting value or default value
+     */
+    getSetting(key, defaultValue = null) {
+        return this.settings.hasOwnProperty(key) ? this.settings[key] : defaultValue;
+    }
+    
+    /**
+     * Update a setting
+     * @param {string} key - Setting key
+     * @param {*} value - New value
+     * @returns {Promise<boolean>} True if setting was updated successfully
+     */
+    async updateSetting(key, value) {
+        return this.saveSettings({ [key]: value });
+    }
+}
+
+// Export the class and a singleton instance
+module.exports = { 
+    SettingsManager,
+    settingsManager: new SettingsManager() 
+};

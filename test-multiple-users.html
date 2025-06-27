@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiple Users CSV Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #log { 
+            height: 500px; 
+            overflow-y: auto; 
+            border: 1px solid #ccc; 
+            padding: 15px; 
+            margin: 20px 0;
+            font-family: monospace;
+            white-space: pre;
+            background: #f8f8f8;
+        }
+        .success { color: #2e7d32; }
+        .error { color: #c62828; }
+        .warning { color: #f9a825; }
+        .info { color: #1565c0; }
+        .debug { color: #616161; }
+        button {
+            background: #1976d2;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        button:hover { background: #1565c0; }
+        .summary {
+            background: #e8f5e9;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        .user-count {
+            font-weight: bold;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Multiple Users CSV Test</h1>
+    
+    <div>
+        <p>This test will process multiple user records from a CSV string.</p>
+        <button onclick="runTest()">Run Multiple Users Test</button>
+    </div>
+
+    <div id="summary" class="summary" style="display: none;">
+        <div class="user-count">Processed <span id="userCount">0</span> users</div>
+        <div>Valid users: <span id="validCount" class="success">0</span></div>
+        <div>Users with errors: <span id="errorCount" class="error">0</span></div>
+    </div>
+
+    <h3>Test Results:</h3>
+    <div id="log">Click the button to run the test...</div>
+
+    <script>
+        // Test data with multiple users
+        const testCSV = `username,email,populationId,firstName,middleName,lastName,prefix,suffix,formattedName,nickname,title,preferredLanguage,locale,timezone,externalId,type,active,primaryPhone,mobilePhone,streetAddress,countryCode,locality,region,postalCode,password
+37quqeweop,37quqeweop@mailinator.com,1dd684e3-82ee-4e68-9d25-00401bc62e7a,Jane,B,Doe,Ms.,PhD,"Ms. Jane B Doe, PhD",Janie,Engineer,en,US,America/New_York,ext-789,employee,True,555-111-2222,555-333-4444,123 Main St,US,New York,NY,10001,2Federate!
+45of05e9te,45of05e9te@mailinator.com,1dd684e3-82ee-4e68-9d25-00401bc62e7a,Jane,B,Doe,Ms.,PhD,"Ms. Jane B Doe, PhD",Janie,Engineer,en,US,America/New_York,ext-789,employee,True,555-111-2222,555-333-4444,123 Main St,US,New York,NY,10001,2Federate!
+03tiap61fj,03tiap61fj@mailinator.com,1dd684e3-82ee-4e68-9d25-00401bc62e7a,Jane,B,Doe,Ms.,PhD,"Ms. Jane B Doe, PhD",Janie,Engineer,en,US,America/New_York,ext-789,employee,True,555-111-2222,555-333-4444,123 Main St,US,New York,NY,10001,2Federate!
+18zwyd4nrd,18zwyd4nrd@mailinator.com,1dd684e3-82ee-4e68-9d25-00401bc62e7a,Jane,B,Doe,Ms.,PhD,"Ms. Jane B Doe, PhD",Janie,Engineer,en,US,America/New_York,ext-789,employee,True,555-111-2222,555-333-4444,123 Main St,US,New York,NY,10001,2Federate!
+92geyat509,92geyat509@mailinator.com,1dd684e3-82ee-4e68-9d25-00401bc62e7a,Jane,B,Doe,Ms.,PhD,"Ms. Jane B Doe, PhD",Janie,Engineer,en,US,America/New_York,ext-789,employee,True,555-111-2222,555-333-4444,123 Main St,US,New York,NY,10001,2Federate!
+86gq408emd,86gq408emd@mailinator.com,1dd684e3-82ee-4e68-9d25-00401bc62e7a,Jane,B,Doe,Ms.,PhD,"Ms. Jane B Doe, PhD",Janie,Engineer,en,US,America/New_York,ext-789,employee,True,555-111-2222,555-333-4444,123 Main St,US,New York,NY,10001,2Federate!`;
+
+        class Logger {
+            constructor(logElement) {
+                this.logElement = logElement;
+                this.clear();
+            }
+
+            clear() {
+                this.logElement.innerHTML = '';
+                this.logs = [];
+                this.validCount = 0;
+                this.errorCount = 0;
+            }
+
+            log(message, level = 'info') {
+                const entry = { message, level, timestamp: new Date() };
+                this.logs.push(entry);
+                
+                const logEntry = document.createElement('div');
+                logEntry.className = level;
+                logEntry.textContent = `[${entry.timestamp.toISOString()}] [${level.toUpperCase()}] ${message}`;
+                this.logElement.prepend(logEntry);
+                
+                // Also log to console
+                const logMethod = console[level] || console.log;
+                logMethod(`[${level.toUpperCase()}] ${message}`);
+            }
+
+            info(message) { this.log(message, 'info'); }
+            error(message) { this.log(message, 'error'); this.errorCount++; this.updateSummary(); }
+            warn(message) { this.log(message, 'warning'); }
+            debug(message) { this.log(message, 'debug'); }
+            success(message) { this.log(message, 'success'); this.validCount++; this.updateSummary(); }
+            
+            updateSummary() {
+                document.getElementById('summary').style.display = 'block';
+                document.getElementById('userCount').textContent = this.validCount + this.errorCount;
+                document.getElementById('validCount').textContent = this.validCount;
+                document.getElementById('errorCount').textContent = this.errorCount;
+            }
+        }
+
+        class CSVParser {
+            constructor(logger) {
+                this.logger = logger;
+            }
+
+            parseCSVLine(line) {
+                const values = [];
+                let current = '';
+                let inQuotes = false;
+                let inEscape = false;
+                
+                for (let i = 0; i < line.length; i++) {
+                    const char = line[i];
+                    
+                    if (inEscape) {
+                        current += char;
+                        inEscape = false;
+                        continue;
+                    }
+                    
+                    if (char === '\\') {
+                        inEscape = true;
+                        continue;
+                    }
+                    
+                    if (char === '"') {
+                        inQuotes = !inQuotes;
+                        continue;
+                    }
+                    
+                    if (char === ',' && !inQuotes) {
+                        values.push(current);
+                        current = '';
+                        continue;
+                    }
+                    
+                    current += char;
+                }
+                
+                // Add the last value
+                values.push(current);
+                
+                // Trim whitespace from each value
+                return values.map(v => v.trim());
+            }
+
+            parseCSV(csvText) {
+                try {
+                    // Remove BOM if present and trim whitespace
+                    const text = csvText.replace(/^\uFEFF/, '').trim();
+                    
+                    if (!text) {
+                        throw new Error('CSV text is empty');
+                    }
+                    
+                    // Split into lines and filter out empty lines
+                    const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+                    
+                    if (lines.length < 2) {
+                        throw new Error('CSV must contain at least one header row and one data row');
+                    }
+
+                    // Parse headers
+                    const headers = this.parseCSVLine(lines[0]);
+                    this.logger.debug(`Parsed ${headers.length} headers: ${headers.join(', ')}`);
+                    
+                    // Parse data rows
+                    const rows = [];
+                    for (let i = 1; i < lines.length; i++) {
+                        const values = this.parseCSVLine(lines[i]);
+                        
+                        // Ensure we have the same number of values as headers
+                        if (values.length !== headers.length) {
+                            this.logger.warn(`Row ${i} has ${values.length} columns, expected ${headers.length}`);
+                            // Pad with empty strings if needed
+                            while (values.length < headers.length) {
+                                values.push('');
+                            }
+                        }
+                        
+                        // Create user object
+                        const user = {};
+                        headers.forEach((header, index) => {
+                            user[header] = values[index];
+                        });
+                        
+                        rows.push(user);
+                    }
+                    
+                    return { headers, rows };
+                } catch (error) {
+                    this.logger.error(`Error parsing CSV: ${error.message}`);
+                    throw error;
+                }
+            }
+            
+            validateUser(user, headers) {
+                const errors = [];
+                
+                // Check for required fields
+                if (!user.email && !user.username) {
+                    errors.push('User must have either email or username');
+                }
+                
+                // Validate email format if provided
+                if (user.email && user.email.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email)) {
+                    errors.push(`Invalid email format: ${user.email}`);
+                }
+                
+                // Validate required fields
+                const requiredFields = ['username', 'email', 'populationId'];
+                requiredFields.forEach(field => {
+                    if (!user[field] || user[field].trim() === '') {
+                        errors.push(`Missing required field: ${field}`);
+                    }
+                });
+                
+                return {
+                    valid: errors.length === 0,
+                    errors
+                };
+            }
+        }
+
+        // Initialize logger and parser
+        const logger = new Logger(document.getElementById('log'));
+        const parser = new CSVParser(logger);
+
+        // Run the test
+        function runTest() {
+            logger.clear();
+            logger.info('Starting multiple users test...');
+            
+            try {
+                // Parse the CSV
+                const { headers, rows } = parser.parseCSV(testCSV);
+                
+                logger.info(`Found ${rows.length} users in the CSV`);
+                logger.info(`Headers (${headers.length}): ${headers.join(', ')}`);
+                
+                // Process and validate each row
+                rows.forEach((user, index) => {
+                    logger.info(`\n--- Processing User ${index + 1} ---`);
+                    
+                    // Log a subset of user data for verification
+                    const userSummary = {
+                        username: user.username,
+                        email: user.email,
+                        name: `${user.firstName} ${user.lastName}`,
+                        active: user.active
+                    };
+                    logger.info(JSON.stringify(userSummary, null, 2));
+                    
+                    const validation = parser.validateUser(user, headers);
+                    if (validation.valid) {
+                        logger.success('✅ Valid user data');
+                    } else {
+                        validation.errors.forEach(error => {
+                            logger.error(`❌ ${error}`);
+                        });
+                    }
+                });
+                
+                logger.info('\n=== Test Complete ===');
+                logger.info(`Processed ${rows.length} users`);
+                
+            } catch (error) {
+                logger.error(`❌ Test failed: ${error.message}`);
+                console.error('Test error:', error);
+            }
+        }
+    </script>
+</body>
+</html>
