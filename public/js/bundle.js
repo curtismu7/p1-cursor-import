@@ -53,6 +53,9 @@ class App {
                 this.handleFileSelect(file);
             });
             
+            // Always show import view by default
+            this.uiManager.switchView('import');
+            
             // Initialize UI
             this.uiManager.init({
                 onFileSelect: (file) => this.handleFileSelect(file),
@@ -80,9 +83,8 @@ class App {
             // Check settings and restore file if needed
             await this.checkSettingsAndRestore();
             
-            // Show the last viewed page or default to 'import'
-            const lastView = this.uiManager.getLastView();
-            this.uiManager.showView(lastView);
+            // Always show import view on initial load
+            this.uiManager.switchView('import');
             
             this.logger.log('Application initialized', 'success');
         } catch (error) {
@@ -121,49 +123,24 @@ class App {
         try {
             // Check if we have a valid settings and a previously loaded file
             if (this.fileHandler.lastFileInfo) {
-                this.logger.log('Found previously loaded file. Restoring...', 'info');
+                this.logger.log('Found previously loaded file reference in local storage', 'info');
                 
-                // Create a dummy file to represent the previously loaded file
-                const file = new File(
-                    [''], // Empty content since we can't restore the actual content
-                    this.fileHandler.lastFileInfo.name,
-                    {
-                        type: this.fileHandler.lastFileInfo.type || 'text/csv',
-                        lastModified: this.fileHandler.lastFileInfo.lastModified || Date.now()
-                    }
-                );
+                // Clear the last file info immediately to prevent any auto-processing
+                const lastFileName = this.fileHandler.lastFileInfo.name;
+                this.fileHandler.clearFileInfo();
                 
-                // Update file info in the UI
-                this.fileHandler.updateFileInfo(file);
+                // Log the information but don't try to process the file
+                this.logger.info('Please re-upload the file to process it', {
+                    fileName: lastFileName,
+                    note: 'File references from previous sessions require re-upload for security reasons'
+                });
                 
-                // Process the file
-                this.uiManager.setImportButtonState(false, 'Processing...');
+                // Update the UI to show no file is selected
+                this.uiManager.setImportButtonState(false, 'Select File to Import');
                 
-                try {
-                    // Process the CSV file
-                    const { headers, rows } = await this.fileHandler.processCSV(file);
-                    
-                    // Store the processed data for display
-                    this.processedData = { headers, rows };
-                    // Store the data needed for import
-                    this.currentImportData = { 
-                        headers, 
-                        rows,
-                        fileName: file.name 
-                    };
-                    
-                    // Enable import button if we have valid data
-                    if (rows.length > 0) {
-                        this.uiManager.setImportButtonState(true, 'Start Import');
-                        this.logger.log(`Restored ${rows.length} users from previous session`, 'success');
-                    } else {
-                        this.uiManager.setImportButtonState(false, 'No Valid Data');
-                        this.logger.warn('No valid user data found in the restored file');
-                    }
-                } catch (error) {
-                    this.logger.error(`Error processing restored file: ${error.message}`);
-                    this.uiManager.setImportButtonState(false, 'Error Processing File');
-                    this.fileHandler.clearFileInfo();
+                // Clear any file input that might have been restored
+                if (this.fileHandler.fileInput) {
+                    this.fileHandler.fileInput.value = '';
                 }
             }
         } catch (error) {
@@ -416,69 +393,129 @@ class App {
                 throw new Error('PingOne API credentials are not configured. Please check your settings.');
             }
             
-            // Import users one by one
-            for (let i = 0; i < rows.length; i++) {
+            // Process users in batches to improve performance
+            const batchSize = 10; // Process 10 users at a time
+            
+            for (let i = 0; i < rows.length; i += batchSize) {
                 if (this.currentImportAbortController.signal.aborted) {
                     this.logger.log('Import cancelled by user', 'warning');
                     break;
                 }
                 
-                const user = rows[i];
-                const currentIndex = i + 1;
-                const currentProcessed = successfulImports + failedImports + skippedUsers + 1;
+                const batch = rows.slice(i, i + batchSize);
+                const batchStartIndex = i + 1;
+                const batchEndIndex = Math.min(i + batchSize, rows.length);
                 
                 try {
-                    // Check if user already exists
-                    const userExists = await this.pingOneAPI.userExists(user.email);
+                    // Check for existing users in the current batch
+                    const usersToImport = [];
+                    const existingUsers = [];
                     
-                    if (userExists) {
-                        // Skip existing users
-                        skippedUsers++;
-                        this.logger.log(`Skipping existing user: ${user.email} (${currentIndex}/${totalUsers})`, 'info');
-                        // Update progress with skipped count
+                    // Check each user in the batch
+                    for (const user of batch) {
+                        const userEmail = user.email;
+                        const currentIndex = batchStartIndex + batch.indexOf(user);
+                        
+                        try {
+                            const userExists = await this.pingOneAPI.userExists(userEmail);
+                            if (userExists) {
+                                existingUsers.push(userEmail);
+                                skippedUsers++;
+                                this.logger.log(`Skipping existing user: ${userEmail} (${currentIndex}/${totalUsers})`, 'info');
+                            } else {
+                                usersToImport.push(user);
+                            }
+                            
+                            // Update progress for each user check
+                            const currentProcessed = batchStartIndex + batch.indexOf(user);
+                            this.uiManager.updateImportProgress(
+                                currentProcessed,
+                                totalUsers,
+                                `Processing user ${currentProcessed} of ${totalUsers}`,
+                                {
+                                    success: successfulImports,
+                                    failed: failedImports,
+                                    skipped: skippedUsers
+                                }
+                            );
+                            
+                        } catch (error) {
+                            failedImports++;
+                            this.logger.error(`Error checking existing user ${userEmail}: ${error.message}`);
+                        }
+                        
+                        // Small delay between user checks to avoid rate limiting
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+                    
+                    // If we have users to import in this batch, process them
+                    if (usersToImport.length > 0) {
+                        this.logger.log(`Importing batch of ${usersToImport.length} users (${batchStartIndex}-${batchStartIndex + usersToImport.length - 1}/${totalUsers})`, 'info');
+                        
+                        // Update progress for the batch
                         this.uiManager.updateImportProgress(
-                            currentProcessed,
+                            batchStartIndex + usersToImport.length - 1,
                             totalUsers,
-                            `Skipped existing user: ${user.email} (${skippedUsers} skipped)`,
+                            `Importing batch ${Math.floor(i/batchSize) + 1} of ${Math.ceil(rows.length/batchSize)}`,
                             {
                                 success: successfulImports,
                                 failed: failedImports,
                                 skipped: skippedUsers
                             }
                         );
-                        continue;
+                        
+                        try {
+                            // Import the batch of users
+                            await this.pingOneAPI.importUsers(usersToImport, {
+                                signal: this.currentImportAbortController.signal,
+                                skipExisting: true
+                            });
+                            
+                            // Update successful imports count
+                            successfulImports += usersToImport.length;
+                            this.logger.log(`Successfully imported ${usersToImport.length} users in batch ${Math.floor(i/batchSize) + 1}`, 'success');
+                            
+                        } catch (error) {
+                            // If batch import fails, try importing users one by one
+                            this.logger.warn(`Batch import failed, falling back to individual imports: ${error.message}`);
+                            
+                            for (const user of usersToImport) {
+                                if (this.currentImportAbortController.signal.aborted) {
+                                    throw new Error('Import cancelled by user');
+                                }
+                                
+                                try {
+                                    await this.pingOneAPI.importUsers([user], {
+                                        signal: this.currentImportAbortController.signal,
+                                        skipExisting: true
+                                    });
+                                    successfulImports++;
+                                    this.logger.log(`Imported user: ${user.email}`, 'success');
+                                } catch (singleError) {
+                                    failedImports++;
+                                    this.logger.error(`Error importing user ${user.email}: ${singleError.message}`);
+                                }
+                                
+                                // Small delay between individual imports
+                                await new Promise(resolve => setTimeout(resolve, 200));
+                            }
+                        }
                     }
                     
-                    // Update progress with current counts
-                    this.uiManager.updateImportProgress(
-                        currentProcessed,
-                        totalUsers,
-                        `Importing user ${currentProcessed} of ${totalUsers}: ${user.email}`,
-                        {
-                            success: successfulImports,
-                            failed: failedImports,
-                            skipped: skippedUsers
-                        }
-                    );
-                    
-                    // Import the user
-                    await this.pingOneAPI.importUsers([user], {
-                        signal: this.currentImportAbortController.signal,
-                        skipExisting: true // Just in case, though we already checked
-                    });
-                    
-                    successfulImports++;
-                    this.logger.log(`Imported user: ${user.email} (${currentProcessed}/${totalUsers})`, 'success');
+                    // Small delay between batches
+                    await new Promise(resolve => setTimeout(resolve, 500));
                     
                 } catch (error) {
-                    failedImports++;
-                    const errorMsg = `Error importing user ${user.email}: ${error.message}`;
-                    this.logger.error(errorMsg);
-                    // Continue with next user even if one fails
+                    failedImports += batch.length;
+                    this.logger.error(`Error processing batch ${Math.floor(i/batchSize) + 1}: ${error.message}`);
+                    
+                    // Continue with next batch even if one fails
+                    if (error.message !== 'Import cancelled by user') {
+                        continue;
+                    } else {
+                        break;
+                    }
                 }
-                
-                // Small delay to avoid rate limiting
-                await new Promise(resolve => setTimeout(resolve, 200));
             }
             
             // Show final status
@@ -788,14 +825,70 @@ class FileHandler {
                 
                 // Update preview if preview container exists
                 if (this.previewContainer) {
-                    this.previewContainer.innerHTML = `
-                        <div class="preview-header">
-                            <h3>File Preview (first 100 characters)</h3>
-                        </div>
-                        <div class="preview-content">
-                            <pre>${content.substring(0, 100)}</pre>
-                        </div>
-                    `;
+                    try {
+                        // Parse the CSV content
+                        const { headers, rows } = this.parseCSV(content);
+                        const previewRows = rows.slice(0, 10); // Get first 10 data rows
+                        const totalRows = rows.length;
+                        
+                        // Create table HTML with proper escaping
+                        const escapeHTML = (str) => {
+                            if (str === null || str === undefined) return '';
+                            return String(str)
+                                .replace(/&/g, '&amp;')
+                                .replace(/</g, '&lt;')
+                                .replace(/>/g, '&gt;')
+                                .replace(/"/g, '&quot;')
+                                .replace(/'/g, '&#039;');
+                        };
+                        
+                        // Generate table rows
+                        const tableRows = previewRows.map(row => {
+                            return `
+                                <tr>
+                                    ${headers.map(header => 
+                                        `<td>${escapeHTML(row[header])}</td>`
+                                    ).join('')}
+                                </tr>`;
+                        }).join('');
+                        
+                        // Generate the full table HTML
+                        const tableHtml = `
+                            <div class="preview-container">
+                                <div class="preview-header">
+                                    <h3>CSV Preview (First ${previewRows.length} of ${totalRows} rows)</h3>
+                                </div>
+                                <div class="table-responsive">
+                                    <table class="table table-striped table-bordered table-hover">
+                                        <thead class="table-dark">
+                                            <tr>
+                                                ${headers.map(header => 
+                                                    `<th>${escapeHTML(header)}</th>`
+                                                ).join('')}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${tableRows}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                ${totalRows > 10 ? 
+                                    `<div class="preview-footer text-muted">
+                                        Showing 10 of ${totalRows} rows
+                                    </div>` : 
+                                    ''
+                                }
+                            </div>`;
+                        
+                        this.previewContainer.innerHTML = tableHtml;
+                    } catch (error) {
+                        console.error('Error generating CSV preview:', error);
+                        this.previewContainer.innerHTML = `
+                            <div class="preview-error">
+                                <p>Error generating preview. Please check the console for details.</p>
+                            </div>
+                        `;
+                    }
                 }
                 
                 // Trigger the file selected event on the window
@@ -940,7 +1033,18 @@ class FileHandler {
      * @returns {Promise<{headers: Array<string>, rows: Array<Object>}>} - Processed data
      */
     async processCSV(file) {
-        this.logger.log(`Processing file: ${file.name}`, 'info');
+        this.logger.log(`Processing file: ${file.name} (${this.formatFileSize(file.size)})`, 'info');
+        
+        // Check if file is empty
+        if (!file || file.size === 0) {
+            throw new Error(`The file "${file.name}" is empty (0 bytes). Please select a valid CSV file with data.`);
+        }
+        
+        // Check file type
+        const fileExt = this.getFileExtension(file.name).toLowerCase();
+        if (fileExt !== 'csv') {
+            throw new Error(`Unsupported file type: .${fileExt}. Please upload a CSV file.`);
+        }
         
         // Save file info for persistence
         this.saveFileInfo(file);
@@ -953,7 +1057,7 @@ class FileHandler {
             this.uiManager.previewContainer.innerHTML = `
                 <div class="loading">
                     <div class="spinner"></div>
-                    <div>Processing file...</div>
+                    <div>Processing file (${this.formatFileSize(file.size)})...</div>
                 </div>`;
         }
         
@@ -963,38 +1067,52 @@ class FileHandler {
             reader.onload = (event) => {
                 try {
                     const text = event.target.result;
-                    const lines = text.split('\n').filter(line => line.trim() !== '');
                     
-                    if (lines.length < 2) {
-                        throw new Error('CSV file must contain at least one data row');
+                    // Debug log the raw file content
+                    console.debug('Raw file content:', {
+                        type: typeof text,
+                        length: text.length,
+                        first100: text.substring(0, 100) + (text.length > 100 ? '...' : '')
+                    });
+                    
+                    // Check if the file content is empty
+                    if (!text || (typeof text === 'string' && text.trim() === '')) {
+                        console.error('File content is empty or invalid:', {
+                            isNull: text === null,
+                            isUndefined: text === undefined,
+                            isEmptyString: text === '',
+                            isWhitespace: text && text.trim() === ''
+                        });
+                        throw new Error('The file appears to be empty or contains no text content');
                     }
                     
-                    // Parse headers and normalize them
+                    // Split into lines and filter out empty lines
+                    const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+                    
+                    // Check if we have at least a header and one data row
+                    if (lines.length < 2) {
+                        throw new Error('CSV file must contain a header row and at least one data row');
+                    }
+                    
+                    // Check if the first line (header) contains valid CSV data
+                    if (!lines[0].includes(',')) {
+                        throw new Error('Invalid CSV format: Could not detect column delimiters. Please ensure the file is a valid CSV with comma-separated values.');
+                    }
+                    
+                    // Parse headers
                     const headers = this.parseCSVLine(lines[0]).map(h => h.trim());
                     
-                    // Define required fields and their aliases
-                    const fieldMapping = {
-                        'username': 'username',
-                        'email': 'email',
-                        'firstname': 'firstName',
-                        'first name': 'firstName',
-                        'first_name': 'firstName',
-                        'lastname': 'lastName',
-                        'last name': 'lastName',
-                        'last_name': 'lastName',
-                        'password': 'password',
-                        'active': 'active',
-                        'enabled': 'active'
-                    };
+                    // Log the headers for debugging
+                    console.log('CSV Headers:', headers);
                     
-                    // Normalize headers
-                    const normalizedHeaders = headers.map(header => {
-                        const lowerHeader = header.toLowerCase();
-                        return fieldMapping[lowerHeader] || header;
+                    // Create a mapping of lowercase header names to their original case
+                    const headerMap = {};
+                    headers.forEach(header => {
+                        headerMap[header.toLowerCase()] = header;
                     });
                     
                     // Check if email column exists
-                    if (!normalizedHeaders.includes('email')) {
+                    if (!('email' in headerMap)) {
                         throw new Error('CSV must contain an "email" column');
                     }
                     
@@ -1014,35 +1132,30 @@ class FileHandler {
                             
                             const row = {};
                             
-                            // Map values to normalized headers
-                            normalizedHeaders.forEach((header, index) => {
+                            // Map values to headers
+                            headers.forEach((header, index) => {
                                 if (values[index] !== undefined) {
-                                    let value = values[index] ? values[index].trim() : '';
-                                    
-                                    // Convert string 'true'/'false' to boolean for active field
-                                    if (header === 'active') {
-                                        value = value.toLowerCase() === 'true';
-                                    }
-                                    
+                                    const value = values[index] ? values[index].trim() : '';
                                     row[header] = value;
                                 }
                             });
                             
                             // Skip rows without email (required field)
-                            if (!row.email || row.email.trim() === '') {
+                            const email = row[headerMap['email']] || '';
+                            if (!email.trim()) {
                                 this.logger.warn(`Skipping row ${lineNumber}: Missing email address`);
                                 lineNumber++;
                                 continue;
                             }
                             
-                            // Validate required fields for PingOne
-                            const requiredFields = ['email', 'username'];
-                            const missingFields = requiredFields.filter(field => !row[field]);
+                            // Get username, fall back to email if not provided
+                            const username = row[headerMap['username']] || email;
                             
-                            if (missingFields.length > 0) {
-                                this.logger.warn(`Skipping row ${lineNumber}: Missing required fields - ${missingFields.join(', ')}`);
-                                lineNumber++;
-                                continue;
+                            // Convert string 'true'/'false' to boolean for active field
+                            const activeField = headerMap['active'] || headerMap['enabled'];
+                            let active = true; // default to true
+                            if (activeField && row[activeField] !== undefined) {
+                                active = String(row[activeField]).toLowerCase() === 'true';
                             }
                             
                             // Set default password if not provided (PingOne requires a password)
@@ -1056,16 +1169,27 @@ class FileHandler {
                                 row.active = true;
                             }
                             
+                            // Get name fields if they exist
+                            const firstName = row[headerMap['firstname']] || 
+                                           row[headerMap['first name']] || 
+                                           row[headerMap['first_name']] || '';
+                            const lastName = row[headerMap['lastname']] || 
+                                          row[headerMap['last name']] || 
+                                          row[headerMap['last_name']] || '';
+                            
+                            // Get password or generate one if not provided
+                            const password = row[headerMap['password']] || this.generateTemporaryPassword();
+                            
                             // Format user data for PingOne API
                             const userData = {
-                                username: row.username,
-                                email: row.email,
+                                username: username,
+                                email: email,
                                 name: {
-                                    given: row.firstName || '',
-                                    family: row.lastName || ''
+                                    given: firstName,
+                                    family: lastName
                                 },
-                                password: row.password,
-                                enabled: row.active !== false // Default to true if not specified
+                                password: password,
+                                enabled: active
                             };
                             
                             // Add to valid rows
@@ -1079,7 +1203,7 @@ class FileHandler {
                     }
                     
                     if (validRows === 0) {
-                        throw new Error('No valid user records found in the file');
+                        throw new Error('No valid user records found in the file. Please check that the file contains valid user data with at least an email and username.');
                     }
                     
                     this.logger.log(`Successfully processed ${validRows} valid users from ${file.name}`, 'success');
@@ -1096,10 +1220,31 @@ class FileHandler {
             };
             
             reader.onerror = (error) => {
+                // Log detailed error information
+                console.error('FileReader error:', {
+                    name: error.name,
+                    message: error.message,
+                    code: error.code,
+                    type: error.type,
+                    readyState: reader.readyState,
+                    error: error
+                });
+                
                 // Clear saved file info on error
                 this.clearFileInfo();
-                reject(new Error(`Error reading file: ${error.message}`));
+                reject(new Error(`Error reading file (${error.name}): ${error.message}`));
             };
+            
+            // Log before starting to read
+            console.log('Starting to read file with FileReader', {
+                file: {
+                    name: file.name,
+                    size: file.size,
+                    type: file.type,
+                    lastModified: new Date(file.lastModified).toISOString()
+                },
+                readerReadyState: reader.readyState
+            });
             
             reader.readAsText(file);
         });
@@ -1122,6 +1267,9 @@ class FileHandler {
             return [];
         }
         
+        // Normalize line endings and trim whitespace
+        line = line.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+        
         // Check if the line might be tab-delimited (if no delimiter specified)
         if (delimiter === ',' && line.includes('\t') && !line.includes(',')) {
             delimiter = '\t';
@@ -1136,7 +1284,12 @@ class FileHandler {
                     // Escaped quote inside quoted value
                     currentValue += '"';
                     i += 2;
+                } else if (inQuotes && line[i + 1] === delimiter) {
+                    // End of quoted field
+                    inQuotes = false;
+                    i++;
                 } else {
+                    // Start or end of quoted field
                     inQuotes = !inQuotes;
                     i++;
                 }
@@ -1145,6 +1298,11 @@ class FileHandler {
                 values.push(currentValue);
                 currentValue = '';
                 i++;
+                
+                // Skip any whitespace after delimiter
+                while (i < line.length && (line[i] === ' ' || line[i] === '\t')) {
+                    i++;
+                }
             } else {
                 currentValue += char;
                 i++;
@@ -1211,249 +1369,129 @@ class FileHandler {
     }
     
     /**
-     * Process a CSV file with validation and detailed reporting
-     * @param {File} file - The CSV file to process
-     * @returns {Promise<{headers: Array<string>, rows: Array<Object>, validation: Object}>} - Processed and validated data
-     */
-    async processCSV(file) {
-        this.validationResults = {
-            total: 0,
-            valid: 0,
-            errors: 0,
-            warnings: 0,
-            details: []
-        };
-        
-        if (!file) {
-            throw new Error('No file provided');
-        }
-
-        this.logger.log(`Processing file: ${file.name} (${this.formatFileSize(file.size)})`, 'info');
-        this.uiManager.showLoading(true, 'Reading file...');
-
-        try {
-            // Read the file as text
-            const text = await this.readFileAsText(file);
-            
-            // Parse CSV text to JSON
-            const { headers, rows } = this.parseCSV(text);
-            this.validationResults.total = rows.length;
-            
-            this.logger.log(`Successfully parsed ${rows.length} rows with ${headers.length} columns`, 'success');
-            
-            // Validate each row
-            rows.forEach((row, index) => {
-                const validation = this.validateUser(row, headers);
-                const rowNum = index + 2; // +2 because of 1-based index and header row
-                
-                if (validation.valid) {
-                    this.validationResults.valid++;
-                    this.logger.log(`✓ Row ${rowNum}: Valid user data`, 'success');
-                } else {
-                    this.validationResults.errors++;
-                    this.logger.error(`✗ Row ${rowNum}: ${validation.errors.join('; ')}`);
-                }
-                
-                if (validation.warnings.length > 0) {
-                    this.validationResults.warnings += validation.warnings.length;
-                    validation.warnings.forEach(warning => {
-                        this.logger.warn(`! Row ${rowNum}: ${warning}`);
-                    });
-                }
-                
-                // Store validation details
-                this.validationResults.details.push({
-                    row: rowNum,
-                    valid: validation.valid,
-                    errors: validation.errors,
-                    warnings: validation.warnings,
-                    data: row
-                });
-            });
-            
-            // Log summary
-            this.logger.log('\n=== Validation Complete ===', 'info');
-            this.logger.log(`Total rows: ${this.validationResults.total}`, 'info');
-            this.logger.log(`Valid rows: ${this.validationResults.valid}`, this.validationResults.valid === this.validationResults.total ? 'success' : 'info');
-            
-            if (this.validationResults.errors > 0) {
-                this.logger.error(`Rows with errors: ${this.validationResults.errors}`);
-            }
-            
-            if (this.validationResults.warnings > 0) {
-                this.logger.warn(`Total warnings: ${this.validationResults.warnings}`);
-            }
-            
-            return { 
-                headers, 
-                rows,
-                validation: this.validationResults
-            };
-            
-        } catch (error) {
-            this.logger.error(`Error processing CSV: ${error.message}`);
-            throw error;
-        } finally {
-            this.uiManager.showLoading(false);
-        }
-    }
-
-    /**
-     * Read a file as text
-     * @param {File} file - The file to read
-     * @returns {Promise<string>} - The file contents as text
-     */
-    readFileAsText(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            
-            reader.onload = (event) => {
-                resolve(event.target.result);
-            };
-            
-            reader.onerror = (error) => {
-                reject(new Error(`Error reading file: ${error.message}`));
-            };
-            
-            reader.readAsText(file);
-        });
-    }
-
-    /**
-     * Parse CSV text into headers and rows
+     * Parse CSV text into headers and rows with proper handling of quoted values and different delimiters
      * @param {string} csvText - The CSV text to parse
-     * @returns {{headers: Array<string>, rows: Array<Object>}} - Parsed data
+     * @returns {{headers: Array<string>, rows: Array<Object>, delimiter: string}} Parsed CSV data
      */
     parseCSV(csvText) {
-        // Split into lines and filter out empty lines
-        const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
-        
-        if (lines.length === 0) {
-            throw new Error('CSV file is empty');
+        if (!csvText || typeof csvText !== 'string') {
+            throw new Error('Invalid CSV text');
         }
 
-        // Parse headers (first line)
-        const headers = this.parseCSVLine(lines[0]);
+        // Normalize line endings and trim whitespace
+        const normalizedText = csvText
+            .replace(/\r\n/g, '\n')
+            .replace(/\r/g, '\n')
+            .trim();
         
-        // Parse data rows
-        const rows = [];
-        for (let i = 1; i < lines.length; i++) {
-            const values = this.parseCSVLine(lines[i]);
-            const row = {};
-            
-            // Map values to headers
-            headers.forEach((header, index) => {
-                row[header] = values[index] || '';
-            });
-            
-            rows.push(row);
+        if (normalizedText.length === 0) {
+            return { headers: [], rows: [], delimiter: ',' };
         }
-        
-        return { headers, rows };
-    }
 
-    /**
-     * Parse a single CSV line, handling quoted values and commas within quotes
-     * @param {string} line - The CSV line to parse
-     * @returns {Array<string>} - Array of values
-     */
-    parseCSVLine(line) {
-        const values = [];
-        let current = '';
+        // Detect delimiter from first line
+        const firstLine = normalizedText.split('\n')[0];
+        let delimiter = ',';
+        if (firstLine.includes('\t') && !firstLine.includes(',')) {
+            delimiter = '\t';
+        } else if (firstLine.includes(';') && !firstLine.includes(',')) {
+            delimiter = ';';
+        }
+
+        const lines = [];
+        let currentLine = [];
         let inQuotes = false;
-        let escapeNext = false;
-        
-        for (let i = 0; i < line.length; i++) {
-            const char = line[i];
-            
-            if (escapeNext) {
-                current += char;
-                escapeNext = false;
-                continue;
-            }
-            
-            if (char === '\\') {
-                escapeNext = true;
-                continue;
-            }
-            
+        let currentValue = '';
+        let i = 0;
+        const length = normalizedText.length;
+
+        // Process each character to handle quoted values and newlines
+        while (i < length) {
+            const char = normalizedText[i];
+            const nextChar = normalizedText[i + 1];
+
             if (char === '"') {
-                if (i + 1 < line.length && line[i + 1] === '"' && inQuotes) {
-                    // Handle escaped quote inside quoted field
-                    current += '"';
-                    i++; // Skip the next quote
+                if (inQuotes && nextChar === '"') {
+                    // Handle escaped quotes ("")
+                    currentValue += '"';
+                    i++; // Skip next quote
                 } else {
                     inQuotes = !inQuotes;
                 }
-            } else if (char === ',' && !inQuotes) {
-                values.push(current);
-                current = '';
-            } else {
-                current += char;
-            }
-        }
-        
-        // Add the last value
-        values.push(current);
-        
-        // Trim whitespace from non-quoted values
-        return values.map((val, index) => {
-            // Only trim if the value wasn't quoted (doesn't start with a quote)
-            if (val.length > 0 && val[0] !== '"') {
-                return val.trim();
-            }
-            return val;
-        });
-    }
-
-    /**
-     * Format file size in human-readable format
-     * @param {number} bytes - File size in bytes
-     * @returns {string} - Formatted file size
-     */
-    formatFileSize(bytes) {
-        if (bytes === 0) return '0 Bytes';
-        const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
-
-    /**
-     * Validate CSV structure before import
-     * @param {Array<string>} headers - CSV headers
-     * @param {Array<Object>} rows - CSV rows
-     * @returns {{valid: boolean, errors: Array<string>}} - Validation result
-     */
-    validateCSV(headers, rows) {
-        const errors = [];
-        
-        // Check for required columns (customize based on your requirements)
-        const requiredColumns = ['email', 'givenName', 'surname'];
-        const missingColumns = requiredColumns.filter(col => !headers.includes(col));
-        
-        if (missingColumns.length > 0) {
-            errors.push(`Missing required columns: ${missingColumns.join(', ')}`);
-        }
-        
-        // Validate each row
-        rows.forEach((row, index) => {
-            // Check for required fields
-            requiredColumns.forEach(col => {
-                if (!row[col] || row[col].trim() === '') {
-                    errors.push(`Row ${index + 2}: Missing required value for '${col}'`);
+            } else if (char === delimiter && !inQuotes) {
+                // End of field
+                currentLine.push(currentValue.trim());
+                currentValue = '';
+            } else if ((char === '\n' || (char === '\r' && nextChar === '\n')) && !inQuotes) {
+                // End of line (handle both \n and \r\n)
+                currentLine.push(currentValue.trim());
+                
+                // Only add non-empty lines
+                if (currentLine.length > 0 && (currentLine.length > 1 || currentLine[0] !== '')) {
+                    lines.push([...currentLine]);
                 }
-            });
-            
-            // Validate email format if email column exists
-            if (row.email && !this.isValidEmail(row.email)) {
-                errors.push(`Row ${index + 2}: Invalid email format '${row.email}'`);
+                
+                currentLine = [];
+                currentValue = '';
+                
+                // Skip next character if it's part of \r\n
+                if (char === '\r' && nextChar === '\n') {
+                    i++;
+                }
+            } else {
+                currentValue += char;
             }
-        });
+            
+            i++;
+        }
         
-        return {
-            valid: errors.length === 0,
-            errors
+        // Add the last line if there's any remaining data
+        if (currentValue.trim() !== '' || currentLine.length > 0) {
+            currentLine.push(currentValue.trim());
+            if (currentLine.length > 0 && (currentLine.length > 1 || currentLine[0] !== '')) {
+                lines.push([...currentLine]);
+            }
+        }
+
+        if (lines.length === 0) {
+            return { headers: [], rows: [], delimiter };
+        }
+
+        // First line is headers - normalize them (trim, lowercase, replace spaces with underscores)
+        const headers = lines[0].map(header => 
+            header.toString().trim().toLowerCase()
+                .replace(/[^a-z0-9]+/g, '_')
+                .replace(/^_+|_+$/g, '')
+        );
+        
+        // Process data rows
+        const rows = [];
+        for (let j = 1; j < lines.length; j++) {
+            const row = {};
+            const values = lines[j];
+            
+            // Skip empty lines
+            if (values.length === 1 && values[0].trim() === '') {
+                continue;
+            }
+            
+            // Map values to headers
+            for (let k = 0; k < headers.length; k++) {
+                const header = headers[k];
+                if (header && values[k] !== undefined) {
+                    row[header] = values[k].toString().trim();
+                }
+            }
+            
+            // Only add non-empty rows
+            if (Object.keys(row).length > 0) {
+                rows.push(row);
+            }
+        }
+        
+        return { 
+            headers,
+            rows,
+            delimiter // Return detected delimiter for reference
         };
     }
     
@@ -1463,15 +1501,11 @@ class FileHandler {
      * @returns {boolean} - True if email is valid
      */
     isValidEmail(email) {
+        if (!email) return false;
         const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         return re.test(String(email).toLowerCase());
     }
     
-    /**
-     * Get file extension from filename
-     * @param {string} filename - The filename to get extension from
-     * @returns {string} The file extension (without dot) or empty string if no extension
-     */
     /**
      * Get the file extension from a filename
      * @param {string} filename - The filename to get the extension from
@@ -1596,7 +1630,7 @@ class FileLogger {
         let logEntry = `[${timestamp}] [${levelStr}] ${message}`;
         
         // Add data if provided
-        if (Object.keys(data).length > 0) {
+        if (data && typeof data === 'object' && Object.keys(data).length > 0) {
             try {
                 // Redact sensitive information
                 const safeData = JSON.parse(JSON.stringify(data, (key, value) => {
@@ -1747,65 +1781,90 @@ class Logger {
         this.log('Finished processing queued logs', 'info');
     }
     
-    async log(message, level = 'info', data = {}) {
+    async log(level, message, data = {}) {
         const timestamp = new Date().toISOString();
-        const logEntry = { message, level, data, timestamp };
+        const logEntry = { level, message, data, timestamp };
         
+        // Add to in-memory logs
         this.logs.push(logEntry);
         
+        // Keep logs under maxLogs limit
         if (this.logs.length > this.maxLogs) {
             this.logs.shift();
         }
         
-        const consoleMethod = console[level] || console.log;
-        if (typeof message === 'string') {
-            consoleMethod(`[${level.toUpperCase()}] ${message}`, data);
-        } else {
-            consoleMethod(message, data);
-        }
+        // Log to console
+        const logFn = console[level] || console.log;
+        logFn(`[${timestamp}] [${level.toUpperCase()}] ${message}`, data);
         
+        // Save to file logger
         if (this.fileLogger) {
             try {
                 await this.fileLogger.log(level, message, data);
             } catch (error) {
-                console.error('Error logging to file:', error);
-                if (!this.isOnline) {
-                    this.offlineLogs.push({ level, message, data });
-                }
+                console.error('Error saving log to file:', error);
             }
         }
         
-        if (this.logContainer) {
-            this.renderLogs();
+        // Send log to server
+        try {
+            await fetch('/api/logs/ui', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    level,
+                    message,
+                    data
+                })
+            });
+        } catch (error) {
+            console.error('Error sending log to server:', error);
+            // Store logs for later when offline
+            this.offlineLogs.push(logEntry);
         }
         
+        // Update UI if log container exists
+        this._updateLogUI(logEntry);
+        
         return logEntry;
+    }
+    
+    _updateLogUI(logEntry) {
+        if (!this.logContainer) return;
+        
+        const logElement = document.createElement('div');
+        logElement.className = `log-entry log-${logEntry.level}`;
+        
+        const timestamp = new Date(logEntry.timestamp).toLocaleTimeString();
+        logElement.innerHTML = `
+            <span class="log-timestamp">[${timestamp}]</span>
+            <span class="log-level">${logEntry.level.toUpperCase()}</span>
+            <span class="log-message">${logEntry.message}</span>
+        `;
+        
+        if (logEntry.data && Object.keys(logEntry.data).length > 0) {
+            const dataElement = document.createElement('pre');
+            dataElement.className = 'log-data';
+            dataElement.textContent = JSON.stringify(logEntry.data, null, 2);
+            logElement.appendChild(dataElement);
+        }
+        
+        this.logContainer.appendChild(logElement);
+        this.logContainer.scrollTop = this.logContainer.scrollHeight;
     }
     
     renderLogs() {
         if (!this.logContainer) return;
         
+        // Clear existing logs
         this.logContainer.innerHTML = '';
         
-        this.logs.forEach(entry => {
-            const logElement = document.createElement('div');
-            logElement.className = `log-entry log-${entry.level}`;
-            logElement.innerHTML = `
-                <span class="log-timestamp">${new Date(entry.timestamp).toLocaleString()}</span>
-                <span class="log-level ${entry.level}">${entry.level.toUpperCase()}</span>
-                <span class="log-message">${entry.message}</span>
-            `;
-            
-            if (entry.data && Object.keys(entry.data).length > 0) {
-                const dataElement = document.createElement('pre');
-                dataElement.className = 'log-data';
-                dataElement.textContent = JSON.stringify(entry.data, null, 2);
-                logElement.appendChild(dataElement);
-            }
-            
-            this.logContainer.appendChild(logElement);
-        });
+        // Add all logs to the container
+        this.logs.forEach(log => this._updateLogUI(log));
         
+        // Scroll to bottom
         this.logContainer.scrollTop = this.logContainer.scrollHeight;
     }
     
@@ -1861,7 +1920,8 @@ class PingOneAPI {
         return {
             apiClientId: this.settingsManager.getSetting('apiClientId'),
             apiSecret: this.settingsManager.getSetting('apiSecret'),
-            environmentId: this.settingsManager.getSetting('environmentId')
+            environmentId: this.settingsManager.getSetting('environmentId'),
+            region: this.settingsManager.getSetting('region', 'NorthAmerica')
         };
     }
 
@@ -1894,9 +1954,9 @@ class PingOneAPI {
     async getPopulations() {
         try {
             const response = await this.apiRequest('GET', '/populations');
-            return response._embedded?.populations || [];
+            return response._embedded.populations || [];
         } catch (error) {
-            this.logger.error(`Failed to fetch populations: ${error.message}`);
+            this.logger.error('Failed to get populations:', error);
             throw error;
         }
     }
@@ -1908,23 +1968,23 @@ class PingOneAPI {
     async getDefaultPopulationId() {
         try {
             const populations = await this.getPopulations();
-            // Try to find a population named 'Default' (case insensitive)
-            const defaultPopulation = populations.find(pop => 
-                pop.name && pop.name.toLowerCase() === 'default'
-            );
             
-            if (defaultPopulation) {
-                return defaultPopulation.id;
+            // First try to find a population with 'default' in the name
+            const defaultPop = populations.find(pop => 
+                pop.name && pop.name.toLowerCase().includes('default'));
+                
+            if (defaultPop) {
+                return defaultPop.id;
             }
             
-            // If no default population found, return the first one
+            // If no default found, return the first population ID
             if (populations.length > 0) {
                 return populations[0].id;
             }
             
-            throw new Error('No populations found in the environment');
+            throw new Error('No populations found');
         } catch (error) {
-            this.logger.error(`Failed to get default population: ${error.message}`);
+            this.logger.error('Failed to get default population ID:', error);
             throw error;
         }
     }
@@ -1934,22 +1994,16 @@ class PingOneAPI {
      * @param {Object} settings - New settings object
      */
     updateSettings(settings) {
-        try {
-            // Update the token manager with new settings
-            this.tokenManager.updateSettings({
-                apiClientId: settings.apiClientId,
-                apiSecret: settings.apiSecret,
-                environmentId: settings.environmentId
-            });
-            
-            // Clear any existing token to force a new one to be fetched with the new settings
-            this.clearToken();
-            
-            this.logger.log('PingOne API settings updated', 'info');
-        } catch (error) {
-            this.logger.error(`Failed to update API settings: ${error.message}`);
-            throw error;
-        }
+        // Update settings in settings manager
+        Object.entries(settings).forEach(([key, value]) => {
+            this.settingsManager.setSetting(key, value);
+        });
+        
+        // Update token manager with new settings
+        this.tokenManager.updateSettings(this.getCurrentSettings());
+        
+        // Clear any existing token to force refresh
+        this.clearToken();
     }
     
     /**
@@ -1962,140 +2016,100 @@ class PingOneAPI {
      * @returns {Promise<Object>} Response data
      */
     async apiRequest(method, endpoint, data = null, options = {}) {
+        const { signal, headers: customHeaders = {}, ...fetchOptions } = options;
+        
+        // Get the access token
+        const accessToken = await this.getAccessToken();
+        
+        // Set up request options
+        const requestOptions = {
+            method,
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+                ...customHeaders
+            },
+            ...fetchOptions
+        };
+        
+        // Add request body for methods that support it
+        if (data && ['POST', 'PUT', 'PATCH'].includes(method.toUpperCase())) {
+            requestOptions.body = JSON.stringify(data);
+        }
+        
+        // Add signal if provided (for request cancellation)
+        if (signal) {
+            requestOptions.signal = signal;
+        }
+        
+        // Get base URL based on region
+        const region = this.settingsManager.getSetting('region', 'NorthAmerica');
+        const baseUrls = {
+            'NorthAmerica': 'https://api.pingone.com/v1',
+            'Europe': 'https://api.eu.pingone.com/v1',
+            'Asia': 'https://api.asia.pingone.com/v1',
+            'Canada': 'https://api.ca.pingone.com/v1'
+        };
+        
+        const baseUrl = baseUrls[region] || baseUrls.NorthAmerica;
+        const environmentId = this.settingsManager.getSetting('environmentId');
+        
+        if (!environmentId) {
+            throw new Error('Environment ID is not configured');
+        }
+        
+        // Construct the full URL
+        const url = `${baseUrl}/environments/${environmentId}${endpoint}`;
+        
         try {
-            const environmentId = this.settingsManager.getSetting('environmentId');
+            this.logger.log(`Making ${method} request to: ${url}`, 'debug');
             
-            if (!environmentId) {
-                throw new Error('Environment ID is not configured');
-            }
+            const response = await fetch(url, requestOptions);
             
-            // Add environment ID to the endpoint if it's not already there
-            let fullEndpoint = endpoint.startsWith(`/v1/environments/${environmentId}`) 
-                ? endpoint 
-                : `/v1/environments/${environmentId}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
-            
-            // Use our server-side proxy
-            const url = `/api/pingone${fullEndpoint}`;
-            
-            // Log the request
-            this.logger.log(`API ${method} ${url}`, 'info');
-            
-            // Determine content type - use custom type if provided, otherwise default to application/json
-            const requestContentType = options.contentType || 'application/json';
-            
-            // Make the request to our proxy
-            const headers = {
-                'Accept': 'application/json',
-                ...options.headers
-            };
-            
-            // Prepare the request body
-            let requestBody = null;
-            if (data) {
-                // Set Content-Type header based on the content type
-                headers['Content-Type'] = requestContentType;
-                
-                // For user import, we need to send the exact JSON string without additional processing
-                if (requestContentType === 'application/vnd.pingone.import.users+json') {
-                    // Ensure we're sending the exact format PingOne expects
-                    requestBody = JSON.stringify({
-                        users: data.users || data
-                    });
-                } 
-                // For regular JSON requests, stringify the data
-                else if (requestContentType === 'application/json') {
-                    requestBody = JSON.stringify(data);
-                }
-                // For other content types, send as-is (e.g., FormData)
-                else {
-                    requestBody = data;
-                }
-            }
-            
-            // Log the request details for debugging
-            this.logger.log(`Sending ${method} request to ${url}`, 'debug', {
-                headers,
-                body: requestBody ? JSON.parse(requestBody) : null,
-                requestContentType
-            });
-            
-            const response = await fetch(url, {
-                method,
-                headers,
-                body: requestBody,
-                signal: options.signal,
-                credentials: 'same-origin'  // Include cookies for session management
-            });
-            
-            // Handle response
+            // Handle non-2xx responses
             if (!response.ok) {
-                let errorMessage = `API request failed with status ${response.status} (${response.statusText})`;
+                let errorMessage = `Request failed with status ${response.status}`;
                 let errorDetails = null;
-                let responseText = '';
                 
                 try {
-                    // First try to get the response as text
-                    responseText = await response.text();
-                    
-                    // Try to parse as JSON if possible
-                    if (responseText) {
-                        try {
-                            const errorData = JSON.parse(responseText);
-                            errorMessage = errorData.error || errorData.message || errorMessage;
-                            errorDetails = errorData;
-                            
-                            // For 400 Bad Request, include validation errors if available
-                            if (response.status === 400 && errorData.details) {
-                                errorMessage += ': ' + JSON.stringify(errorData.details);
-                            }
-                        } catch (e) {
-                            // If not JSON, use the raw text as the error message
-                            errorMessage += `: ${responseText}`;
-                        }
-                    }
+                    const errorData = await response.json();
+                    errorDetails = errorData;
+                    errorMessage = errorData.message || errorData.detail || errorMessage;
                 } catch (e) {
-                    // If we can't get the response text, just use the status
-                    console.error('Error reading error response:', e);
+                    // If we can't parse the error as JSON, try to get the text
+                    const text = await response.text().catch(() => '');
+                    if (text) {
+                        errorDetails = text;
+                        errorMessage = `Request failed: ${text}`;
+                    }
                 }
                 
                 const error = new Error(errorMessage);
                 error.status = response.status;
-                error.details = errorDetails || responseText;
+                error.details = errorDetails;
                 throw error;
             }
             
-            // For successful responses, handle based on content type
-            const responseContentType = response.headers.get('content-type') || '';
-            
-            // For user import endpoint, we expect a JSON response
-            if (responseContentType.includes('application/json') || endpoint.includes('/users/import')) {
-                try {
-                    const responseData = await response.json();
-                    return responseData;
-                } catch (e) {
-                    // If we can't parse as JSON, try to get the text
-                    const text = await response.text().catch(() => '');
-                    console.error('Failed to parse JSON response:', e, 'Response text:', text);
-                    throw new Error(`Invalid JSON response: ${e.message}`);
-                }
-            } 
-            // For text responses
-            else if (contentType.includes('text/')) {
-                return await response.text();
-            }
-            // For empty responses
-            else if (response.status === 204) {
+            // For 204 No Content, return empty object
+            if (response.status === 204) {
                 return {};
             }
-            // For other content types, return as array buffer
-            return await response.arrayBuffer();
+            
+            // Parse and return JSON response
+            return await response.json();
             
         } catch (error) {
-            this.logger.error(`API request failed: ${error.message}`, 'error');
+            this.logger.error(`API request failed: ${error.message}`, error);
+            
+            // Add more context to the error
+            if (!error.status) {
+                error.status = 0; // Network error
+            }
+            
             throw error;
         }
     }
-
+    
     /**
      * Get a list of users
      * @param {Object} [params] - Query parameters
@@ -2159,24 +2173,25 @@ class PingOneAPI {
      */
     async userExists(email) {
         try {
-            if (!email) return false;
-            
-            // Search for users with the given email
-            const response = await this.apiRequest('GET', `/users?filter=email eq \"${encodeURIComponent(email)}\"`);
-            
-            // If we found any users with this email, return true
-            return response._embedded && 
-                   response._embedded.users && 
-                   response._embedded.users.length > 0;
+            const users = await this.searchUsers({ email: { $eq: email } });
+            return users.length > 0;
         } catch (error) {
-            // If there's an error (e.g., 404), treat as user not found
-            if (error.status === 404) {
-                return false;
-            }
-            // For other errors, log and rethrow
-            this.logger.error(`Error checking if user exists (${email}): ${error.message}`);
+            this.logger.error(`Error checking if user exists (${email}):`, error);
             throw error;
         }
+    }
+
+    /**
+     * Helper to get field value case-insensitively
+     */
+    getField(obj, possibleNames, defaultValue = '') {
+        if (!obj) return defaultValue;
+        
+        const key = Object.keys(obj).find(k => 
+            possibleNames.map(n => n.toLowerCase()).includes(k.toLowerCase())
+        );
+        
+        return key ? obj[key] : defaultValue;
     }
 
     /**
@@ -2184,73 +2199,139 @@ class PingOneAPI {
      * @param {Array<Object>} users - Array of user objects to import
      * @param {Object} [options] - Import options
      * @param {boolean} [options.skipExisting=false] - Whether to skip users that already exist
+     * @param {boolean} [options.skipErrors=false] - Whether to continue on error
+     * @param {string} [options.populationId] - Population ID to assign users to
+     * @returns {Promise<Object>} Import results
+     */
+    /**
+     * Import multiple users into PingOne
+     * @param {Array<Object>} users - Array of user objects to import
+     * @param {Object} [options] - Import options
+     * @param {boolean} [options.skipExisting=false] - Whether to skip users that already exist
+     * @param {boolean} [options.continueOnError=false] - Whether to continue on error
+     * @param {string} [options.populationId] - Population ID to assign users to
      * @returns {Promise<Object>} Import results
      */
     async importUsers(users, options = {}, signal = null) {
-        try {
-            // Ensure we have an array of users
-            const userArray = Array.isArray(users) ? users : [users];
-            
-            // Get the population ID from options or use the default one
-            let populationId = options.populationId;
-            if (!populationId) {
-                this.logger.log('No population ID provided, fetching default population...', 'info');
-                populationId = await this.getDefaultPopulationId();
-                this.logger.log(`Using default population ID: ${populationId}`, 'info');
-            }
-            
-            // Format users according to PingOne API requirements
-            const formattedUsers = userArray.map(user => {
-                if (!user.email) {
-                    throw new Error('Email is required for user import');
-                }
-                
-                // Create a clean user object with only the fields we want to send
-                const formattedUser = {
-                    email: user.email,
-                    username: user.username || user.email.split('@')[0],
-                    name: {
-                        given: user.firstName || user.givenName || '',
-                        family: user.lastName || user.familyName || ''
-                    },
-                    population: {
-                        id: populationId
-                    },
-                    enabled: true
-                };
-                
-                // Add any additional fields that might be present
-                if (user.phone) formattedUser.phone = user.phone;
-                if (user.title) formattedUser.title = user.title;
-                if (user.locale) formattedUser.locale = user.locale;
-                
-                return formattedUser;
-            });
-            
-            // Format the request body according to PingOne API requirements
-            const requestBody = {
-                users: formattedUsers
-            };
-            
-            this.logger.log('Prepared user import request', 'debug', { userCount: formattedUsers.length });
-            
-            // Add query parameters for options
-            const queryParams = [];
-            if (options.updateExisting) {
-                queryParams.push('updateExisting=true');
-            }
-            
-            const queryString = queryParams.length > 0 ? `?${queryParams.join('&')}` : '';
-            
-            // Use the correct content type for user import
-            return this.apiRequest('POST', `/users/import${queryString}`, requestBody, {
-                ...(signal && { signal }),
-                contentType: 'application/vnd.pingone.import.users+json'
-            });
-        } catch (error) {
-            this.logger.error(`Error in importUsers: ${error.message}`, error);
-            throw error;
+        if (!users || !Array.isArray(users) || users.length === 0) {
+            throw new Error('No users provided for import');
         }
+
+        const results = [];
+        const populationId = options.populationId || await this.getDefaultPopulationId();
+        
+        if (!populationId) {
+            throw new Error('No population ID provided and no default population found');
+        }
+
+        this.logger.log(`Starting import of ${users.length} users to population ${populationId}`, 'info');
+
+        for (const [index, user] of users.entries()) {
+            try {
+                // Format user data according to PingOne API requirements
+                const userData = {
+                    name: {
+                        given: this.getField(user, ['firstName', 'givenName', 'firstname', 'first_name', 'first']) || '',
+                        family: this.getField(user, ['lastName', 'familyName', 'lastname', 'last_name', 'last']) || ''
+                    },
+                    email: this.getField(user, ['email', 'mail', 'Email', 'e-mail']),
+                    username: this.getField(user, ['username', 'userName', 'login', 'user']) || user.email,
+                    population: { id: populationId },
+                    password: {
+                        value: this.getField(user, ['password', 'pwd', 'pass']) || this.generateTemporaryPassword()
+                    },
+                    enabled: user.enabled !== false
+                };
+
+                // Add phone number if available
+                const phone = this.getField(user, ['phone', 'mobile', 'mobilePhone', 'phoneNumber']);
+                if (phone) {
+                    userData.phoneNumbers = [{
+                        type: 'mobile',
+                        value: phone
+                    }];
+                }
+
+                // Skip if user exists and skipExisting is true
+                if (options.skipExisting) {
+                    const exists = await this.userExists(userData.email);
+                    if (exists) {
+                        results.push({
+                            success: true,
+                            skipped: true,
+                            user: userData.email,
+                            message: 'User already exists'
+                        });
+                        continue;
+                    }
+                }
+
+                // Make the API request to create the user
+                const response = await this.apiRequest('POST', '/users', userData, {
+                    headers: {
+                        'Content-Type': 'application/vnd.pingidentity.user.import+json',
+                        'Accept': 'application/json'
+                    },
+                    signal
+                });
+
+                results.push({
+                    success: true,
+                    userId: response.id,
+                    email: userData.email,
+                    details: response
+                });
+
+            } catch (error) {
+                this.logger.error(`Error importing user at index ${index}:`, error);
+                
+                let errorMessage = error.message;
+                if (error.response) {
+                    try {
+                        const errorData = await error.response.json();
+                        errorMessage = errorData.detail || errorData.message || JSON.stringify(errorData);
+                    } catch (e) {
+                        errorMessage = `${error.response.status} ${error.response.statusText}`;
+                    }
+                }
+
+                results.push({
+                    success: false,
+                    email: user.email || `user_${index}`,
+                    error: errorMessage,
+                    details: error.response?.data || error
+                });
+
+                if (!options.continueOnError) {
+                    throw error;
+                }
+            }
+        }
+
+        const successful = results.filter(r => r.success);
+        const failed = results.filter(r => !r.success);
+        
+        return {
+            total: users.length,
+            successful: successful.length,
+            failed: failed.length,
+            skipped: results.filter(r => r.skipped).length,
+            results
+        };
+    }
+
+    /**
+     * Generate a secure random password
+     * @returns {string} A random password
+     * @private
+     */
+    generateTemporaryPassword() {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()';
+        let password = '';
+        for (let i = 0; i < 16; i++) {
+            password += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return password;
     }
 }
 
@@ -2788,7 +2869,7 @@ class TokenManager {
      */
     async _requestNewToken() {
         const startTime = Date.now();
-        const { apiClientId, apiSecret, environmentId } = this.settings;
+        const { apiClientId, apiSecret, environmentId, region = 'NorthAmerica' } = this.settings;
         const requestId = `req_${Math.random().toString(36).substr(2, 9)}`;
         
         // Log the environment for debugging
@@ -2799,6 +2880,7 @@ class TokenManager {
             hasSecret: !!apiSecret,
             hasEnvId: !!environmentId,
             envId: environmentId || 'none',
+            region: region || 'NorthAmerica',
             timestamp: new Date().toISOString()
         };
         
@@ -2808,7 +2890,20 @@ class TokenManager {
             throw error;
         }
 
-        const tokenUrl = `https://auth.pingone.com/${environmentId}/as/token`;
+        // Determine the auth URL based on region
+        const authDomainMap = {
+            'NorthAmerica': 'auth.pingone.com',
+            'Europe': 'auth.eu.pingone.com',
+            'Canada': 'auth.ca.pingone.com',
+            'Asia': 'auth.apsoutheast.pingone.com',
+            'Australia': 'auth.aus.pingone.com',
+            'US': 'auth.pingone.com',
+            'EU': 'auth.eu.pingone.com',
+            'AP': 'auth.apsoutheast.pingone.com'
+        };
+        
+        const authDomain = authDomainMap[region] || 'auth.pingone.com';
+        const tokenUrl = `https://${authDomain}/${environmentId}/as/token`;
         
         // Log token request details (without exposing full credentials)
         this.logger.debug('Preparing token request', {
@@ -3024,6 +3119,37 @@ class UIManager {
     }
 
     /**
+     * Switch between different views
+     * @param {string} viewName - The name of the view to switch to ('import', 'settings', 'logs')
+     */
+    switchView(viewName) {
+        if (!this.views[viewName]) {
+            console.error(`View '${viewName}' not found`);
+            return;
+        }
+
+        // Hide all views
+        Object.values(this.views).forEach(view => {
+            if (view) view.classList.remove('active');
+        });
+
+        // Show the selected view
+        this.views[viewName].classList.add('active');
+        this.currentView = viewName;
+
+        // Update active state of nav items
+        this.navItems.forEach(item => {
+            if (item.getAttribute('data-view') === viewName) {
+                item.classList.add('active');
+            } else {
+                item.classList.remove('active');
+            }
+        });
+
+        this.logger.debug(`Switched to ${viewName} view`);
+    }
+
+    /**
      * Update the connection status display
      * @param {string} status - The connection status ('connected', 'disconnected', 'error')
      * @param {string} message - The status message to display
@@ -3116,6 +3242,16 @@ class UIManager {
      * Switch to the specified view
      * @param {string} viewName - Name of the view to show ('import', 'settings', 'logs')
      */
+    /**
+     * Scroll the logs container to the bottom
+     */
+    scrollLogsToBottom() {
+        if (this.logsView) {
+            const logsContainer = this.logsView.querySelector('.logs-container') || this.logsView;
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+        }
+    }
+
     async showView(viewName) {
         console.log(`Switching to view: ${viewName}`);
         
@@ -3143,8 +3279,8 @@ class UIManager {
             // Special handling for specific views
             switch(viewName) {
                 case 'logs':
-                    this.scrollLogsToBottom();
                     await this.loadAndDisplayLogs();
+                    this.scrollLogsToBottom();
                     break;
                 case 'settings':
                     // Update settings connection status when switching to settings view
@@ -3170,77 +3306,138 @@ class UIManager {
             return;
         }
 
+        // Safe logging function
+        const safeLog = (message, level = 'log', data = null) => {
+            try {
+                if (this.logger) {
+                    if (typeof this.logger[level] === 'function') {
+                        this.logger[level](message, data);
+                        return;
+                    } else if (typeof this.logger.log === 'function') {
+                        this.logger.log(message, level, data);
+                        return;
+                    }
+                }
+                // Fallback to console
+                if (console[level]) {
+                    console[level](message, data);
+                } else {
+                    console.log(`[${level.toUpperCase()}]`, message, data);
+                }
+            } catch (logError) {
+                console.error('Error in safeLog:', logError);
+            }
+        };
+
+        // Get or create log entries container
+        let logEntries = this.logsView.querySelector('.log-entries');
+        if (!logEntries) {
+            logEntries = document.createElement('div');
+            logEntries.className = 'log-entries';
+            this.logsView.appendChild(logEntries);
+        }
+
         // Show loading indicator
         const loadingElement = document.createElement('div');
         loadingElement.id = 'logs-loading';
         loadingElement.textContent = 'Loading logs...';
         loadingElement.style.padding = '1rem';
         loadingElement.style.textAlign = 'center';
-        loadingElement.style.color = '#';
+        loadingElement.style.color = '#666';
         
-        const logEntries = this.logsView.querySelector('.log-entries');
-        if (logEntries) {
-            logEntries.innerHTML = '';
-            logEntries.appendChild(loadingElement);
-        }
+        // Clear existing content and show loading
+        logEntries.innerHTML = '';
+        logEntries.appendChild(loadingElement);
         
         try {
             // Fetch logs from the UI logs endpoint
+            safeLog('Fetching logs from /api/logs/ui...', 'debug');
             const response = await fetch('/api/logs/ui?limit=200');
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             
             const responseData = await response.json();
-            console.log('UI logs response:', {
-                success: responseData.success,
-                count: responseData.count,
-                total: responseData.total
-            });
+            safeLog('Received logs from server', 'debug', { count: responseData.logs?.length });
             
-            // Process logs
-            if (this.logger) {
-                this.logger.clearLogs();
-                
-                if (responseData.success === true && Array.isArray(responseData.logs)) {
-                    // Process logs in reverse chronological order
-                    const logsToProcess = [...responseData.logs].reverse();
-                    logsToProcess.forEach((log, index) => {
-                        try {
-                            if (log && typeof log === 'object') {
-                                this.logger._log(
-                                    String(log.level || 'info').toLowerCase(),
-                                    String(log.message || 'No message'),
-                                    typeof log.data === 'object' ? log.data : {}
-                                );
-                            } else {
-                                console.warn(`Skipping invalid log entry at index ${index}:`, log);
-                            }
-                        } catch (logError) {
-                            console.error(`Error processing log entry at index ${index}:`, logError);
-                        }
-                    });
-                } else {
-                    console.warn('No valid log entries found in response');
+            // Clear any existing logs in the UI
+            logEntries.innerHTML = '';
+            
+            if (responseData.success === true && Array.isArray(responseData.logs)) {
+                if (responseData.logs.length === 0) {
+                    const noLogsElement = document.createElement('div');
+                    noLogsElement.className = 'log-entry info';
+                    noLogsElement.textContent = 'No logs available';
+                    logEntries.appendChild(noLogsElement);
+                    return;
                 }
+                
+                // Process logs in reverse chronological order (newest first)
+                const logsToProcess = [...responseData.logs].reverse();
+                
+                logsToProcess.forEach((log, index) => {
+                    try {
+                        if (log && typeof log === 'object') {
+                            const logElement = document.createElement('div');
+                            const logLevel = (log.level || 'info').toLowerCase();
+                            logElement.className = `log-entry log-${logLevel}`;
+                            
+                            const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+                            const level = log.level ? log.level.toUpperCase() : 'INFO';
+                            const message = log.message || 'No message';
+                            
+                            logElement.innerHTML = `
+                                <span class="log-timestamp">[${timestamp}]</span>
+                                <span class="log-level">${level}</span>
+                                <span class="log-message">${message}</span>
+                            `;
+                            
+                            // Add data if present
+                            if (log.data && Object.keys(log.data).length > 0) {
+                                const dataElement = document.createElement('pre');
+                                dataElement.className = 'log-data';
+                                dataElement.textContent = JSON.stringify(log.data, null, 2);
+                                logElement.appendChild(dataElement);
+                            }
+                            
+                            logEntries.appendChild(logElement);
+                        } else {
+                            safeLog(`Skipping invalid log entry at index ${index}`, 'warn', log);
+                        }
+                    } catch (logError) {
+                        safeLog(`Error processing log entry at index ${index}: ${logError.message}`, 'error', { error: logError });
+                    }
+                });
+                
+                // Scroll to bottom after adding logs
+                this.scrollLogsToBottom();
+            } else {
+                safeLog('No valid log entries found in response', 'warn');
+                const noLogsElement = document.createElement('div');
+                noLogsElement.className = 'log-entry info';
+                noLogsElement.textContent = 'No logs available';
+                logEntries.appendChild(noLogsElement);
             }
         } catch (error) {
-            console.error('Error fetching logs:', error);
+            safeLog(`Error fetching logs: ${error.message}`, 'error', { 
+                error: {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack
+                }
+            });
             
             // Show error message in the UI
             const errorElement = document.createElement('div');
             errorElement.className = 'log-entry error';
             errorElement.textContent = `Error loading logs: ${error.message}`;
-            
-            if (logEntries) {
-                logEntries.innerHTML = '';
-                logEntries.appendChild(errorElement);
-            }
+            logEntries.innerHTML = '';
+            logEntries.appendChild(errorElement);
         } finally {
             // Remove loading indicator
             const loadingElement = document.getElementById('logs-loading');
-            if (loadingElement) {
-                loadingElement.remove();
+            if (loadingElement && loadingElement.parentNode === logEntries) {
+                logEntries.removeChild(loadingElement);
             }
         }
     }
@@ -3513,7 +3710,7 @@ module.exports = { UIManager };
 },{}],10:[function(require,module,exports){
 class VersionManager {
     constructor() {
-        this.version = '1.0.6'; // Update this with each new version
+        this.version = '1.1.2'; // Update this with each new version
         console.log(`Version Manager initialized with version ${this.version}`);
     }
 
