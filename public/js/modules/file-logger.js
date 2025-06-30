@@ -106,7 +106,7 @@ class FileLogger {
         let logEntry = `[${timestamp}] [${levelStr}] ${message}`;
         
         // Add data if provided
-        if (Object.keys(data).length > 0) {
+        if (data && typeof data === 'object' && Object.keys(data).length > 0) {
             try {
                 // Redact sensitive information
                 const safeData = JSON.parse(JSON.stringify(data, (key, value) => {
