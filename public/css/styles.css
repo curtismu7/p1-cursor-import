@@ -30,7 +30,7 @@ body {
 /* Sidebar Styles */
 .sidebar {
     width: var(--sidebar-width);
-    background-color: #1a1a1a;
+    background-color: #2d3748;
     color: white;
     padding: 1.5rem 0;
     height: 100vh;
@@ -39,9 +39,13 @@ body {
 }
 
 .sidebar-header {
-    padding: 0 1.5rem 1.5rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 1.5rem;
+    background-color: #ffffff;
     margin-bottom: 1.5rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 80px;
 }
 
 .logo {
@@ -395,15 +399,156 @@ h1 {
     white-space: nowrap;
 }
 
-/* Table Styles */
+/* Preview Container Styles */
 .preview-container {
-    margin-top: 2rem;
-    overflow-x: auto;
-    border: 1px solid #e9ecef;
-    border-radius: var(--border-radius);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    margin-top: 1.5rem;
+    background: white;
+    border: none;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    max-height: 500px;
+    display: flex;
+    flex-direction: column;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
+.preview-header {
+    padding: 1rem 1.5rem;
+    background: linear-gradient(135deg, #2c3e50, #3498db);
+    color: white;
+    border-bottom: 2px solid #2980b9;
+}
+
+.preview-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.preview-header h3::before {
+    content: '📊';
+    font-size: 1.2em;
+}
+
+.preview-content {
+    flex: 1;
+    overflow: auto;
+    width: 100%;
+    background: #f8fafc;
+}
+
+.preview-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.9rem;
+    min-width: 100%;
+}
+
+.preview-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.preview-table th {
+    background: linear-gradient(135deg, #3498db, #2980b9);
+    color: white;
+    font-weight: 500;
+    padding: 0.75rem 1rem;
+    text-align: left;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.5px;
+    border: none;
+    position: relative;
+}
+
+.preview-table th:not(:last-child) {
+    border-right: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.preview-table th::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #f1c40f, #e67e22);
+}
+
+.preview-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e2e8f0;
+    background: white;
+    color: #2d3748;
+    transition: all 0.2s ease;
+}
+
+.preview-table tbody tr {
+    position: relative;
+}
+
+.preview-table tbody tr:nth-child(odd) td {
+    background-color: #f8fafc;
+}
+
+.preview-table tbody tr:hover td {
+    background-color: #ebf8ff;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.preview-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Add subtle row hover effect */
+.preview-table tbody tr::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.05), transparent);
+}
+
+/* Style the first column with a subtle accent */
+.preview-table tbody td:first-child {
+    border-left: 3px solid transparent;
+    transition: all 0.3s ease;
+}
+
+.preview-table tbody tr:hover td:first-child {
+    border-left-color: #3498db;
+}
+
+.preview-footer {
+    padding: 0.75rem 1.5rem;
+    font-size: 0.8rem;
+    color: #64748b;
+    text-align: center;
+    background: #f1f5f9;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.preview-footer::before {
+    content: 'ℹ️';
+    font-size: 1em;
+}
+
+/* General Table Styles (for other tables) */
 table {
     width: 100%;
     border-collapse: collapse;
