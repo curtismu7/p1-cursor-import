@@ -1,4 +1,4 @@
-const { CryptoUtils } = require('./crypto-utils.js');
+import { CryptoUtils } from './crypto-utils.js';
 
 class SettingsManager {
     constructor(logger) {
@@ -430,6 +430,68 @@ class SettingsManager {
     }
     
     /**
+     * Update settings in memory
+     * @param {Object} newSettings - New settings to update
+     * @returns {Object} The updated settings
+     */
+    updateSettings(newSettings) {
+        try {
+            if (!newSettings || typeof newSettings !== 'object') {
+                throw new Error('Invalid settings object');
+            }
+            
+            // Merge new settings with existing ones
+            this.settings = {
+                ...this.settings,
+                ...newSettings
+            };
+            
+            this.logger.info('Settings updated in memory');
+            return this.settings;
+        } catch (error) {
+            this.logger.error(`Error updating settings: ${error.message}`);
+            throw error;
+        }
+    }
+    
+    /**
+     * Save settings to persistent storage
+     * @param {Object} settings - Settings to save
+     * @returns {Promise<boolean>} True if settings were saved successfully
+     */
+    async saveSettings(settings) {
+        try {
+            if (!settings || typeof settings !== 'object') {
+                throw new Error('Invalid settings object');
+            }
+            
+            // Update in-memory settings
+            this.settings = {
+                ...this.settings,
+                ...settings
+            };
+            
+            // Save to localStorage if available
+            if (this.isLocalStorageAvailable()) {
+                const settingsToSave = { ...this.settings };
+                
+                // Don't save the encryption key to storage
+                if (settingsToSave.encryptionKey) {
+                    delete settingsToSave.encryptionKey;
+                }
+                
+                localStorage.setItem(this.storageKey, JSON.stringify(settingsToSave));
+            }
+            
+            this.logger.info('Settings saved successfully');
+            return true;
+        } catch (error) {
+            this.logger.error(`Error saving settings: ${error.message}`);
+            throw error;
+        }
+    }
+    
+    /**
      * Clear all settings and reset to defaults
      * @returns {Promise<boolean>} True if settings were cleared successfully
      */
@@ -448,6 +510,14 @@ class SettingsManager {
         }
     }
     
+    /**
+     * Get all settings
+     * @returns {Object} Current settings object
+     */
+    getSettings() {
+        return { ...this.settings }; // Return a shallow copy to prevent direct modification
+    }
+
     /**
      * Get a setting value
      * @param {string} key - Setting key
@@ -470,7 +540,5 @@ class SettingsManager {
 }
 
 // Export the class and a singleton instance
-module.exports = { 
-    SettingsManager,
-    settingsManager: new SettingsManager() 
-};
+export { SettingsManager };
+export const settingsManager = new SettingsManager();

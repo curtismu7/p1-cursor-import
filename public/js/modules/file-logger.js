@@ -1,179 +1,168 @@
 /**
- * FileLogger - Handles writing logs to localStorage with file download capability
+ * FileLogger - Handles writing logs to a client.log file using the File System Access API
  */
 class FileLogger {
     /**
      * Create a new FileLogger instance
-     * @param {string} logKey - Key to use for localStorage
+     * @param {string} filename - Name of the log file (default: 'client.log')
      */
-    constructor(logKey = 'pingone-import-logs') {
-        this.logKey = logKey;
-        this.maxLogSize = 100000; // ~100KB max log size
-        this.logs = this._loadLogs();
-        this._initializeLogs();
+    constructor(filename = 'client.log') {
+        this.filename = filename;
+        this.fileHandle = null;
+        this.writableStream = null;
+        this.initialized = false;
+        this.logQueue = [];
+        this.initializationPromise = null;
     }
-
+    
     /**
-     * Initialize logs with a header if empty
+     * Initialize the file logger
      * @private
      */
-    _initializeLogs() {
-        if (this.logs.length === 0) {
-            const header = [
-                '/***********************************************************************',
-                ' * PINGONE IMPORT LOG',
-                ' *',
-                ` * Started: ${new Date().toISOString()}`,
-                ' *',
-                ' * FORMAT:',
-                ' * [TIMESTAMP] [LEVEL] MESSAGE',
-                ' *   - Data: { ... }',
-                ' *   - Context: { ... }',
-                ' *',
-                ' * LEVELS: DEBUG, INFO, WARN, ERROR',
-                ' *',
-                ' * SENSITIVE DATA (tokens, secrets, etc.) ARE AUTOMATICALLY REDACTED',
-                ' **********************************************************************/\n\n'
-            ].join('\n');
-            this._appendToLogs(header);
-        }
-    }
-
-    /**
-     * Load logs from localStorage
-     * @private
-     */
-    _loadLogs() {
-        try {
-            const logs = localStorage.getItem(this.logKey);
-            return logs ? logs : '';
-        } catch (error) {
-            console.error('Failed to load logs from localStorage:', error);
-            return '';
-        }
-    }
-
-    /**
-     * Save logs to localStorage
-     * @private
-     */
-    _saveLogs(logs) {
-        try {
-            localStorage.setItem(this.logKey, logs);
-            return true;
-        } catch (error) {
-            console.error('Failed to save logs to localStorage:', error);
-            return false;
-        }
-    }
-
-    /**
-     * Append text to logs, handling size limits
-     * @private
-     */
-    _appendToLogs(text) {
-        // If adding this text would exceed max size, trim from the beginning
-        if (this.logs.length + text.length > this.maxLogSize) {
-            // Remove oldest log entries until we have enough space
-            const excess = (this.logs.length + text.length) - this.maxLogSize;
-            const headerEnd = this.logs.indexOf('\n\n') + 2;
-            const header = this.logs.substring(0, headerEnd);
-            let content = this.logs.substring(headerEnd);
-            
-            // Remove oldest log entries (after the header)
-            while (content.length > 0 && content.length > excess) {
-                const firstNewline = content.indexOf('\n');
-                if (firstNewline === -1) break;
-                content = content.substring(firstNewline + 1);
-            }
-            
-            this.logs = header + content;
+    async _initialize() {
+        if (this.initialized) return true;
+        if (this.initializationPromise) {
+            return this.initializationPromise;
         }
         
-        this.logs += text;
-        this._saveLogs(this.logs);
+        this.initializationPromise = (async () => {
+            try {
+                if (window.showSaveFilePicker) {
+                    try {
+                        this.fileHandle = await window.showSaveFilePicker({
+                            suggestedName: this.filename,
+                            types: [{
+                                description: 'Log File',
+                                accept: { 'text/plain': ['.log'] },
+                            }],
+                            excludeAcceptAllOption: false
+                        });
+                        
+                        this.writableStream = await this.fileHandle.createWritable({ keepExistingData: true });
+                        this.initialized = true;
+                        await this._processQueue();
+                        return true;
+                    } catch (error) {
+                        console.warn('File System Access API not available:', error);
+                        this.initialized = false;
+                        return false;
+                    }
+                }
+                return false;
+            } catch (error) {
+                console.error('Error initializing file logger:', error);
+                this.initialized = false;
+                throw error;
+            }
+        })();
+        
+        return this.initializationPromise;
     }
-
+    
+    /**
+     * Process any queued log messages
+     * @private
+     */
+    async _processQueue() {
+        if (this.logQueue.length === 0) return;
+        
+        const queue = [...this.logQueue];
+        this.logQueue = [];
+        
+        for (const { level, message, timestamp } of queue) {
+            await this._writeLog(level, message, timestamp);
+        }
+    }
+    
+    /**
+     * Write a log message to the file
+     * @private
+     */
+    async _writeLog(level, message, timestamp) {
+        if (!this.initialized) {
+            await this._initialize();
+        }
+        
+        const logEntry = `[${timestamp}] [${level.toUpperCase()}] ${message}\n`;
+        
+        if (this.writableStream) {
+            try {
+                await this.writableStream.write(logEntry);
+            } catch (error) {
+                console.error('Error writing to log file:', error);
+                this.initialized = false;
+                await this._initialize();
+                await this.writableStream.write(logEntry);
+            }
+        } else {
+            console[level](`[FileLogger] ${logEntry}`);
+        }
+    }
+    
     /**
      * Log a message
-     * @param {string} level - Log level (info, debug, error, etc.)
+     * @param {string} level - Log level (info, warn, error, debug)
      * @param {string} message - The message to log
-     * @param {Object} [data] - Additional data to log
      */
-    async log(level, message, data = {}) {
+    async log(level, message) {
         const timestamp = new Date().toISOString();
-        const levelStr = level.toUpperCase().padEnd(5);
-        let logEntry = `[${timestamp}] [${levelStr}] ${message}`;
         
-        // Add data if provided
-        if (data && typeof data === 'object' && Object.keys(data).length > 0) {
-            try {
-                // Redact sensitive information
-                const safeData = JSON.parse(JSON.stringify(data, (key, value) => {
-                    // Redact tokens and secrets
-                    if (typeof value === 'string' && 
-                        (key.toLowerCase().includes('token') || 
-                         key.toLowerCase().includes('secret') ||
-                         key.toLowerCase().includes('password') ||
-                         key.toLowerCase().includes('api_key') ||
-                         key.toLowerCase().includes('apikey'))) {
-                        return '***REDACTED***';
-                    }
-                    return value;
-                }));
-                
-                // Format the data with proper indentation
-                const formattedData = JSON.stringify(safeData, null, 2)
-                    .split('\n')
-                    .map((line, i) => i === 0 ? `  - ${line}` : `    ${line}`)
-                    .join('\n');
-                
-                logEntry += `\n${formattedData}`;
-            } catch (e) {
-                logEntry += '\n  - [Error stringifying data]';
-                logEntry += `\n  - Error: ${e.message}`;
-            }
+        if (!this.initialized) {
+            this.logQueue.push({ level, message, timestamp });
+            await this._initialize();
+        } else {
+            await this._writeLog(level, message, timestamp);
         }
-        
-        logEntry += '\n';
-        this._appendToLogs(logEntry);
-    }
-
-    /**
-     * Get all logs as a string
-     * @returns {string} The complete log content
-     */
-    getLogs() {
-        return this.logs;
     }
     
     /**
-     * Clear all logs
+     * Log an info message
+     * @param {string} message - The message to log
      */
-    clear() {
-        this.logs = '';
-        this._saveLogs('');
-        this._initializeLogs();
+    info(message) {
+        return this.log('info', message);
     }
     
     /**
-     * Download logs as a file
+     * Log a warning message
+     * @param {string} message - The message to log
      */
-    download() {
-        try {
-            const blob = new Blob([this.logs], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `pingone-import-${new Date().toISOString().replace(/[:.]/g, '-')}.log`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        } catch (error) {
-            console.error('Failed to download logs:', error);
+    warn(message) {
+        return this.log('warn', message);
+    }
+    
+    /**
+     * Log an error message
+     * @param {string} message - The message to log
+     */
+    error(message) {
+        return this.log('error', message);
+    }
+    
+    /**
+     * Log a debug message
+     * @param {string} message - The message to log
+     */
+    debug(message) {
+        return this.log('debug', message);
+    }
+    
+    /**
+     * Close the log file
+     */
+    async close() {
+        if (this.writableStream) {
+            try {
+                await this.writableStream.close();
+            } catch (error) {
+                console.error('Error closing log file:', error);
+            } finally {
+                this.initialized = false;
+                this.writableStream = null;
+                this.fileHandle = null;
+            }
         }
     }
 }
 
-module.exports = FileLogger;
+export { FileLogger };

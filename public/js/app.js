@@ -1,10 +1,10 @@
 // Main application entry point
-const { Logger } = require('./modules/logger.js');
-const { UIManager } = require('./modules/ui-manager.js');
-const { FileHandler } = require('./modules/file-handler.js');
-const { SettingsManager } = require('./modules/settings-manager.js');
-const { PingOneAPI } = require('./modules/pingone-api.js');
-const VersionManager = require('./modules/version-manager.js');
+import { Logger } from './modules/logger.js';
+import { UIManager } from './modules/ui-manager.js';
+import { FileHandler } from './modules/file-handler.js';
+import { SettingsManager } from './modules/settings-manager.js';
+import { apiFactory, initAPIFactory } from './modules/api-factory.js';
+import { VersionManager } from './modules/version-manager.js';
 
 class App {
     constructor() {
@@ -15,10 +15,16 @@ class App {
         // Initialize settings manager first as it's used by other components
         this.settingsManager = new SettingsManager(this.logger);
         
+        // Initialize API factory with required dependencies
+        const factory = initAPIFactory(this.logger, this.settingsManager);
+        
+        // Initialize API clients
+        this.pingOneClient = factory.getPingOneClient();
+        this.localClient = factory.getLocalClient();
+        
         // Initialize other components
         this.uiManager = new UIManager(this.logger);
         this.fileHandler = new FileHandler(this.logger, this.uiManager);
-        this.pingOneAPI = new PingOneAPI(this.logger, this.settingsManager);
         
         // Initialize version manager and update UI
         this.versionManager = new VersionManager();
@@ -41,501 +47,554 @@ class App {
     async init() {
         try {
             // Add initial test logs
-            this.logger.log('Application starting...', 'info');
-            this.logger.log('Logger initialized', 'debug');
-            this.logger.log('Initializing UI components', 'info');
+            this.logger.fileLogger.info('Application starting...');
+            this.logger.fileLogger.debug('Logger initialized');
+            this.logger.fileLogger.info('Initializing UI components');
             
-            // Listen for file selection events
-            window.addEventListener('fileSelected', (event) => {
-                this.logger.debug('File selected event received');
-                const { file } = event.detail;
-                this.handleFileSelect(file);
-            });
+            // Set up event listeners
+            this.setupEventListeners();
             
-            // Initialize UI
-            this.uiManager.init({
-                onFileSelect: (file) => this.handleFileSelect(file),
-                onSaveSettings: (settings) => this.handleSaveSettings(settings),
-                onClearLogs: () => this.logger.clearLogs(),
-                onTestConnection: () => this.testPingOneConnection(),
-                onImport: () => this.startImport(),
-                onCancelImport: () => this.cancelImport()
-            });
-            
-            this.logger.log('Loading settings...', 'debug');
-            // Load settings
-            await this.settingsManager.loadSettings();
-            this.logger.log('Settings loaded', 'debug');
-            
-            // Update UI with loaded settings
-            this.uiManager.updateSettingsForm(this.settingsManager.settings);
-            
-            // Check if we have a saved connection status
-            const { connectionStatus, connectionMessage } = this.settingsManager.settings;
-            if (connectionStatus && connectionMessage) {
-                this.uiManager.updateConnectionStatus(connectionStatus, connectionMessage);
-            }
-            
-            // Check settings and restore file if needed
+            // Check settings and restore previous file if available
             await this.checkSettingsAndRestore();
             
-            // Show the last viewed page or default to 'import'
-            const lastView = this.uiManager.getLastView();
-            this.uiManager.showView(lastView);
-            
-            this.logger.log('Application initialized', 'success');
+            this.logger.fileLogger.info('Application initialization complete');
         } catch (error) {
-            console.error('Error initializing application:', error);
-            this.logger.error(`Initialization error: ${error.message}`);
-            this.uiManager.showError('Failed to initialize application. Please refresh the page.');
+            this.logger.fileLogger.error('Error initializing application', { error: error.message });
+            console.error('Initialization error:', error);
         }
     }
     
-    /**
-     * Check if required settings are filled and update UI accordingly
-     */
-    checkSettings() {
-        const validation = this.settingsManager.validateSettings();
+    setupEventListeners() {
+        // Listen for file selection events
+        window.addEventListener('fileSelected', (event) => {
+            this.handleFileSelect(event.detail);
+        });
         
-        if (!validation.isValid) {
-            const missingFields = validation.missingFields;
-            const message = missingFields.length > 0 
-                ? `Missing required fields: ${missingFields.join(', ')}`
-                : 'Please configure your API settings';
-                
-            this.uiManager.updateConnectionStatus('disconnected', message);
-            this.logger.warn(`Settings validation failed: ${missingFields.join(', ')}`);
-            return false;
-        }
-        
-        // If we have all required settings, try to validate them
-        this.uiManager.updateConnectionStatus('disconnected', 'Credentials saved but not yet verified');
-        return true;
-    }
-
-    /**
-     * Check settings and restore previous file if available
-     */
-    async checkSettingsAndRestore() {
-        try {
-            // Check if we have a valid settings and a previously loaded file
-            if (this.fileHandler.lastFileInfo) {
-                this.logger.log('Found previously loaded file. Restoring...', 'info');
-                
-                // Create a dummy file to represent the previously loaded file
-                const file = new File(
-                    [''], // Empty content since we can't restore the actual content
-                    this.fileHandler.lastFileInfo.name,
-                    {
-                        type: this.fileHandler.lastFileInfo.type || 'text/csv',
-                        lastModified: this.fileHandler.lastFileInfo.lastModified || Date.now()
-                    }
-                );
-                
-                // Update file info in the UI
-                this.fileHandler.updateFileInfo(file);
-                
-                // Process the file
-                this.uiManager.setImportButtonState(false, 'Processing...');
-                
+        // Listen for settings form submission
+        const settingsForm = document.getElementById('settings-form');
+        if (settingsForm) {
+            settingsForm.addEventListener('submit', async (e) => {
                 try {
-                    // Process the CSV file
-                    const { headers, rows } = await this.fileHandler.processCSV(file);
+                    console.log('Settings form submit event triggered');
+                    e.preventDefault();
+                    e.stopPropagation();
                     
-                    // Store the processed data for display
-                    this.processedData = { headers, rows };
-                    // Store the data needed for import
-                    this.currentImportData = { 
-                        headers, 
-                        rows,
-                        fileName: file.name 
+                    // Get form data
+                    const formData = new FormData(settingsForm);
+                    const settings = {
+                        environmentId: formData.get('environment-id'),
+                        apiClientId: formData.get('api-client-id'),
+                        apiSecret: formData.get('api-secret'),
+                        populationId: formData.get('population-id'),
+                        region: formData.get('region')
                     };
                     
-                    // Enable import button if we have valid data
-                    if (rows.length > 0) {
-                        this.uiManager.setImportButtonState(true, 'Start Import');
-                        this.logger.log(`Restored ${rows.length} users from previous session`, 'success');
-                    } else {
-                        this.uiManager.setImportButtonState(false, 'No Valid Data');
-                        this.logger.warn('No valid user data found in the restored file');
-                    }
+                    console.log('Saving settings:', settings);
+                    
+                    // Save settings
+                    await this.handleSaveSettings(settings);
+                    
+                    // Show success message
+                    this.uiManager.showNotification('Settings saved successfully', 'success');
+                    
                 } catch (error) {
-                    this.logger.error(`Error processing restored file: ${error.message}`);
-                    this.uiManager.setImportButtonState(false, 'Error Processing File');
-                    this.fileHandler.clearFileInfo();
+                    console.error('Error in settings form submission:', error);
+                    this.uiManager.showNotification(`Error: ${error.message}`, 'error');
                 }
+                
+                return false; // Prevent form submission
+            });
+            
+            // Also prevent any button clicks from submitting the form traditionally
+            const saveButton = settingsForm.querySelector('button[type="submit"]');
+            if (saveButton) {
+                saveButton.addEventListener('click', (e) => {
+                    if (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
+                    settingsForm.dispatchEvent(new Event('submit'));
+                    return false;
+                });
+            }
+        }
+        
+        // Listen for settings save events (for programmatic saves)
+        window.addEventListener('saveSettings', (event) => {
+            this.handleSaveSettings(event.detail);
+        });
+        
+        // Listen for clear logs events
+        window.addEventListener('clearLogs', () => {
+            this.logger.clear();
+        });
+        
+        // Listen for test connection events
+        window.addEventListener('testConnection', () => {
+            this.testPingOneConnection();
+        });
+        
+        // Set up import button click handler
+        const importButton = document.getElementById('start-import-btn');
+        if (importButton) {
+            importButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.startImport();
+            });
+        }
+        
+        // Listen for import events (for programmatic triggering)
+        window.addEventListener('startImport', () => {
+            this.startImport();
+        });
+        
+        // Listen for cancel import events
+        window.addEventListener('cancelImport', () => {
+            this.cancelImport();
+        });
+    }
+    
+    async handleSaveSettings(settings) {
+        try {
+            console.log('handleSaveSettings called with:', settings);
+            this.logger.fileLogger.info('Saving settings', settings);
+            
+            // Show saving status
+            this.uiManager.updateConnectionStatus('connecting', 'Saving settings...', false);
+            
+            try {
+                // Save settings using the local API client
+                const response = await this.localClient.post('/api/settings', settings);
+                console.log('Settings saved successfully:', response);
+                
+                // Update settings in the settings manager
+                this.settingsManager.updateSettings(settings);
+                
+                // Update API clients with new settings
+                this.pingOneClient = apiFactory.getPingOneClient(this.logger, this.settingsManager);
+                
+                // Update connection status
+                this.uiManager.updateConnectionStatus('connected', 'Settings saved successfully', false);
+                
+                // Show success notification
+                if (this.uiManager.showNotification) {
+                    this.uiManager.showNotification('Settings saved successfully', 'success');
+                }
+                
+                // Test the connection with new settings
+                try {
+                    await this.testPingOneConnection();
+                } catch (error) {
+                    // Connection test failed, but settings were still saved
+                    console.warn('Connection test after save failed:', error);
+                    this.logger.fileLogger.warn('Connection test after save failed', { error: error.message });
+                    this.uiManager.showNotification('Settings saved but connection test failed', 'warning');
+                }
+                
+                this.logger.fileLogger.info('Settings saved successfully');
+                return { success: true };
+                
+            } catch (error) {
+                console.error('Error in handleSaveSettings:', error);
+                const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
+                this.logger.fileLogger.error('Error saving settings', { error: errorMessage });
+                
+                // Update connection status to show error
+                this.uiManager.updateConnectionStatus('error', `Error: ${errorMessage}`, false);
+                
+                // Show error notification
+                if (this.uiManager.showNotification) {
+                    this.uiManager.showNotification(`Error: ${errorMessage}`, 'error');
+                }
+                
+                return { success: false, error: errorMessage };
             }
         } catch (error) {
-            this.logger.error(`Error restoring previous file: ${error.message}`);
-            this.fileHandler.clearFileInfo();
-            this.uiManager.setImportButtonState(false, 'Error Restoring File');
+            console.error('Unexpected error in handleSaveSettings:', error);
+            const errorMessage = error.message || 'An unexpected error occurred';
+            
+            // Show error notification
+            if (this.uiManager.showNotification) {
+                this.uiManager.showNotification(`Error: ${errorMessage}`, 'error');
+            }
+            
+            return { success: false, error: errorMessage };
         }
     }
     
-    /**
-     * Handle file selection
-     * @param {File} file - The selected file
-     */
-    async handleFileSelect(file) {
-        if (!file) {
-            this.logger.error('No file selected');
-            this.uiManager.setImportButtonState(false);
-            return;
-        }
-        
-        try {
-            this.logger.log(`Processing file: ${file.name}`, 'info');
-            this.uiManager.setImportButtonState(false);
-            
-            // Clear any previous data
-            this.processedData = null;
-            this.currentImportData = null;
-            
-            // Process the CSV file
-            const { headers, rows } = await this.fileHandler.processCSV(file);
-            
-            // Store the processed data for display
-            this.processedData = { headers, rows };
-            // Store the data needed for import
-            this.currentImportData = { 
-                headers, 
-                rows,
-                fileName: file.name 
-            };
-            
-            // Enable import button if we have valid data
-            if (rows.length > 0) {
-                this.uiManager.setImportButtonState(true, 'Start Import');
-                
-                // Show preview of first few rows
-                const previewCount = Math.min(3, rows.length);
-                this.logger.log(`Found ${rows.length} valid users in ${file.name}:`, 'success');
-                
-                for (let i = 0; i < previewCount; i++) {
-                    const user = rows[i];
-                    const name = [user.name?.given, user.name?.family].filter(Boolean).join(' ') || 'No name';
-                    this.logger.log(`  • ${user.email} (${name})`, 'info');
-                }
-                
-                if (rows.length > previewCount) {
-                    this.logger.log(`  ... and ${rows.length - previewCount} more`, 'info');
-                }
-                
-                // Show success message
-                this.uiManager.showSuccess(`Successfully loaded ${rows.length} users from ${file.name}`);
-            } else {
-                this.logger.warn('No valid user data found in the file');
-                this.fileHandler.clearFileInfo();
-                this.uiManager.showWarning('No valid user records found in the file');
-            }
-        } catch (error) {
-            const errorMsg = `Error processing file: ${error.message}`;
-            this.logger.error(errorMsg);
-            this.uiManager.showError(errorMsg);
-            this.uiManager.setImportButtonState(false);
-            this.fileHandler.clearFileInfo();
-            this.currentImportData = null;
-        }
-    }
-
-    async handleSaveSettings(settings) {
-        try {
-            const settingsToSave = {
-                apiClientId: (settings.apiClientId || '').trim(),
-                apiSecret: (settings.apiSecret || '').trim(),
-                environmentId: (settings.environmentId || '').trim(),
-                populationId: (settings.populationId || '').trim(),
-                region: (settings.region || 'NorthAmerica').trim()
-            };
-
-            // Save the settings - this will encrypt the API secret
-            const saveResult = await this.settingsManager.saveSettings(settingsToSave);
-            
-            if (!saveResult) {
-                // Save failed (likely due to validation)
-                return false;
-            }
-
-            // Update the PingOne API with new settings
-            this.pingOneAPI.updateSettings(this.settingsManager.settings);
-            
-            // Check if we have all required settings
-            const validation = this.settingsManager.validateSettings();
-            
-            if (validation.isValid) {
-                // Test the connection with the new settings
-                const connectionTest = await this.testPingOneConnection();
-                
-                if (connectionTest.success) {
-                    this.logger.log('Settings saved and connection verified', 'success');
-                    this.uiManager.showNotification('Settings saved and connection verified', 'success');
-                    return true;
-                } else {
-                    this.logger.warn('Settings saved but connection test failed', 'warn');
-                    this.uiManager.showError('Settings saved but connection test failed');
-                    return false;
-                }
-            } else {
-                const missingFields = validation.missingFields;
-                const message = missingFields.length > 0 
-                    ? `Missing required fields: ${missingFields.join(', ')}`
-                    : 'Please configure your API settings';
-                    
-                this.uiManager.updateConnectionStatus('disconnected', message);
-                this.logger.warn(`Settings validation failed: ${missingFields.join(', ')}`);
-                return false;
-            }
-        } catch (error) {
-            const errorMessage = `Failed to save settings: ${error.message}`;
-            this.logger.error(errorMessage, 'error');
-            this.uiManager.showError(errorMessage);
-            
-            // Save error status
-            try {
-                await this.settingsManager.saveSettings({
-                    connectionStatus: 'error',
-                    connectionMessage: errorMessage,
-                    lastConnectionTest: new Date().toISOString()
-                });
-            } catch (saveError) {
-                this.logger.error(`Failed to save error status: ${saveError.message}`, 'error');
-            }
-            
-            return false;
-        }
-    }
-
-    /**
-     * Test the PingOne API connection with the provided credentials
-     * @returns {Promise<{success: boolean, message?: string}>} Result of the connection test
-     */
     async testPingOneConnection() {
         try {
-            // Update UI to show testing state
-            this.uiManager.updateConnectionStatus('testing');
+            this.logger.fileLogger.info('Testing PingOne connection');
             
-            // Get the current settings from the settings manager
-            const settings = this.settingsManager.settings;
+            // Show connecting status in UI
+            this.uiManager.updateConnectionStatus('connecting', 'Connecting to PingOne...');
             
-            // Verify we have all required fields
-            const requiredFields = ['apiClientId', 'apiSecret', 'environmentId'];
-            const missingFields = requiredFields.filter(field => !settings[field] || settings[field].trim() === '');
+            // Test connection by getting the access token
+            const token = await this.pingOneClient.getAccessToken();
             
-            if (missingFields.length > 0) {
-                const errorMsg = `Missing required fields: ${missingFields.join(', ')}`;
-                this.logger.error(errorMsg);
-                this.uiManager.updateConnectionStatus('error', errorMsg);
+            if (token) {
+                // Save the token to localStorage
+                if (typeof localStorage !== 'undefined') {
+                    localStorage.setItem('pingone_worker_token', token);
+                    // Set token expiry (1 hour from now)
+                    const expiryTime = Date.now() + (60 * 60 * 1000);
+                    localStorage.setItem('pingone_token_expiry', expiryTime.toString());
+                }
                 
-                // Save connection status as error
-                await this.settingsManager.saveSettings({
-                    connectionStatus: 'error',
-                    connectionMessage: errorMsg,
-                    lastConnectionTest: new Date().toISOString()
-                });
+                this.logger.fileLogger.info('Successfully connected to PingOne API');
                 
-                return { success: false, message: errorMsg };
+                // Update connection status in settings
+                const settings = this.settingsManager.getSettings();
+                settings.connectionStatus = 'connected';
+                settings.connectionMessage = 'Connected';
+                settings.lastConnectionTest = new Date().toISOString();
+                
+                // Save updated settings
+                await this.saveSettings(settings);
+                
+                // Update UI status
+                this.uiManager.updateConnectionStatus('connected', 'Connected to PingOne');
+                
+                return { success: true };
+            } else {
+                throw new Error('No access token received');
             }
-            
-            // Test the connection by getting an access token
-            const token = await this.pingOneAPI.getAccessToken();
-            
-            // If we get here, the connection was successful
-            const successMessage = 'Successfully connected to PingOne API';
-            this.logger.log(successMessage, 'success');
-            this.uiManager.updateConnectionStatus('connected', successMessage);
-            this.uiManager.showNotification('✅ ' + successMessage, 'success');
-            
-            // Save successful connection status
-            await this.settingsManager.saveSettings({
-                connectionStatus: 'connected',
-                connectionMessage: successMessage,
-                lastConnectionTest: new Date().toISOString()
-            });
-            
-            return { success: true, message: successMessage };
-            
         } catch (error) {
-            const errorMessage = `Error testing connection: ${error.message}`;
-            this.logger.error(errorMessage, 'error');
-            this.uiManager.updateConnectionStatus('error', errorMessage);
+            this.logger.fileLogger.error('Failed to connect to PingOne', { error: error.message });
             
-            // Save error status
-            await this.settingsManager.saveSettings({
-                connectionStatus: 'error',
-                connectionMessage: errorMessage,
-                lastConnectionTest: new Date().toISOString()
-            });
+            // Update connection status in settings
+            const settings = this.settingsManager.getSettings();
+            settings.connectionStatus = 'disconnected';
+            settings.connectionMessage = error.message || 'Connection failed';
+            settings.lastConnectionTest = new Date().toISOString();
             
-            return { success: false, message: errorMessage };
+            // Save updated settings
+            await this.saveSettings(settings);
+            
+            // Update UI status
+            this.uiManager.updateConnectionStatus('error', error.message || 'Connection failed');
+            
+            return { success: false, error: error.message };
         }
     }
-
-    /**
-     * Start the import process
-     */
-    // Cancel the current import operation
-    cancelImport() {
-        if (this.isImporting && this.currentImportAbortController) {
-            this.currentImportAbortController.abort();
-            this.logger.log('Import cancelled by user', 'warning');
-            this.uiManager.showNotification('Import cancelled', 'warning');
-            this.uiManager.resetImportState();
-            this.isImporting = false;
-            this.currentImportAbortController = null;
-        }
-    }
-
+    
     async startImport() {
-        if (!this.currentImportData) {
-            this.logger.error('No import data available. Please select a file first.', 'error');
+        if (this.isImporting) {
+            this.logger.fileLogger.warn('Import already in progress');
             return;
         }
-
-        const { headers, rows, fileName } = this.currentImportData;
-        const totalUsers = rows.length;
-        let successfulImports = 0;
-        let failedImports = 0;
-        let skippedUsers = 0;
-        
-        // Create a new AbortController for this import
-        this.currentImportAbortController = new AbortController();
-        this.isImporting = true;
         
         try {
-            this.logger.log(`Starting import of ${totalUsers} users from ${fileName}...`, 'info');
+            this.isImporting = true;
+            this.currentImportAbortController = new AbortController();
             
-            // Show progress UI
-            this.uiManager.showImportStatus(totalUsers);
-            this.uiManager.updateImportProgress(0, totalUsers, 'Starting import...');
+            // Get users from file handler
+            const file = this.fileHandler.getCurrentFile();
+            const users = this.fileHandler.getUsers();
             
-            // Check if we have valid settings
-            if (!this.settingsManager.settings.environmentId || 
-                !this.settingsManager.settings.apiClientId || 
-                !this.settingsManager.settings.apiSecret) {
-                throw new Error('PingOne API credentials are not configured. Please check your settings.');
+            if (!users || users.length === 0) {
+                throw new Error('No users to import');
             }
             
-            // Import users one by one
-            for (let i = 0; i < rows.length; i++) {
-                if (this.currentImportAbortController.signal.aborted) {
-                    this.logger.log('Import cancelled by user', 'warning');
-                    break;
-                }
-                
-                const user = rows[i];
-                const currentIndex = i + 1;
-                const currentProcessed = successfulImports + failedImports + skippedUsers + 1;
-                
-                try {
-                    // Check if user already exists
-                    const userExists = await this.pingOneAPI.userExists(user.email);
-                    
-                    if (userExists) {
-                        // Skip existing users
-                        skippedUsers++;
-                        this.logger.log(`Skipping existing user: ${user.email} (${currentIndex}/${totalUsers})`, 'info');
-                        // Update progress with skipped count
-                        this.uiManager.updateImportProgress(
-                            currentProcessed,
-                            totalUsers,
-                            `Skipped existing user: ${user.email} (${skippedUsers} skipped)`,
-                            {
-                                success: successfulImports,
-                                failed: failedImports,
-                                skipped: skippedUsers
-                            }
-                        );
-                        continue;
+            this.logger.fileLogger.info('Starting import process', { 
+                fileName: file ? file.name : 'unknown', 
+                userCount: users.length 
+            });
+            
+            // Show import status in UI
+            this.uiManager.showImportStatus(users.length);
+            
+            // Prepare users for import
+            const usersToImport = users.map((user, index) => ({
+                ...user,
+                // Add any additional user properties here
+                _index: index // Track original position for progress updates
+            }));
+            
+            // Track import results
+            let importResult = {
+                success: 0,
+                failed: 0,
+                skipped: 0
+            };
+            
+            // Import users using the PingOne client
+            const result = await this.pingOneClient.importUsers(usersToImport, {
+                signal: this.currentImportAbortController.signal,
+                continueOnError: true, // Continue on error to import remaining users
+                onProgress: (processed, total, currentUser, counts = {}) => {
+                    // Update our result counts if provided
+                    if (counts) {
+                        importResult = {
+                            success: counts.success || importResult.success,
+                            failed: counts.failed || importResult.failed,
+                            skipped: counts.skipped || importResult.skipped
+                        };
                     }
                     
-                    // Update progress with current counts
+                    // Update progress in the UI
+                    const status = currentUser 
+                        ? `Importing ${currentUser.email || 'user'}` 
+                        : `Processing batch ${Math.ceil(processed / 5)} of ${Math.ceil(total / 5)}...`;
+                    
                     this.uiManager.updateImportProgress(
-                        currentProcessed,
-                        totalUsers,
-                        `Importing user ${currentProcessed} of ${totalUsers}: ${user.email}`,
-                        {
-                            success: successfulImports,
-                            failed: failedImports,
-                            skipped: skippedUsers
-                        }
+                        processed, 
+                        total, 
+                        status,
+                        importResult
                     );
-                    
-                    // Import the user
-                    await this.pingOneAPI.importUsers([user], {
-                        signal: this.currentImportAbortController.signal,
-                        skipExisting: true // Just in case, though we already checked
-                    });
-                    
-                    successfulImports++;
-                    this.logger.log(`Imported user: ${user.email} (${currentProcessed}/${totalUsers})`, 'success');
-                    
-                } catch (error) {
-                    failedImports++;
-                    const errorMsg = `Error importing user ${user.email}: ${error.message}`;
-                    this.logger.error(errorMsg);
-                    // Continue with next user even if one fails
                 }
-                
-                // Small delay to avoid rate limiting
-                await new Promise(resolve => setTimeout(resolve, 200));
-            }
+            });
             
-            // Show final status
-            let statusMessage = `Import completed: ${successfulImports} succeeded, ${failedImports} failed`;
-            if (skippedUsers > 0) {
-                statusMessage += `, ${skippedUsers} skipped (already exist)`;
-                this.logger.log(`Skipped ${skippedUsers} users that already exist in PingOne`, 'info');
-            }
-            if (failedImports === 0) {
-                this.logger.log(statusMessage, 'success');
-                this.uiManager.showSuccess('Import completed successfully!');
-            } else if (successfulImports === 0) {
-                this.logger.error(statusMessage, 'error');
-                this.uiManager.showError('Import failed for all users');
-            } else {
-                this.logger.warn(statusMessage, 'warning');
-                this.uiManager.showWarning('Import completed with some failures');
-            }
+            this.logger.fileLogger.info('Import completed', { 
+                imported: result.success, 
+                failed: result.failed,
+                skipped: result.skipped
+            });
             
-            // Final update with all counts
+            // Final progress update
             this.uiManager.updateImportProgress(
-                totalUsers,
-                totalUsers,
-                statusMessage,
+                users.length, 
+                users.length, 
+                `Import completed: ${result.success} succeeded, ${result.failed} failed, ${result.skipped} skipped`, 
                 {
-                    success: successfulImports,
-                    failed: failedImports,
-                    skipped: skippedUsers
+                    success: result.success,
+                    failed: result.failed,
+                    skipped: result.skipped
                 }
             );
             
-        } catch (error) {
-            const errorMsg = `Import failed: ${error.message}`;
-            this.logger.error(errorMsg);
-            this.uiManager.showError(errorMsg);
+            return result;
             
-            const processedUsers = successfulImports + failedImports + skippedUsers;
-            if (processedUsers > 0) {
-                this.uiManager.updateImportProgress(
-                    processedUsers,
-                    totalUsers,
-                    `Error: ${error.message}`,
-                    {
-                        success: successfulImports,
-                        failed: failedImports,
-                        skipped: skippedUsers
-                    }
-                );
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                this.logger.fileLogger.info('Import canceled by user');
+                this.uiManager.updateImportProgress(0, 1, 'Import canceled', { success: 0, failed: 0, skipped: 0 });
+            } else {
+                this.logger.fileLogger.error('Import failed', { error: error.message });
+                console.error('Import error:', error);
+                this.uiManager.updateImportProgress(0, 1, `Error: ${error.message}`, { success: 0, failed: 0, skipped: 0 });
             }
+            throw error;
         } finally {
-            // Clean up
             this.isImporting = false;
             this.currentImportAbortController = null;
-            this.uiManager.setImportButtonState(true);
+            this.uiManager.setImporting(false);
+        }
+    }
+    
+    cancelImport() {
+        if (this.currentImportAbortController) {
+            this.currentImportAbortController.abort();
+            this.logger.fileLogger.info('Canceling import');
+        }
+    }
+    
+    async handleFileSelect(file) {
+        try {
+            this.logger.fileLogger.debug('File selected', { fileName: file.name, fileSize: file.size });
             
-            // Clear the import data
-            this.currentImportData = null;
-            this.processedData = null;
+            // Process the file using the file handler
+            const result = await this.fileHandler.processCSV(file);
+            
+            if (result.success) {
+                this.logger.fileLogger.info('File processed successfully', { rows: result.count });
+                
+                // Enable import button if we have users and settings are valid
+                this.checkSettings();
+            } else {
+                throw new Error(result.error || 'Failed to process file');
+            }
+        } catch (error) {
+            this.logger.fileLogger.error('Error processing file', { error: error.message });
+            console.error('File processing error:', error);
+        }
+    }
+    
+    async checkSettings() {
+        try {
+            const settings = this.settingsManager.getSettings();
+            const hasRequiredSettings = settings.environmentId && settings.region;
+            const users = this.fileHandler.getUsers ? this.fileHandler.getUsers() : [];
+            const hasUsers = Array.isArray(users) && users.length > 0;
+
+            // Enable Import button only if both users and settings are valid
+            const enableImport = hasRequiredSettings && hasUsers;
+            this.uiManager.setImportButtonState(enableImport);
+
+            // Optionally update UI for settings status
+            this.uiManager.updateSettingsStatus(hasRequiredSettings);
+
+            return enableImport;
+        } catch (error) {
+            this.logger.fileLogger.error('Error saving settings', { error: error.message });
+            this.uiManager.setImportButtonState(false);
+            return false;
+        }
+    }
+    
+    /**
+     * Populate the settings form with the provided settings
+     * @param {Object} settings - The settings to populate the form with
+     */
+    populateSettingsForm(settings) {
+        try {
+            console.log('Starting to populate settings form with:', settings);
+            
+            if (!settings) {
+                console.warn('No settings provided to populateSettingsForm');
+                return;
+            }
+            
+            // Set text inputs with fallback to empty string if undefined
+            const fields = {
+                'environment-id': settings.environmentId || settings['environment-id'] || '',
+                'api-client-id': settings.apiClientId || settings['api-client-id'] || '',
+                'api-secret': settings.apiSecret || settings['api-secret'] || '',
+                'population-id': settings.populationId || settings['population-id'] || ''
+            };
+            
+            // Set each field
+            for (const [id, value] of Object.entries(fields)) {
+                const element = document.getElementById(id);
+                if (element) {
+                    // For API secret, only set if it's not empty (to avoid showing placeholder text as actual value)
+                    if (id === 'api-secret' && !value) {
+                        console.log(`Skipping empty API secret`);
+                        continue;
+                    }
+                    
+                    element.value = value;
+                    console.log(`Set ${id} to:`, value ? (id.includes('secret') ? '***' : value) : '(empty)');
+                } else {
+                    console.warn(`Element not found: ${id}`);
+                }
+            }
+            
+            // Handle region dropdown - default to NorthAmerica if not set
+            const regionSelect = document.getElementById('region');
+            if (regionSelect) {
+                // Get the region value, trying both camelCase and kebab-case versions
+                let regionValue = settings.region || settings['region'] || 'NorthAmerica';
+                console.log('Raw region value:', regionValue);
+                
+                // Normalize the region value (remove spaces and make lowercase)
+                const normalizedRegion = regionValue.replace(/\s+/g, '').toLowerCase();
+                console.log('Normalized region:', normalizedRegion);
+                
+                // Find and select the matching option
+                let found = false;
+                for (const option of regionSelect.options) {
+                    const optionValue = option.value.toLowerCase();
+                    if (optionValue === normalizedRegion) {
+                        option.selected = true;
+                        found = true;
+                        console.log('Set region to:', option.value);
+                        break;
+                    }
+                }
+                
+                if (!found) {
+                    console.warn(`Region '${regionValue}' not found in dropdown, defaulting to NorthAmerica`);
+                    console.log('Available regions:', Array.from(regionSelect.options).map(o => o.value));
+                    
+                    // Set default to NorthAmerica if the region is not found
+                    for (const option of regionSelect.options) {
+                        if (option.value.toLowerCase() === 'northamerica') {
+                            option.selected = true;
+                            console.log('Defaulted region to NorthAmerica');
+                            break;
+                        }
+                    }
+                }
+            } else {
+                console.warn('Region select element not found');
+            }
+            
+            // Update the connection status display
+            const statusElement = document.getElementById('settings-connection-status');
+            if (statusElement) {
+                const status = (settings.connectionStatus || 'disconnected').toLowerCase();
+                const message = settings.connectionMessage || 'Not connected';
+                
+                // Update status class
+                statusElement.className = `connection-status status-${status}`;
+                
+                // Update status icon and message
+                const iconMap = {
+                    'connected': '✅',
+                    'disconnected': '⚠️',
+                    'error': '❌'
+                };
+                
+                const statusIcon = statusElement.querySelector('.status-icon');
+                if (statusIcon) {
+                    statusIcon.textContent = iconMap[status] || 'ℹ️';
+                }
+                
+                const statusMessage = statusElement.querySelector('.status-message');
+                if (statusMessage) {
+                    statusMessage.textContent = message;
+                }
+            }
+            
+            console.log('Finished populating settings form');
+            this.logger.fileLogger.debug('Settings form populated');
+        } catch (error) {
+            const errorMessage = `Error populating settings form: ${error.message}`;
+            this.logger.fileLogger.error(errorMessage, { error: error.message });
+            console.error('Error details:', error);
+        }
+    }
+    
+    async checkSettingsAndRestore() {
+        try {
+            console.log('1. Starting checkSettingsAndRestore');
+            this.logger.log('Attempting to load settings from API...', 'debug');
+            
+            // Load settings from the local API
+            console.log('2. Fetching settings from /api/settings');
+            const response = await this.localClient.get('/api/settings');
+            console.log('3. Settings API response:', response);
+            
+            if (response && response.data) {
+                const settings = response.data;
+                console.log('4. Settings data received:', settings);
+                
+                console.log('5. Saving settings to settings manager');
+                await this.settingsManager.saveSettings(settings);
+                this.logger.log('Settings restored and saved', 'info');
+                
+                // Populate the settings form
+                console.log('6. About to populate settings form with:', settings);
+                if (typeof this.populateSettingsForm === 'function') {
+                    console.log('7. populateSettingsForm is a function, calling it');
+                    this.populateSettingsForm(settings);
+                } else {
+                    console.error('7. ERROR: populateSettingsForm is not a function on this object');
+                    console.log('Available methods on app:', Object.getOwnPropertyNames(Object.getPrototypeOf(this)));
+                }
+                
+                // Check if we have a previous file to restore
+                if (settings.lastProcessedFile) {
+                    this.logger.log('Restoring previous file...', 'info');
+                    // Here you would add logic to restore the previous file
+                    // This would depend on how you're handling file persistence
+                }
+            } else {
+                console.warn('No settings data in response:', response);
+                this.logger.warn('No settings data received from server', 'warning');
+            }
+            
+            // Update UI based on settings
+            console.log('8. Calling checkSettings');
+            await this.checkSettings();
+            
+        } catch (error) {
+            const errorMessage = error.message || 'Unknown error';
+            console.error('ERROR in checkSettingsAndRestore:', error);
+            console.error('Error stack:', error.stack);
+            this.logger.warn(`Error loading settings: ${errorMessage}`, 'warning');
         }
     }
 }
@@ -544,4 +603,7 @@ class App {
 document.addEventListener('DOMContentLoaded', () => {
     const app = new App();
     console.log(`PingOne Import Tool ${app.versionManager.getFormattedVersion()} initialized`);
+    
+    // Expose app to window for debugging and global access
+    window.app = app;
 });

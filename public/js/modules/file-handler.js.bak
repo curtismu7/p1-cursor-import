@@ -1,0 +1,1078 @@
+class FileHandler {
+    constructor(logger, uiManager) {
+        this.logger = logger;
+        this.uiManager = uiManager;
+        this.requiredFields = ['email'];
+        this.validationResults = {
+            total: 0,
+            valid: 0,
+            errors: 0,
+            warnings: 0
+        };
+        this.lastParsedUsers = [];
+        // Store UI elements
+        this.fileInput = document.getElementById('csv-file');
+        this.fileInfo = document.getElementById('file-info');
+        this.previewContainer = document.getElementById('preview-container');
+        // Load last file info from localStorage
+        this.lastFileInfo = this.loadLastFileInfo();
+        // Initialize file input change handler
+        this.initializeFileInput();
+    }
+
+    /**
+     * Load last file info from localStorage
+     * @returns {Object|null} Last file info or null if not found
+     */
+    loadLastFileInfo() {
+        try {
+            const savedFile = localStorage.getItem('lastSelectedFile');
+            return savedFile ? JSON.parse(savedFile) : null;
+        } catch (error) {
+            this.logger.error('Error loading last file info:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Save file info to localStorage
+     * @param {Object} fileInfo - File info to save
+     */
+    saveFileInfo(fileInfo) {
+        try {
+            const fileData = {
+                name: fileInfo.name,
+                size: fileInfo.size,
+                lastModified: fileInfo.lastModified,
+                type: fileInfo.type
+            };
+            localStorage.setItem('lastSelectedFile', JSON.stringify(fileData));
+            this.lastFileInfo = fileData;
+        } catch (error) {
+            this.logger.error('Error saving file info:', error);
+        }
+    }
+
+    /**
+     * Clear saved file info
+     */
+    clearFileInfo() {
+        try {
+            localStorage.removeItem('lastSelectedFile');
+            this.lastFileInfo = null;
+        } catch (error) {
+            this.logger.error('Error clearing file info:', error);
+        }
+    }
+
+    /**
+     * Generate a secure temporary password
+     * @returns {string} A randomly generated password
+     */
+    generateTemporaryPassword() {
+        const length = 16;
+        const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+~`|}{[]\\:;?><,./-';
+        let password = '';
+
+        // Ensure at least one of each character type
+        password += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)];
+        password += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)];
+        password += '0123456789'[Math.floor(Math.random() * 10)];
+        password += '!@#$%^&*'[Math.floor(Math.random() * 8)];
+
+        // Fill the rest of the password
+        for (let i = password.length; i < length; i++) {
+            password += charset[Math.floor(Math.random() * charset.length)];
+        }
+
+        // Shuffle the password to make it more random
+        return password.split('').sort(() => Math.random() - 0.5).join('');
+    }
+
+    /**
+     * Initialize file input change handler
+     */
+    initializeFileInput() {
+        if (this.fileInput) {
+            // Remove any existing event listeners to prevent duplicates
+            const newFileInput = this.fileInput.cloneNode(true);
+            this.fileInput.parentNode.replaceChild(newFileInput, this.fileInput);
+            this.fileInput = newFileInput;
+
+            // Add change event listener
+            this.fileInput.addEventListener('change', (e) => {
+                this.logger.debug('File input changed');
+                this.handleFileSelect(e);
+            });
+
+            this.logger.debug('File input initialized');
+        } else {
+            this.logger.warn('File input element not found');
+        }
+    }
+
+    /**
+     * Handle file selection event
+     * @param {Event} event - The file input change event
+     */
+    handleFileSelect(event) {
+        this.logger.debug('Handling file selection');
+
+        const fileInput = event.target;
+        if (!fileInput.files || fileInput.files.length === 0) {
+            this.logger.debug('No file selected');
+            this.updateFileInfo(null);
+            return;
+        }
+
+        const file = fileInput.files[0];
+        this.logger.debug(`Selected file: ${file.name} (${file.size} bytes)`);
+
+        // Save file info and update UI
+        this.saveFileInfo(file);
+        this.updateFileInfo(file);
+
+        // Read the file content
+        const reader = new FileReader();
+
+        reader.onload = (e) => {
+            try {
+                const content = e.target.result;
+                this.logger.debug('File content loaded, first 100 chars:', content.substring(0, 100) + '...');
+
+                // Update preview if preview container exists
+                if (this.previewContainer) {
+                    try {
+                        // Parse the CSV content
+                        const { headers, rows } = this.parseCSV(content);
+                        const previewRows = rows.slice(0, 10); // Get first 10 data rows
+                        const totalRows = rows.length;
+
+                        // Create table HTML with proper escaping
+                        const escapeHTML = (str) => {
+                            if (str === null || str === undefined) return '';
+                            return String(str)
+                                .replace(/&/g, '&amp;')
+                                .replace(/</g, '&lt;')
+                                .replace(/>/g, '&gt;')
+                                .replace(/"/g, '&quot;')
+                                .replace(/'/g, '&#039;');
+                        };
+
+                        // Generate table rows
+                        const tableRows = previewRows.map(row => {
+                            return `
+                                <tr>
+                                    ${headers.map(header =>
+                                        `<td>${escapeHTML(row[header])}</td>`
+                                    ).join('')}
+                                </tr>`;
+                        }).join('');
+
+                        // Generate the full table HTML
+                        const tableHtml = `
+                            <div class="preview-container">
+                                <div class="preview-header">
+                                    <h3>CSV Preview (First ${previewRows.length} of ${totalRows} rows)</h3>
+                                </div>
+                                <div class="table-responsive">
+                                    <table class="table table-striped table-bordered table-hover">
+                                        <thead class="table-dark">
+                                            <tr>
+                                                ${headers.map(header =>
+                                                    `<th>${escapeHTML(header)}</th>`
+                                                ).join('')}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${tableRows}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                ${totalRows > 10 ?
+                                    `<div class="preview-footer text-muted">
+                                        Showing 10 of ${totalRows} rows
+                                    </div>` :
+                                    ''
+                                }
+                            </div>`;
+                        this.previewContainer.innerHTML = tableHtml;
+                    } catch (error) {
+                        console.error('Error generating CSV preview:', error);
+                        this.previewContainer.innerHTML = `
+                            <div class="preview-error">
+                                <p>Error generating preview. Please check the console for details.</p>
+                            </div>
+                        `;
+                    }
+                }
+
+                // Trigger the file selected event on the window
+                const fileSelectedEvent = new CustomEvent('fileSelected', {
+                    detail: { file, content }
+                });
+                window.dispatchEvent(fileSelectedEvent);
+
+            } catch (error) {
+                this.logger.error('Error processing file content:', error);
+                this.uiManager.showError('Error processing file: ' + error.message);
+            }
+        };
+
+        reader.onerror = (error) => {
+            this.logger.error('Error reading file:', error);
+            this.uiManager.showError('Error reading file: ' + error.message);
+            this.updateFileInfo(null);
+        };
+
+        // Read the file as text
+        reader.readAsText(file);
+    }
+
+    /**
+     * Check if file matches the last saved file info
+     * @param {File} file - File to check
+     * @returns {boolean} True if file matches last saved info
+     */
+    isSameFile(file) {
+        if (!this.lastFileInfo) return false;
+        return (
+            file.name === this.lastFileInfo.name &&
+            file.size === this.lastFileInfo.size &&
+            file.lastModified === this.lastFileInfo.lastModified &&
+            file.type === this.lastFileInfo.type
+        );
+    }
+
+    /**
+     * Format file size in human-readable format
+     * @param {number} bytes - File size in bytes
+     * @returns {string} Formatted file size
+     */
+    formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    /**
+     * Format date in a readable format
+     * @param {number} timestamp - Timestamp in milliseconds
+     * @returns {string} Formatted date string
+     */
+    formatDate(timestamp) {
+        return new Date(timestamp).toLocaleString();
+    }
+
+    /**
+     * Update file information in the UI
+     * @param {File} file - The selected file
+     */
+    updateFileInfo(file) {
+        this.logger.debug('Updating file info for:', file ? file.name : 'no file');
+
+        if (!file) {
+            if (this.fileInfo) {
+                this.fileInfo.innerHTML = '';
+            }
+            return;
+        }
+
+        if (!this.fileInfo) {
+            this.logger.warn('File info element not found');
+            return;
+        }
+
+        const fileInfoHtml = `
+            <div class="file-details">
+                <div class="file-name"><i class="fas fa-file"></i> ${file.name}</div>
+                <div class="file-meta">
+                    <span><i class="fas fa-database"></i> ${this.formatFileSize(file.size)}</span>
+                    <span><i class="far fa-clock"></i> ${this.formatDate(file.lastModified)}</span>
+                    <span><i class="fas fa-table"></i> ${file.type || 'text/csv'}</span>
+                </div>
+            </div>
+        `;
+
+        this.fileInfo.innerHTML = fileInfoHtml;
+        this.logger.debug('File info updated in UI');
+    }
+
+    /**
+     * Show preview of the CSV data
+     * @param {Array} data - Parsed CSV data
+     */
+    showPreview(data) {
+        if (!this.uiManager.previewContainer) return;
+
+        if (!data || data.length === 0) {
+            this.uiManager.previewContainer.innerHTML = '<div class="no-data">No data to display</div>';
+            return;
+        }
+
+        // Limit to first 10 rows for preview
+        const previewData = data.slice(0, 10);
+        const headers = Object.keys(previewData[0] || {});
+
+        let tableHtml = `
+            <div class="table-container">
+                <table class="preview-table">
+                    <thead>
+                        <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
+                    </thead>
+                    <tbody>
+                        ${previewData.map(row => `
+                            <tr>${headers.map(h => `<td>${row[h] || ''}</td>`).join('')}</tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                ${data.length > 10 ?
+                    `<div class="preview-footer">Showing 10 of ${data.length} rows</div>` :
+                    `<div class="preview-footer">${data.length} rows</div>`
+                }
+            </div>
+        `;
+        this.uiManager.previewContainer.innerHTML = tableHtml;
+    }
+
+    /**
+     * Process a CSV file and return headers and rows
+     * @param {File} file - The CSV file to process
+     * @returns {Promise<{headers: Array<string>, rows: Array<Object>}>} - Processed data
+     */
+    async processCSV(file) {
+        this.logger.log(`Processing file: ${file.name} (${this.formatFileSize(file.size)})`, 'info');
+
+        // Check if file is valid
+        if (!file) {
+            throw new Error('No file selected. Please select a file to upload.');
+        }
+
+        // Check if file is empty
+        if (file.size === 0) {
+            throw new Error(`The file "${file.name}" is empty (0 bytes). Please select a valid CSV file with data.`);
+        }
+
+        // Check file type
+        const fileExt = this.getFileExtension(file.name).toLowerCase();
+        const validExtensions = ['csv', 'txt'];
+        if (!validExtensions.includes(fileExt)) {
+            throw new Error(`Invalid file type: .${fileExt}. Please upload a CSV file (.csv or .txt).`);
+        }
+
+        // Check file size (max 10MB)
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (file.size > maxSize) {
+            throw new Error(`File too large (${this.formatFileSize(file.size)}). Maximum file size is 10MB.`);
+        }
+
+        // Save file info for persistence
+        this.saveFileInfo(file);
+
+        // Update UI with file info
+        this.updateFileInfo(file);
+
+        // Show loading state for preview
+        if (this.uiManager.previewContainer) {
+            this.uiManager.previewContainer.innerHTML = `
+                <div class="alert alert-info">
+                    <div class="spinner-border spinner-border-sm me-2" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    Processing file "${file.name}" (${this.formatFileSize(file.size)})...
+                </div>`;
+        }
+
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+
+            reader.onload = (event) => {
+                try {
+                    const text = event.target.result;
+
+                    // Debug log the raw file content
+                    console.debug('Raw file content:', {
+                        type: typeof text,
+                        length: text.length,
+                        first100: text.substring(0, 100) + (text.length > 100 ? '...' : '')
+                    });
+
+                    // Check if the file content is empty
+                    if (!text || (typeof text === 'string' && text.trim() === '')) {
+                        console.error('File content is empty or invalid:', {
+                            isNull: text === null,
+                            isUndefined: text === undefined,
+                            isEmptyString: text === '',
+                            isWhitespace: text && text.trim() === ''
+                        });
+                        reject(new Error('The file appears to be empty or contains no text content'));
+                        return;
+                    }
+
+                    // Split into lines and filter out empty lines
+                    const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+                    
+                    if (lines.length === 0) {
+                        reject(new Error('The file contains no valid data. Please check the file format.'));
+                        return;
+                    }
+
+                    // Parse CSV
+                    const { headers, rows } = this.parseCSV(text);
+                    
+                    // Validate headers
+                    if (!headers || headers.length === 0) {
+                        reject(new Error('Could not detect column headers. Please check the file format.'));
+                        return;
+                    }
+
+                    // Validate rows
+                    if (!rows || rows.length === 0) {
+                        reject(new Error('No data rows found in the file. Please check the file content.'));
+                        return;
+                    }
+
+                    // Validate required fields
+                    const missingHeaders = this.requiredFields.filter(field => !headers.includes(field));
+                    if (missingHeaders.length > 0) {
+                        reject(new Error(`Missing required columns: ${missingHeaders.join(', ')}`));
+                        return;
+                    }
+
+                    // Validate each row
+                    const validationResults = rows.map((row, index) => {
+                        const result = this.validateUser(row, headers);
+                        return {
+                            row: index + 2, // +2 for 1-based index and header row
+                            valid: result.isValid,
+                            errors: result.errors,
+                            data: row
+                        };
+                    });
+
+                    // Check for validation errors
+                    const invalidRows = validationResults.filter(r => !r.valid);
+                    if (invalidRows.length > 0) {
+                        const errorMessages = invalidRows
+                            .map(r => `Row ${r.row}: ${r.errors.join('; ')}`)
+                            .join('\n');
+                        reject(new Error(`Validation failed for ${invalidRows.length} row(s):\n${errorMessages}`));
+                        return;
+                    }
+
+                    // If we got here, the file is valid
+                    resolve({ headers, rows });
+
+                } catch (error) {
+                    console.error('Error processing file:', error);
+                    reject(new Error(`Error processing file: ${error.message}`));
+                }
+            };
+
+            reader.onerror = (error) => {
+                console.error('Error reading file:', error);
+                reject(new Error(`Error reading file: ${error.message || 'Unknown error'}`));
+            };
+
+            // Start reading the file
+            reader.readAsText(file);
+        });
+    }
+        this.logger.log(`Processing file: ${file.name} (${this.formatFileSize(file.size)})`, 'info');
+
+        // Check if file is valid
+        if (!file) {
+            throw new Error('No file selected. Please select a file to upload.');
+        }
+
+        // Check if file is empty
+        if (file.size === 0) {
+            throw new Error(`The file "${file.name}" is empty (0 bytes). Please select a valid CSV file with data.`);
+        }
+
+        // Check file type
+        const fileExt = this.getFileExtension(file.name).toLowerCase();
+        const validExtensions = ['csv', 'txt'];
+        if (!validExtensions.includes(fileExt)) {
+            throw new Error(`Invalid file type: .${fileExt}. Please upload a CSV file (.csv or .txt).`);
+        }
+
+        // Check file size (max 10MB)
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (file.size > maxSize) {
+            throw new Error(`File too large (${this.formatFileSize(file.size)}). Maximum file size is 10MB.`);
+        }
+
+        // Save file info for persistence
+        this.saveFileInfo(file);
+
+        // Update UI with file info
+        this.updateFileInfo(file);
+
+        // Show loading state for preview
+        if (this.uiManager.previewContainer) {
+            this.uiManager.previewContainer.innerHTML = `
+                <div class="alert alert-info">
+                    <div class="spinner-border spinner-border-sm me-2" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    Processing file "${file.name}" (${this.formatFileSize(file.size)})...
+                </div>`;
+        }
+
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+
+            reader.onload = (event) => {
+                try {
+                    const text = event.target.result;
+
+                    // Debug log the raw file content
+                    console.debug('Raw file content:', {
+                        type: typeof text,
+                        length: text.length,
+                        first100: text.substring(0, 100) + (text.length > 100 ? '...' : '')
+                    });
+
+                    // Check if the file content is empty
+                    if (!text || (typeof text === 'string' && text.trim() === '')) {
+                        console.error('File content is empty or invalid:', {
+                            isNull: text === null,
+                            isUndefined: text === undefined,
+                            isEmptyString: text === '',
+                            isWhitespace: text && text.trim() === ''
+                        });
+                        reject(new Error('The file appears to be empty or contains no text content'));
+                        return;
+                    }
+
+                    // Split into lines and filter out empty lines
+                    const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+                    
+                    if (lines.length === 0) {
+                        reject(new Error('The file contains no valid data. Please check the file format.'));
+                        return;
+                    }
+
+                    // Parse CSV
+                    const { headers, rows } = this.parseCSV(text);
+                    
+                    // Validate headers
+                    if (!headers || headers.length === 0) {
+                        reject(new Error('Could not detect column headers. Please check the file format.'));
+                        return;
+                    }
+
+                    // Validate rows
+                    if (!rows || rows.length === 0) {
+                        reject(new Error('No data rows found in the file. Please check the file content.'));
+                        return;
+                    }
+
+                    // Validate required fields
+                    const missingHeaders = this.requiredFields.filter(field => !headers.includes(field));
+                    if (missingHeaders.length > 0) {
+                        reject(new Error(`Missing required columns: ${missingHeaders.join(', ')}`));
+                        return;
+                    }
+
+                    // Validate each row
+                    const validationResults = rows.map((row, index) => {
+                        const result = this.validateUser(row, headers);
+                        return {
+                            row: index + 2, // +2 for 1-based index and header row
+                            valid: result.isValid,
+                            errors: result.errors,
+                            data: row
+                        };
+                    });
+
+                    // Check for validation errors
+                    const invalidRows = validationResults.filter(r => !r.valid);
+                    if (invalidRows.length > 0) {
+                        const errorMessages = invalidRows
+                            .map(r => `Row ${r.row}: ${r.errors.join('; ')}`)
+                            .join('\n');
+                        reject(new Error(`Validation failed for ${invalidRows.length} row(s):\n${errorMessages}`));
+                        return;
+                    }
+
+                    // If we got here, the file is valid
+                    resolve({ headers, rows });
+
+                } catch (error) {
+                    console.error('Error processing file:', error);
+                    reject(new Error(`Error processing file: ${error.message}`));
+                }
+            };
+
+            reader.onerror = (error) => {
+                console.error('Error reading file:', error);
+                reject(new Error(`Error reading file: ${error.message || 'Unknown error'}`));
+            };
+
+            // Start reading the file
+            reader.readAsText(file);
+        });
+    }
+
+            reader.onload = (event) => {
+                try {
+                    const text = event.target.result;
+
+                    // Debug log the raw file content
+                    console.debug('Raw file content:', {
+                        type: typeof text,
+                        length: text.length,
+                        first100: text.substring(0, 100) + (text.length > 100 ? '...' : '')
+                    });
+
+                    // Check if the file content is empty
+                    if (!text || (typeof text === 'string' && text.trim() === '')) {
+                        console.error('File content is empty or invalid:', {
+                            isNull: text === null,
+                            isUndefined: text === undefined,
+                            isEmptyString: text === '',
+                            isWhitespace: text && text.trim() === ''
+                        });
+                        throw new Error('The file appears to be empty or contains no text content');
+                    }
+
+                    // Split into lines and filter out empty lines
+                    const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+
+                    // Check if we have at least a header and one data row
+                    if (lines.length < 2) {
+                        throw new Error('CSV file must contain a header row and at least one data row');
+                    }
+
+                    // Check if the first line (header) contains valid CSV data
+                    if (!lines[0].includes(',')) {
+                        throw new Error('Invalid CSV format: Could not detect column delimiters. Please ensure the file is a valid CSV with comma-separated values.');
+                    }
+
+                    // Parse headers
+                    const headers = this.parseCSVLine(lines[0]).map(h => h.trim());
+
+                    // Log the headers for debugging
+                    console.log('CSV Headers:', headers);
+
+                    // Create a mapping of lowercase header names to their original case
+                    const headerMap = {};
+                    headers.forEach(header => {
+                        headerMap[header.toLowerCase()] = header;
+                    });
+
+                    // Check if email column exists
+                    if (!('email' in headerMap)) {
+                        throw new Error('CSV must contain an "email" column');
+                    }
+
+                    // Parse data rows
+                    const rows = [];
+                    let lineNumber = 1; // Start from 1 to account for header row
+                    let validRows = 0;
+
+                    for (let i = 1; i < lines.length; i++) {
+                        try {
+                            const values = this.parseCSVLine(lines[i]);
+                            if (values.length !== headers.length) {
+                                this.logger.warn(`Skipping row ${lineNumber}: Column count doesn't match headers`);
+                                lineNumber++;
+                                continue;
+                            }
+
+                            const row = {};
+
+                            // Map values to headers
+                            headers.forEach((header, index) => {
+                                if (values[index] !== undefined) {
+                                    const value = values[index] ? values[index].trim() : '';
+                                    row[header] = value;
+                                }
+                            });
+
+                            // Skip rows without email (required field)
+                            const email = row[headerMap['email']] || '';
+                            if (!email.trim()) {
+                                this.logger.warn(`Skipping row ${lineNumber}: Missing email address`);
+                                lineNumber++;
+                                continue;
+                            }
+
+                            // Get username, fall back to email if not provided
+                            const username = row[headerMap['username']] || email;
+
+                            // Convert string 'true'/'false' to boolean for active field
+                            const activeField = headerMap['active'] || headerMap['enabled'];
+                            let active = true; // default to true
+                            if (activeField && row[activeField] !== undefined) {
+                                active = String(row[activeField]).toLowerCase() === 'true';
+                            }
+
+                            // Set default password if not provided (PingOne requires a password)
+                            if (!row.password) {
+                                row.password = this.generateTemporaryPassword();
+                                this.logger.log(`Generated temporary password for user: ${row.username || row.email}`, 'info');
+                            }
+
+                            // Set default active status if not provided
+                            if (row.active === undefined) {
+                                row.active = true;
+                            }
+
+                            // Get name fields if they exist
+                            const firstName = row[headerMap['firstname']] ||
+                                row[headerMap['first name']] ||
+                                row[headerMap['first_name']] || '';
+                            const lastName = row[headerMap['lastname']] ||
+                                row[headerMap['last name']] ||
+                                row[headerMap['last_name']] || '';
+
+                            // Get password or generate one if not provided
+                            const password = row[headerMap['password']] || this.generateTemporaryPassword();
+
+                            // Format user data for PingOne API
+                            const userData = {
+                                username: username,
+                                email: email,
+                                name: {
+                                    given: firstName,
+                                    family: lastName
+                                },
+                                password: password,
+                                enabled: active
+                            };
+
+                            // Add to valid rows
+                            rows.push(userData);
+                            validRows++;
+                        } catch (error) {
+                            this.logger.warn(`Error parsing line ${lineNumber}: ${error.message}`);
+                        } finally {
+                            lineNumber++;
+                        }
+                    }
+
+                    if (validRows === 0) {
+                        throw new Error('No valid user records found in the file. Please check that the file contains valid user data with at least an email and username.');
+                    }
+
+                    this.logger.log(`Successfully processed ${validRows} valid users from ${file.name}`, 'success');
+
+                    resolve({
+                        headers,
+                        rows
+                    });
+                } catch (error) {
+                    // Clear saved file info on error
+                    this.clearFileInfo();
+                    reject(error);
+                }
+            };
+
+            reader.onerror = (error) => {
+                // Log detailed error information
+                console.error('FileReader error:', {
+                    name: error.name,
+                    message: error.message,
+                    code: error.code,
+                    type: error.type,
+                    readyState: reader.readyState,
+                    error: error
+                });
+
+                // Clear saved file info on error
+                this.clearFileInfo();
+                reject(new Error(`Error reading file (${error.name}): ${error.message}`));
+            };
+
+            // Log before starting to read
+            console.log('Starting to read file with FileReader', {
+                file: {
+                    name: file.name,
+                    size: file.size,
+                    type: file.type,
+                    lastModified: new Date(file.lastModified).toISOString()
+                },
+                readerReadyState: reader.readyState
+            });
+
+            reader.readAsText(file);
+        });
+    }
+
+    /**
+     * Parse a single CSV line, handling quoted values and different delimiters
+     * @param {string} line - CSV line to parse
+     * @param {string} [delimiter=','] - Field delimiter (defaults to comma)
+     * @returns {Array<string>} Array of values
+     */
+    parseCSVLine(line, delimiter = ',') {
+        const values = [];
+        let inQuotes = false;
+        let currentValue = '';
+        let i = 0;
+
+        // Skip empty lines
+        if (!line || line.trim() === '') {
+            return [];
+        }
+
+        // Normalize line endings and trim whitespace
+        line = line.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+
+        // Check if the line might be tab-delimited (if no delimiter specified)
+        if (delimiter === ',' && line.includes('\t') && !line.includes(',')) {
+            delimiter = '\t';
+        }
+
+        while (i < line.length) {
+            const char = line[i];
+
+            if (char === '"') {
+                // Handle quoted values
+                if (inQuotes && line[i + 1] === '"') {
+                    // Escaped quote inside quoted value
+                    currentValue += '"';
+                    i += 2;
+                } else if (inQuotes && line[i + 1] === delimiter) {
+                    // End of quoted field
+                    inQuotes = false;
+                    i++;
+                } else {
+                    // Start or end of quoted field
+                    inQuotes = !inQuotes;
+                    i++;
+                }
+            } else if (char === delimiter && !inQuotes) {
+                // End of field
+                values.push(currentValue);
+                currentValue = '';
+                i++;
+
+                // Skip any whitespace after delimiter
+                while (i < line.length && (line[i] === ' ' || line[i] === '\t')) {
+                    i++;
+                }
+            } else {
+                currentValue += char;
+                i++;
+            }
+        }
+
+        // Add the last value
+        values.push(currentValue);
+
+        // Clean up values (remove quotes and trim)
+        return values.map(value => {
+            // Remove surrounding quotes if they exist
+            let cleaned = value.trim();
+            if ((cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+                (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+                cleaned = cleaned.substring(1, cleaned.length - 1);
+            }
+            // Replace escaped quotes
+            return cleaned.replace(/""/g, '"');
+        });
+    }
+
+    /**
+     * Validate a user object against required fields and data formats
+     * @param {Object} user - The user object to validate
+     * @param {Array} headers - The CSV headers
+     * @returns {Object} Validation result with validity and errors
+     */
+    validateUser(user, headers) {
+        const errors = [];
+        const warnings = [];
+
+        // Skip validation if email is missing (handled in processCSV)
+        if (!user.email || user.email.trim() === '') {
+            return { valid: false, errors: ['Email is required'], warnings: [] };
+        }
+
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(user.email)) {
+            errors.push(`Invalid email format: ${user.email}`);
+        }
+
+        // Check for duplicate fields
+        const fieldCounts = {};
+        headers.forEach(header => {
+            if (!fieldCounts[header]) {
+                fieldCounts[header] = 0;
+            }
+            fieldCounts[header]++;
+        });
+
+        Object.entries(fieldCounts).forEach(([header, count]) => {
+            if (count > 1) {
+                warnings.push(`Duplicate column '${header}' found in CSV`);
+            }
+        });
+
+        return {
+            valid: errors.length === 0,
+            errors,
+            warnings
+        };
+    }
+
+    /**
+     * Parse CSV text into headers and rows with proper handling of quoted values and different delimiters
+     * @param {string} csvText - The CSV text to parse
+     * @returns {{headers: Array<string>, rows: Array<Object>, delimiter: string}} Parsed CSV data
+     */
+    parseCSV(csvText) {
+        if (!csvText || typeof csvText !== 'string') {
+            throw new Error('Invalid CSV text');
+        }
+
+        // Normalize line endings and trim whitespace
+        const normalizedText = csvText
+            .replace(/\r\n/g, '\n')
+            .replace(/\r/g, '\n')
+            .trim();
+
+        if (normalizedText.length === 0) {
+            return { headers: [], rows: [], delimiter: ',' };
+        }
+
+        // Detect delimiter from first line
+        const firstLine = normalizedText.split('\n')[0];
+        let delimiter = ',';
+        if (firstLine.includes('\t') && !firstLine.includes(',')) {
+            delimiter = '\t';
+        } else if (firstLine.includes(';') && !firstLine.includes(',')) {
+            delimiter = ';';
+        }
+
+        const lines = [];
+        let currentLine = [];
+        let inQuotes = false;
+        let currentValue = '';
+        let i = 0;
+        const length = normalizedText.length;
+
+        // Process each character to handle quoted values and newlines
+        while (i < length) {
+            const char = normalizedText[i];
+            const nextChar = normalizedText[i + 1];
+
+            if (char === '"') {
+                if (inQuotes && nextChar === '"') {
+                    // Handle escaped quotes ("")
+                    currentValue += '"';
+                    i++; // Skip next quote
+                } else {
+                    inQuotes = !inQuotes;
+                }
+            } else if (char === delimiter && !inQuotes) {
+                // End of field
+                currentLine.push(currentValue.trim());
+                currentValue = '';
+            } else if ((char === '\n' || (char === '\r' && nextChar === '\n')) && !inQuotes) {
+                // End of line (handle both \n and \r\n)
+                currentLine.push(currentValue.trim());
+
+                // Only add non-empty lines
+                if (currentLine.length > 0 && (currentLine.length > 1 || currentLine[0] !== '')) {
+                    lines.push([...currentLine]);
+                }
+
+                currentLine = [];
+                currentValue = '';
+
+                // Skip next character if it's part of \r\n
+                if (char === '\r' && nextChar === '\n') {
+                    i++;
+                }
+            } else {
+                currentValue += char;
+            }
+
+            i++;
+        }
+
+        // Add the last line if there's any remaining data
+        if (currentValue.trim() !== '' || currentLine.length > 0) {
+            currentLine.push(currentValue.trim());
+            if (currentLine.length > 0 && (currentLine.length > 1 || currentLine[0] !== '')) {
+                lines.push([...currentLine]);
+            }
+        }
+
+        if (lines.length === 0) {
+            return { headers: [], rows: [], delimiter };
+        }
+
+        // First line is headers - normalize them (trim, lowercase, replace spaces with underscores)
+        const headers = lines[0].map(header =>
+            header.toString().trim().toLowerCase()
+                .replace(/[^a-z0-9]+/g, '_')
+                .replace(/^_+|_+$/g, '')
+        );
+
+        // Process data rows
+        const rows = [];
+        for (let j = 1; j < lines.length; j++) {
+            const row = {};
+            const values = lines[j];
+
+            // Skip empty lines
+            if (values.length === 1 && values[0].trim() === '') {
+                continue;
+            }
+
+            // Map values to headers
+            for (let k = 0; k < headers.length; k++) {
+                const header = headers[k];
+                if (header && values[k] !== undefined) {
+                    row[header] = values[k].toString().trim();
+                }
+            }
+
+            // Only add non-empty rows
+            if (Object.keys(row).length > 0) {
+                rows.push(row);
+            }
+        }
+
+        this.lastParsedUsers = rows;
+        return {
+            headers,
+            rows,
+            delimiter // Return detected delimiter for reference
+        };
+    }
+
+    
+    /**
+     * Simple email validation
+     * @param {string} email - Email to validate
+     * @returns {boolean} - True if email is valid
+     */
+    isValidEmail(email) {
+        if (!email) return false;
+        const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return re.test(String(email).toLowerCase());
+    }
+    
+    /**
+     * Get the file extension from a filename
+     * @param {string} filename - The filename to get the extension from
+     * @returns {string} The file extension (without dot) or empty string if no extension
+     */
+    getFileExtension(filename) {
+        if (!filename || typeof filename !== 'string') return '';
+        const parts = filename.split('.');
+        return parts.length > 1 ? parts.pop().toLowerCase() : '';
+    }
+}
+
+// Export the FileHandler class
+module.exports = { FileHandler };

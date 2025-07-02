@@ -1,9 +1,31 @@
-const express = require('express');
-const fetch = require('node-fetch');
-const { v4: uuidv4 } = require('uuid');
-const path = require('path');
+import { Router } from 'express';
+import fetch from 'node-fetch';
+import { v4 as uuidv4 } from 'uuid';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import cors from 'cors';
 
-const router = express.Router();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const router = Router();
+
+// Enable CORS for all routes
+router.use(cors({
+    origin: 'http://localhost:3001',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-PingOne-Environment-Id', 'X-PingOne-Region'],
+    credentials: true
+}));
+
+// Handle preflight requests
+router.options('*', (req, res) => {
+    res.header('Access-Control-Allow-Origin', 'http://localhost:3001');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-PingOne-Environment-Id, X-PingOne-Region');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.status(200).end();
+});
 
 // PingOne API base URLs by region
 const PINGONE_API_BASE_URLS = {
@@ -11,7 +33,11 @@ const PINGONE_API_BASE_URLS = {
     'Europe': 'https://api.eu.pingone.com',
     'Canada': 'https://api.ca.pingone.com',
     'Asia': 'https://api.apsoutheast.pingone.com',
-    'Australia': 'https://api.aus.pingone.com'
+    'Australia': 'https://api.aus.pingone.com',
+    'US': 'https://api.pingone.com',
+    'EU': 'https://api.eu.pingone.com',
+    'AP': 'https://api.apsoutheast.pingone.com',
+    'default': 'https://auth.pingone.com'
 };
 
 // Middleware to validate required settings
@@ -103,9 +129,16 @@ const injectSettings = (req, res, next) => {
 // Proxy middleware
 const proxyRequest = async (req, res) => {
     try {
-        console.log('=== Starting proxyRequest ===');
+        console.log('\n=== Starting proxyRequest ===');
         console.log('Request path:', req.path);
         console.log('Request method:', req.method);
+        console.log('Request headers:', JSON.stringify(req.headers, null, 2));
+        console.log('Request body type:', typeof req.body);
+        console.log('Request rawBody exists:', !!req.rawBody);
+        if (req.rawBody) {
+            console.log('Raw body length:', req.rawBody.length);
+            console.log('Raw body start:', req.rawBody.substring(0, 200) + (req.rawBody.length > 200 ? '...' : ''));
+        }
         
         const { environmentId, region } = req.settings;
         console.log('Using environmentId:', environmentId);
@@ -183,20 +216,28 @@ const proxyRequest = async (req, res) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') {
             // If the content type is for user import, use the raw body
             if (headers['Content-Type'] === 'application/vnd.pingone.import.users+json') {
-                // Log the raw body for debugging
-                console.log('Raw body for user import:', req.rawBody ? 'exists' : 'missing');
+                console.log('Processing user import request with content type:', headers['Content-Type']);
+                console.log('Request body type:', typeof req.body);
                 
                 // If we have a raw body, use it directly
                 if (req.rawBody) {
+                    console.log('Using raw body from request');
                     requestBody = req.rawBody;
                 } 
+                // If body is already a string, use it as is
+                else if (typeof req.body === 'string') {
+                    console.log('Using string body as is');
+                    requestBody = req.body;
+                }
                 // Otherwise, construct the expected format from the parsed body
                 else if (req.body) {
+                    console.log('Constructing request body from parsed body');
                     requestBody = JSON.stringify({
                         users: Array.isArray(req.body) ? req.body : [req.body]
                     });
                 }
                 
+                console.log('Request body prepared, length:', requestBody ? requestBody.length : 0);
                 // Ensure we have a valid request body
                 if (!requestBody) {
                     throw new Error('No request body provided for user import');
@@ -235,89 +276,83 @@ const proxyRequest = async (req, res) => {
             // Get the content type
             const contentType = response.headers.get('content-type') || '';
             
-            // Set response headers
-            res.status(response.status);
-            response.headers.forEach((value, key) => {
-                if (key.toLowerCase() !== 'content-encoding' && key.toLowerCase() !== 'content-length') {
-                    res.setHeader(key, value);
+            try {
+                // Handle different content types
+                let responseData;
+                
+                if (contentType.includes('application/json')) {
+                    responseData = await response.json().catch(() => ({}));
+                } else {
+                    responseData = await response.text();
                 }
-            });
-            
-            // Handle different response types
-            if (contentType.includes('application/json')) {
-                try {
-                    const data = await response.json();
-                    console.log('Successfully parsed JSON response');
-                    return res.json(data);
-                } catch (e) {
-                    console.error('Error parsing JSON response:', e);
-                    const text = await response.text();
-                    console.error('Response text:', text);
-                    return res.status(500).json({
-                        error: 'Invalid JSON response',
-                        details: e.message,
-                        response: text
-                    });
+                
+                console.log(`[${req.requestId}] Response status: ${response.status} (${Date.now() - req.startTime}ms)`);
+                
+                // Forward the response with appropriate headers and status
+                const resHeaders = {
+                    ...Object.fromEntries([...response.headers.entries()]),
+                    'access-control-allow-origin': '*',
+                    'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
+                    'access-control-allow-headers': 'Content-Type, Authorization, X-Requested-With'
+                };
+                
+                // Remove problematic headers
+                delete resHeaders['content-encoding'];
+                delete resHeaders['transfer-encoding'];
+                
+                res.status(response.status)
+                    .set(resHeaders);
+                    
+                if (typeof responseData === 'string') {
+                    res.send(responseData);
+                } else {
+                    res.json(responseData);
                 }
-            } else if (contentType.includes('text/')) {
-                const text = await response.text();
-                console.log('Sending text response');
-                return res.send(text);
-            } else {
-                // For binary data or other content types, pipe the response
-                console.log('Piping binary/unknown response');
-                response.body.pipe(res);
-                return;
-            }
-        } catch (error) {
-            clearTimeout(timeoutId);
-            console.error('Fetch error:', error);
-            
-            if (error.name === 'AbortError') {
-                return res.status(504).json({
-                    error: 'Request Timeout',
-                    message: 'The request to PingOne API timed out after 30 seconds'
+            } catch (error) {
+                console.error(`[${req.requestId}] Error:`, error);
+                res.status(500).json({
+                    error: 'Proxy Error',
+                    message: error.message,
+                    stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
                 });
             }
-            
-            throw error; // Let the error handler deal with it
+        } catch (error) {
+            console.error(`[${req.requestId}] Error:`, error);
+            res.status(500).json({
+                error: 'Proxy Error',
+                message: error.message,
+                stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            });
         }
     } catch (error) {
-        console.error('Proxy error:', error);
+        console.error('Error in proxyRequest middleware:', error);
         res.status(500).json({
-            error: 'Proxy error',
-            message: error.message
+            error: 'Proxy Error',
+            message: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
     }
 };
 
 // Apply middleware and routes
-// Save raw body for user import requests
+router.use(express.json());
+router.use(express.text({ type: ['application/json', 'application/vnd.pingidentity.*+json'] }));
+
+// Apply CORS headers to all responses
 router.use((req, res, next) => {
-    if (req.headers['content-type'] === 'application/vnd.pingone.import.users+json') {
-        let data = '';
-        req.on('data', chunk => {
-            data += chunk;
-        });
-        req.on('end', () => {
-            req.rawBody = data;
-            try {
-                req.body = JSON.parse(data);
-                next();
-            } catch (e) {
-                next(e);
-            }
-        });
-    } else {
-        express.json()(req, res, next);
-    }
+    res.header('Access-Control-Allow-Origin', 'http://localhost:3001');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-PingOne-Environment-Id, X-PingOne-Region');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    next();
 });
 
+// Apply settings middleware
 router.use(injectSettings);
 router.use(validateSettings);
 
 // Proxy all requests to PingOne API
 router.all('*', proxyRequest);
 
-// Export the router using ES modules
-module.exports = router;
+// Export the router
+export default router;

@@ -1,0 +1,6 @@
+username,email,firstName,lastName,password,active,middleName,prefix,suffix,formattedName,nickname,title,preferredLanguage,locale,timezone,externalId,type,primaryPhone,mobilePhone,streetAddress,countryCode,locality,region,postalCode
+newuser001,newuser001@mailinator.com,Alice,Johnson,TestPass123!,True,N,Mr.,Jr.,Mr. Bob N Jones Jr.,Bobby,Manager,en,US,America/Chicago,ext-102,employee,555-102-0002,555-202-0002,102 Main St,US,CityB,IL,60601
+newuser002,newuser002@mailinator.com,Bob,Wilson,TestPass123!,True,N,Mr.,Jr.,Mr. Bob N Jones Jr.,Bobby,Manager,en,US,America/Chicago,ext-102,employee,555-102-0002,555-202-0002,102 Main St,US,CityB,IL,60601
+newuser003,newuser003@mailinator.com,Carol,Davis,TestPass123!,True,N,Mr.,Jr.,Mr. Bob N Jones Jr.,Bobby,Manager,en,US,America/Chicago,ext-102,employee,555-102-0002,555-202-0002,102 Main St,US,CityB,IL,60601
+user101,user101@example.com,Alice,Smith,2Federate!,True,M,Ms.,,Ms. Alice M Smith,Ali,Engineer,en,US,America/New_York,ext-101,employee,555-101-0001,555-201-0001,101 Main St,US,CityA,NY,10001
+user102,user102@example.com,Bob,Jones,2Federate!,True,N,Mr.,Jr.,Mr. Bob N Jones Jr.,Bobby,Manager,en,US,America/Chicago,ext-102,employee,555-102-0002,555-202-0002,102 Main St,US,CityB,IL,60601

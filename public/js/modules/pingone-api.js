@@ -8,6 +8,22 @@ class PingOneAPI {
     }
     
     /**
+     * Get the base URL for the PingOne API based on region
+     * @param {string} region - The region code (e.g., 'NorthAmerica', 'Europe')
+     * @returns {string} The base URL for the API
+     */
+    getApiBaseUrl(region) {
+        const baseUrls = {
+            'NorthAmerica': 'https://api.pingone.com/v1',
+            'Europe': 'https://api.eu.pingone.com/v1',
+            'Asia': 'https://api.asia.pingone.com/v1',
+            'Canada': 'https://api.ca.pingone.com/v1'
+        };
+        
+        return baseUrls[region] || baseUrls['NorthAmerica'];
+    }
+    
+    /**
      * Get current settings from settings manager
      * @returns {Object} Current settings
      */
@@ -15,7 +31,8 @@ class PingOneAPI {
         return {
             apiClientId: this.settingsManager.getSetting('apiClientId'),
             apiSecret: this.settingsManager.getSetting('apiSecret'),
-            environmentId: this.settingsManager.getSetting('environmentId')
+            environmentId: this.settingsManager.getSetting('environmentId'),
+            region: this.settingsManager.getSetting('region', 'NorthAmerica')
         };
     }
 
@@ -48,9 +65,9 @@ class PingOneAPI {
     async getPopulations() {
         try {
             const response = await this.apiRequest('GET', '/populations');
-            return response._embedded?.populations || [];
+            return response._embedded.populations || [];
         } catch (error) {
-            this.logger.error(`Failed to fetch populations: ${error.message}`);
+            this.logger.error('Failed to get populations:', error);
             throw error;
         }
     }
@@ -62,23 +79,23 @@ class PingOneAPI {
     async getDefaultPopulationId() {
         try {
             const populations = await this.getPopulations();
-            // Try to find a population named 'Default' (case insensitive)
-            const defaultPopulation = populations.find(pop => 
-                pop.name && pop.name.toLowerCase() === 'default'
-            );
             
-            if (defaultPopulation) {
-                return defaultPopulation.id;
+            // First try to find a population with 'default' in the name
+            const defaultPop = populations.find(pop => 
+                pop.name && pop.name.toLowerCase().includes('default'));
+                
+            if (defaultPop) {
+                return defaultPop.id;
             }
             
-            // If no default population found, return the first one
+            // If no default found, return the first population ID
             if (populations.length > 0) {
                 return populations[0].id;
             }
             
-            throw new Error('No populations found in the environment');
+            throw new Error('No populations found');
         } catch (error) {
-            this.logger.error(`Failed to get default population: ${error.message}`);
+            this.logger.error('Failed to get default population ID:', error);
             throw error;
         }
     }
@@ -88,22 +105,16 @@ class PingOneAPI {
      * @param {Object} settings - New settings object
      */
     updateSettings(settings) {
-        try {
-            // Update the token manager with new settings
-            this.tokenManager.updateSettings({
-                apiClientId: settings.apiClientId,
-                apiSecret: settings.apiSecret,
-                environmentId: settings.environmentId
-            });
-            
-            // Clear any existing token to force a new one to be fetched with the new settings
-            this.clearToken();
-            
-            this.logger.log('PingOne API settings updated', 'info');
-        } catch (error) {
-            this.logger.error(`Failed to update API settings: ${error.message}`);
-            throw error;
-        }
+        // Update settings in settings manager
+        Object.entries(settings).forEach(([key, value]) => {
+            this.settingsManager.setSetting(key, value);
+        });
+        
+        // Update token manager with new settings
+        this.tokenManager.updateSettings(this.getCurrentSettings());
+        
+        // Clear any existing token to force refresh
+        this.clearToken();
     }
     
     /**
@@ -116,140 +127,137 @@ class PingOneAPI {
      * @returns {Promise<Object>} Response data
      */
     async apiRequest(method, endpoint, data = null, options = {}) {
+        const settings = this.getCurrentSettings();
+        
+        // For PingOne API calls, use the proxy endpoint
+        const isPingOneApi = endpoint.startsWith('/v1/');
+        const url = isPingOneApi ? `/api/proxy${endpoint}` : endpoint;
+        
+        // Prepare headers
+        const requestHeaders = {
+            'Accept': 'application/json',
+            ...options.headers
+        };
+        
+        // Add Authorization header for PingOne API calls
+        if (isPingOneApi) {
+            requestHeaders['Authorization'] = `Bearer ${await this.getAccessToken()}`;
+        }
+        
+        // Set content type based on the request
+        if (method !== 'GET' && method !== 'HEAD') {
+            if (endpoint.endsWith('/users') && method === 'POST') {
+                requestHeaders['Content-Type'] = 'application/vnd.pingidentity.user.import+json';
+            } else if (!requestHeaders['Content-Type']) {
+                requestHeaders['Content-Type'] = 'application/json';
+            }
+        }
+        
+        // Log the request details
+        console.log('=== API REQUEST ===');
+        console.log('Method:', method);
+        console.log('URL:', url);
+        console.log('Endpoint:', endpoint);
+        
+        const headers = {
+            'Authorization': `Bearer ${await this.getAccessToken()}`,
+            'Accept': 'application/json',
+            ...options.headers
+        };
+        
+        console.log('Headers:', JSON.stringify(headers, null, 2));
+        
+        let requestBody = null;
+        const requestContentType = headers['Content-Type'] || 'application/json';
+        
+        // Set Content-Type header based on the content type
+        headers['Content-Type'] = requestContentType;
+        
+        console.log('Request Content Type:', requestContentType);
+        
+        // For user import, format the request body
+        if (requestContentType === 'application/vnd.pingidentity.user.import+json') {
+            console.log('Processing user import request');
+            requestBody = JSON.stringify(data);
+            console.log('Request Body:', requestBody);
+        } else if (requestContentType === 'application/json') {
+            requestBody = JSON.stringify(data);
+            console.log('Request Body:', requestBody);
+        } else {
+            requestBody = data;
+            console.log('Request Body (raw):', requestBody);
+        }
+        
+        // Prepare fetch options with CORS mode
+        const fetchOptions = {
+            method,
+            headers: requestHeaders,
+            body: requestBody,
+            mode: 'cors',
+            credentials: 'omit' // Don't send cookies with CORS requests
+        };
+        
+        // For preflight requests, ensure the content type is set correctly
+        if (method === 'OPTIONS') {
+            fetchOptions.headers['Access-Control-Request-Method'] = method;
+            fetchOptions.headers['Access-Control-Request-Headers'] = 'authorization,content-type';
+        }
+        
+        // Make the request
         try {
-            const environmentId = this.settingsManager.getSetting('environmentId');
+            console.log('Sending request to proxy:', url);
+            const response = await fetch(url, fetchOptions);
             
-            if (!environmentId) {
-                throw new Error('Environment ID is not configured');
-            }
+            // Clone the response so we can read it multiple times if needed
+            const responseClone = response.clone();
             
-            // Add environment ID to the endpoint if it's not already there
-            let fullEndpoint = endpoint.startsWith(`/v1/environments/${environmentId}`) 
-                ? endpoint 
-                : `/v1/environments/${environmentId}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+            // Log response status
+            console.log('Response Status:', response.status, response.statusText);
             
-            // Use our server-side proxy
-            const url = `/api/pingone${fullEndpoint}`;
-            
-            // Log the request
-            this.logger.log(`API ${method} ${url}`, 'info');
-            
-            // Determine content type - use custom type if provided, otherwise default to application/json
-            const requestContentType = options.contentType || 'application/json';
-            
-            // Make the request to our proxy
-            const headers = {
-                'Accept': 'application/json',
-                ...options.headers
-            };
-            
-            // Prepare the request body
-            let requestBody = null;
-            if (data) {
-                // Set Content-Type header based on the content type
-                headers['Content-Type'] = requestContentType;
-                
-                // For user import, we need to send the exact JSON string without additional processing
-                if (requestContentType === 'application/vnd.pingone.import.users+json') {
-                    // Ensure we're sending the exact format PingOne expects
-                    requestBody = JSON.stringify({
-                        users: data.users || data
-                    });
-                } 
-                // For regular JSON requests, stringify the data
-                else if (requestContentType === 'application/json') {
-                    requestBody = JSON.stringify(data);
-                }
-                // For other content types, send as-is (e.g., FormData)
-                else {
-                    requestBody = data;
-                }
-            }
-            
-            // Log the request details for debugging
-            this.logger.log(`Sending ${method} request to ${url}`, 'debug', {
-                headers,
-                body: requestBody ? JSON.parse(requestBody) : null,
-                requestContentType
-            });
-            
-            const response = await fetch(url, {
-                method,
-                headers,
-                body: requestBody,
-                signal: options.signal,
-                credentials: 'same-origin'  // Include cookies for session management
-            });
-            
-            // Handle response
+            // Handle non-2xx responses
             if (!response.ok) {
-                let errorMessage = `API request failed with status ${response.status} (${response.statusText})`;
-                let errorDetails = null;
-                let responseText = '';
-                
+                let errorMessage = `Request failed with status ${response.status}`;
                 try {
-                    // First try to get the response as text
-                    responseText = await response.text();
-                    
-                    // Try to parse as JSON if possible
-                    if (responseText) {
-                        try {
-                            const errorData = JSON.parse(responseText);
-                            errorMessage = errorData.error || errorData.message || errorMessage;
-                            errorDetails = errorData;
-                            
-                            // For 400 Bad Request, include validation errors if available
-                            if (response.status === 400 && errorData.details) {
-                                errorMessage += ': ' + JSON.stringify(errorData.details);
-                            }
-                        } catch (e) {
-                            // If not JSON, use the raw text as the error message
-                            errorMessage += `: ${responseText}`;
-                        }
-                    }
+                    const errorData = await responseClone.json();
+                    console.error('Error response:', JSON.stringify(errorData, null, 2));
+                    errorMessage = errorData.detail || errorData.message || JSON.stringify(errorData);
                 } catch (e) {
-                    // If we can't get the response text, just use the status
-                    console.error('Error reading error response:', e);
+                    console.error('Failed to parse error response:', e);
+                    const text = await responseClone.text();
+                    console.error('Raw error response:', text);
+                    errorMessage = `${response.status} ${response.statusText}`;
                 }
                 
                 const error = new Error(errorMessage);
                 error.status = response.status;
-                error.details = errorDetails || responseText;
+                error.response = response;
                 throw error;
             }
             
-            // For successful responses, handle based on content type
-            const responseContentType = response.headers.get('content-type') || '';
+            // For 204 No Content responses, return null
+            if (response.status === 204) {
+                return null;
+            }
             
-            // For user import endpoint, we expect a JSON response
-            if (responseContentType.includes('application/json') || endpoint.includes('/users/import')) {
-                try {
-                    const responseData = await response.json();
-                    return responseData;
-                } catch (e) {
-                    // If we can't parse as JSON, try to get the text
-                    const text = await response.text().catch(() => '');
-                    console.error('Failed to parse JSON response:', e, 'Response text:', text);
-                    throw new Error(`Invalid JSON response: ${e.message}`);
-                }
-            } 
-            // For text responses
-            else if (contentType.includes('text/')) {
-                return await response.text();
-            }
-            // For empty responses
-            else if (response.status === 204) {
-                return {};
-            }
-            // For other content types, return as array buffer
-            return await response.arrayBuffer();
+            // Parse and return JSON response
+            const responseData = await response.json();
+            console.log('Response Data:', JSON.stringify(responseData, null, 2));
+            return responseData;
             
         } catch (error) {
-            this.logger.error(`API request failed: ${error.message}`, 'error');
+            console.error('API request failed:', error);
+            if (error.response) {
+                try {
+                    const errorData = await error.response.json();
+                    console.error('Error details:', errorData);
+                } catch (e) {
+                    console.error('Could not parse error response:', e);
+                }
+            }
             throw error;
         }
     }
-
+    
     /**
      * Get a list of users
      * @param {Object} [params] - Query parameters
@@ -313,24 +321,25 @@ class PingOneAPI {
      */
     async userExists(email) {
         try {
-            if (!email) return false;
-            
-            // Search for users with the given email
-            const response = await this.apiRequest('GET', `/users?filter=email eq \"${encodeURIComponent(email)}\"`);
-            
-            // If we found any users with this email, return true
-            return response._embedded && 
-                   response._embedded.users && 
-                   response._embedded.users.length > 0;
+            const users = await this.searchUsers({ email: { $eq: email } });
+            return users.length > 0;
         } catch (error) {
-            // If there's an error (e.g., 404), treat as user not found
-            if (error.status === 404) {
-                return false;
-            }
-            // For other errors, log and rethrow
-            this.logger.error(`Error checking if user exists (${email}): ${error.message}`);
+            this.logger.error(`Error checking if user exists (${email}):`, error);
             throw error;
         }
+    }
+
+    /**
+     * Helper to get field value case-insensitively
+     */
+    getField(obj, possibleNames, defaultValue = '') {
+        if (!obj) return defaultValue;
+        
+        const key = Object.keys(obj).find(k => 
+            possibleNames.map(n => n.toLowerCase()).includes(k.toLowerCase())
+        );
+        
+        return key ? obj[key] : defaultValue;
     }
 
     /**
@@ -338,73 +347,139 @@ class PingOneAPI {
      * @param {Array<Object>} users - Array of user objects to import
      * @param {Object} [options] - Import options
      * @param {boolean} [options.skipExisting=false] - Whether to skip users that already exist
+     * @param {boolean} [options.skipErrors=false] - Whether to continue on error
+     * @param {string} [options.populationId] - Population ID to assign users to
+     * @returns {Promise<Object>} Import results
+     */
+    /**
+     * Import multiple users into PingOne
+     * @param {Array<Object>} users - Array of user objects to import
+     * @param {Object} [options] - Import options
+     * @param {boolean} [options.skipExisting=false] - Whether to skip users that already exist
+     * @param {boolean} [options.continueOnError=false] - Whether to continue on error
+     * @param {string} [options.populationId] - Population ID to assign users to
      * @returns {Promise<Object>} Import results
      */
     async importUsers(users, options = {}, signal = null) {
-        try {
-            // Ensure we have an array of users
-            const userArray = Array.isArray(users) ? users : [users];
-            
-            // Get the population ID from options or use the default one
-            let populationId = options.populationId;
-            if (!populationId) {
-                this.logger.log('No population ID provided, fetching default population...', 'info');
-                populationId = await this.getDefaultPopulationId();
-                this.logger.log(`Using default population ID: ${populationId}`, 'info');
-            }
-            
-            // Format users according to PingOne API requirements
-            const formattedUsers = userArray.map(user => {
-                if (!user.email) {
-                    throw new Error('Email is required for user import');
-                }
-                
-                // Create a clean user object with only the fields we want to send
-                const formattedUser = {
-                    email: user.email,
-                    username: user.username || user.email.split('@')[0],
-                    name: {
-                        given: user.firstName || user.givenName || '',
-                        family: user.lastName || user.familyName || ''
-                    },
-                    population: {
-                        id: populationId
-                    },
-                    enabled: true
-                };
-                
-                // Add any additional fields that might be present
-                if (user.phone) formattedUser.phone = user.phone;
-                if (user.title) formattedUser.title = user.title;
-                if (user.locale) formattedUser.locale = user.locale;
-                
-                return formattedUser;
-            });
-            
-            // Format the request body according to PingOne API requirements
-            const requestBody = {
-                users: formattedUsers
-            };
-            
-            this.logger.log('Prepared user import request', 'debug', { userCount: formattedUsers.length });
-            
-            // Add query parameters for options
-            const queryParams = [];
-            if (options.updateExisting) {
-                queryParams.push('updateExisting=true');
-            }
-            
-            const queryString = queryParams.length > 0 ? `?${queryParams.join('&')}` : '';
-            
-            // Use the correct content type for user import
-            return this.apiRequest('POST', `/users/import${queryString}`, requestBody, {
-                ...(signal && { signal }),
-                contentType: 'application/vnd.pingone.import.users+json'
-            });
-        } catch (error) {
-            this.logger.error(`Error in importUsers: ${error.message}`, error);
-            throw error;
+        if (!users || !Array.isArray(users) || users.length === 0) {
+            throw new Error('No users provided for import');
         }
+
+        const results = [];
+        const populationId = options.populationId || await this.getDefaultPopulationId();
+        
+        if (!populationId) {
+            throw new Error('No population ID provided and no default population found');
+        }
+
+        this.logger.log(`Starting import of ${users.length} users to population ${populationId}`, 'info');
+
+        for (const [index, user] of users.entries()) {
+            try {
+                // Format user data according to PingOne API requirements
+                const userData = {
+                    name: {
+                        given: this.getField(user, ['firstName', 'givenName', 'firstname', 'first_name', 'first']) || '',
+                        family: this.getField(user, ['lastName', 'familyName', 'lastname', 'last_name', 'last']) || ''
+                    },
+                    email: this.getField(user, ['email', 'mail', 'Email', 'e-mail']),
+                    username: this.getField(user, ['username', 'userName', 'login', 'user']) || user.email,
+                    population: { id: populationId },
+                    password: {
+                        value: this.getField(user, ['password', 'pwd', 'pass']) || this.generateTemporaryPassword()
+                    },
+                    enabled: user.enabled !== false
+                };
+
+                // Add phone number if available
+                const phone = this.getField(user, ['phone', 'mobile', 'mobilePhone', 'phoneNumber']);
+                if (phone) {
+                    userData.phoneNumbers = [{
+                        type: 'mobile',
+                        value: phone
+                    }];
+                }
+
+                // Skip if user exists and skipExisting is true
+                if (options.skipExisting) {
+                    const exists = await this.userExists(userData.email);
+                    if (exists) {
+                        results.push({
+                            success: true,
+                            skipped: true,
+                            user: userData.email,
+                            message: 'User already exists'
+                        });
+                        continue;
+                    }
+                }
+
+                // Make the API request to create the user
+                const response = await this.apiRequest('POST', '/users', userData, {
+                    headers: {
+                        'Content-Type': 'application/vnd.pingidentity.user.import+json',
+                        'Accept': 'application/json'
+                    },
+                    signal
+                });
+
+                results.push({
+                    success: true,
+                    userId: response.id,
+                    email: userData.email,
+                    details: response
+                });
+
+            } catch (error) {
+                this.logger.error(`Error importing user at index ${index}:`, error);
+                
+                let errorMessage = error.message;
+                if (error.response) {
+                    try {
+                        const errorData = await error.response.json();
+                        errorMessage = errorData.detail || errorData.message || JSON.stringify(errorData);
+                    } catch (e) {
+                        errorMessage = `${error.response.status} ${error.response.statusText}`;
+                    }
+                }
+
+                results.push({
+                    success: false,
+                    email: user.email || `user_${index}`,
+                    error: errorMessage,
+                    details: error.response?.data || error
+                });
+
+                if (!options.continueOnError) {
+                    throw error;
+                }
+            }
+        }
+
+        const successful = results.filter(r => r.success);
+        const failed = results.filter(r => !r.success);
+        
+        return {
+            total: users.length,
+            successful: successful.length,
+            failed: failed.length,
+            skipped: results.filter(r => r.skipped).length,
+            results
+        };
+    }
+
+    /**
+     * Generate a secure random password
+     * @returns {string} A random password
+     * @private
+     */
+    generateTemporaryPassword() {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()';
+        let password = '';
+        for (let i = 0; i < 16; i++) {
+            password += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return password;
     }
 }
 

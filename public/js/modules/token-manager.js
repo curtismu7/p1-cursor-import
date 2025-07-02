@@ -8,14 +8,22 @@ class TokenManager {
      * @param {Object} settings - Settings object containing API credentials
      */
     constructor(logger, settings) {
-        this.logger = logger;
-        this.settings = settings;
+        this.logger = logger || console;
+        this.settings = settings || {};
         this.tokenCache = {
             accessToken: null,
             expiresAt: 0,
-            tokenType: null
+            tokenType: 'Bearer',
+            lastRefresh: 0
         };
         this.tokenExpiryBuffer = 5 * 60 * 1000; // 5 minutes buffer before token expiry
+        this.isRefreshing = false;
+        this.refreshQueue = [];
+        
+        // Bind methods
+        this.getAccessToken = this.getAccessToken.bind(this);
+        this._requestNewToken = this._requestNewToken.bind(this);
+        this._isTokenValid = this._isTokenValid.bind(this);
     }
 
     /**
@@ -29,8 +37,44 @@ class TokenManager {
             return this.tokenCache.accessToken;
         }
 
-        // If no valid token, request a new one
-        return this._requestNewToken();
+        // If a refresh is already in progress, queue this request
+        if (this.isRefreshing) {
+            return new Promise((resolve) => {
+                this.refreshQueue.push(resolve);
+            });
+        }
+
+        // Otherwise, request a new token
+        try {
+            this.isRefreshing = true;
+            const token = await this._requestNewToken();
+            
+            // Resolve all queued requests
+            while (this.refreshQueue.length > 0) {
+                const resolve = this.refreshQueue.shift();
+                resolve(token);
+            }
+            
+            return token;
+        } catch (error) {
+            // Clear token cache on error
+            this.tokenCache = {
+                accessToken: null,
+                expiresAt: 0,
+                tokenType: 'Bearer',
+                lastRefresh: 0
+            };
+            
+            // Reject all queued requests
+            while (this.refreshQueue.length > 0) {
+                const resolve = this.refreshQueue.shift();
+                resolve(Promise.reject(error));
+            }
+            
+            throw error;
+        } finally {
+            this.isRefreshing = false;
+        }
     }
 
     /**
@@ -41,7 +85,27 @@ class TokenManager {
     _isTokenValid() {
         const now = Date.now();
         return this.tokenCache.accessToken && 
-               this.tokenCache.expiresAt > (now + this.tokenExpiryBuffer);
+               this.tokenCache.expiresAt > (now + this.tokenExpiryBuffer) &&
+               // Ensure token isn't too old (max 1 hour)
+               (now - this.tokenCache.lastRefresh) < (60 * 60 * 1000);
+    }
+
+    /**
+     * Get the auth domain for a given region
+     * @private
+     */
+    _getAuthDomain(region) {
+        const authDomainMap = {
+            'NorthAmerica': 'auth.pingone.com',
+            'Europe': 'auth.eu.pingone.com',
+            'Canada': 'auth.ca.pingone.com',
+            'Asia': 'auth.apsoutheast.pingone.com',
+            'Australia': 'auth.aus.pingone.com',
+            'US': 'auth.pingone.com',
+            'EU': 'auth.eu.pingone.com',
+            'AP': 'auth.apsoutheast.pingone.com'
+        };
+        return authDomainMap[region] || 'auth.pingone.com';
     }
 
     /**
@@ -50,215 +114,138 @@ class TokenManager {
      * @private
      */
     async _requestNewToken() {
-        const startTime = Date.now();
-        const { apiClientId, apiSecret, environmentId } = this.settings;
+        const { apiClientId, apiSecret, environmentId, region = 'NorthAmerica' } = this.settings;
         const requestId = `req_${Math.random().toString(36).substr(2, 9)}`;
+        const startTime = Date.now();
         
-        // Log the environment for debugging
-        const envInfo = {
-            requestId,
-            hasClientId: !!apiClientId,
-            clientIdPrefix: apiClientId ? `${apiClientId.substring(0, 4)}...` : 'none',
-            hasSecret: !!apiSecret,
-            hasEnvId: !!environmentId,
-            envId: environmentId || 'none',
-            timestamp: new Date().toISOString()
-        };
-        
+        // Validate required settings
         if (!apiClientId || !apiSecret || !environmentId) {
             const error = new Error('Missing required API credentials in settings');
-            this.logger.error('Token request failed: Missing credentials', envInfo);
+            this.logger.error('Token request failed: Missing credentials', {
+                requestId,
+                hasClientId: !!apiClientId,
+                hasSecret: !!apiSecret,
+                hasEnvId: !!environmentId
+            });
             throw error;
         }
 
-        const tokenUrl = `https://auth.pingone.com/${environmentId}/as/token`;
-        
-        // Log token request details (without exposing full credentials)
-        this.logger.debug('Preparing token request', {
-            ...envInfo,
-            tokenUrl: tokenUrl,
-            requestMethod: 'POST',
-            hasAuthHeader: true,
-            hasContentType: true
-        });
-
-        let response;
-        let responseData;
-        const authString = btoa(`${apiClientId}:${apiSecret}`);
+        // Prepare request
+        const authDomain = this._getAuthDomain(region);
+        const tokenUrl = `https://${authDomain}/${environmentId}/as/token`;
+        const credentials = btoa(`${apiClientId}:${apiSecret}`);
         
         try {
-            // Make the request
-            const fetchStart = Date.now();
-            response = await fetch(tokenUrl, {
+            this.logger.debug('Requesting new access token from PingOne...', {
+                requestId,
+                authDomain,
+                environmentId,
+                region
+            });
+            
+            const response = await fetch(tokenUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
-                    'Authorization': `Basic ${authString}`,
-                    'Accept': 'application/json'
+                    'Authorization': `Basic ${credentials}`
                 },
                 body: 'grant_type=client_credentials',
-                credentials: 'omit' // Important for CORS
+                credentials: 'omit'
             });
 
-            const responseTime = Date.now() - fetchStart;
-            const totalTime = Date.now() - startTime;
+            const responseTime = Date.now() - startTime;
+            let responseData;
             
             try {
                 responseData = await response.json();
             } catch (e) {
                 const text = await response.text().catch(() => 'Failed to read response text');
-                this.logger.error('Failed to parse JSON response', {
-                    ...envInfo,
-                    status: response.status,
-                    statusText: response.statusText,
-                    responseText: text,
-                    error: e.toString()
-                });
-                throw new Error(`Invalid JSON response: ${e.message}`);
+                throw new Error(`Invalid JSON response: ${e.message}. Response: ${text}`);
             }
             
-            // Log response details
-            const logData = {
-                ...envInfo,
-                status: response.status,
-                statusTime: `${responseTime}ms`,
-                totalTime: `${totalTime}ms`,
-                hasResponseData: !!responseData,
-                hasAccessToken: !!(responseData && responseData.access_token)
-            };
-            
             if (!response.ok) {
+                const errorMsg = responseData.error_description || 
+                               responseData.error || 
+                               `HTTP ${response.status} ${response.statusText}`;
+                
                 this.logger.error('Token request failed', {
-                    ...logData,
+                    requestId,
+                    status: response.status,
                     error: responseData.error,
                     errorDescription: responseData.error_description,
-                    responseHeaders: Object.fromEntries(response.headers.entries())
+                    responseTime: `${responseTime}ms`,
+                    url: tokenUrl
                 });
-                
-                let errorMsg = responseData.error_description || 
-                              responseData.error || 
-                              `HTTP ${response.status} ${response.statusText}`;
-                
-                // Add more context to common errors
-                if (response.status === 401) {
-                    errorMsg = 'Authentication failed. Please check your API Client ID and Secret.';
-                } else if (response.status === 403) {
-                    errorMsg = 'Authorization failed. The provided credentials do not have sufficient permissions.';
-                } else if (response.status === 404) {
-                    errorMsg = 'Environment not found. Please check your Environment ID.';
-                }
                 
                 throw new Error(errorMsg);
             }
             
             if (!responseData.access_token) {
-                this.logger.error('No access token in response', {
-                    ...logData,
-                    responseData: responseData
-                });
                 throw new Error('No access token in response');
             }
             
-            // Log successful token acquisition (without logging the actual token)
-            this.logger.debug('Successfully obtained access token', {
-                ...logData,
-                tokenType: responseData.token_type,
-                expiresIn: responseData.expires_in,
-                scope: responseData.scope
-            });
-            
-            // Cache the token and return it
-            this._cacheToken(responseData);
-            return responseData.access_token;
-            
-        } catch (error) {
-            const errorInfo = {
-                ...envInfo,
-                error: error.toString(),
-                errorName: error.name,
-                errorMessage: error.message,
-                errorStack: error.stack,
-                isNetworkError: error instanceof TypeError && error.message.includes('fetch'),
-                timestamp: new Date().toISOString()
+            // Update token cache
+            const expiresInMs = (responseData.expires_in || 3600) * 1000;
+            this.tokenCache = {
+                accessToken: responseData.access_token,
+                expiresAt: Date.now() + expiresInMs,
+                tokenType: responseData.token_type || 'Bearer',
+                lastRefresh: Date.now()
             };
             
-            // Log network errors with more details
-            if (errorInfo.isNetworkError) {
-                this.logger.error('Network error while requesting token', errorInfo);
-                error.message = 'Network error. Please check your internet connection and CORS settings.';
-            } else {
-                this.logger.error('Failed to obtain access token', errorInfo);
-            }
+            this.logger.info('Successfully obtained new access token', {
+                requestId,
+                tokenType: this.tokenCache.tokenType,
+                expiresIn: Math.floor(expiresInMs / 1000) + 's',
+                responseTime: `${responseTime}ms`
+            });
             
-            // Re-throw with a more user-friendly message if needed
-            if (error.message.includes('Failed to fetch')) {
-                error.message = 'Failed to connect to PingOne. This might be due to network issues, CORS restrictions, or an invalid environment URL.';
-            }
+            return this.tokenCache.accessToken;
+            
+        } catch (error) {
+            this.logger.error('Error getting access token', {
+                requestId,
+                error: error.toString(),
+                message: error.message,
+                url: tokenUrl,
+                responseTime: `${Date.now() - startTime}ms`
+            });
+            
+            // Clear token cache on error
+            this.tokenCache = {
+                accessToken: null,
+                expiresAt: 0,
+                tokenType: 'Bearer',
+                lastRefresh: 0
+            };
             
             throw error;
         }
     }
-
+    
     /**
-     * Cache the token and calculate expiry time
-     * @param {Object} tokenData - Token data from PingOne
-     * @private
-     */
-    _cacheToken(tokenData) {
-        const now = Date.now();
-        const expiresInMs = (tokenData.expires_in || 3600) * 1000; // Default to 1 hour if not provided
-        const tokenLifetimeMs = Math.min(expiresInMs, 55 * 60 * 1000); // Cap at 55 minutes
-        
-        this.tokenCache = {
-            accessToken: tokenData.access_token,
-            tokenType: tokenData.token_type || 'Bearer',
-            expiresAt: now + tokenLifetimeMs
-        };
-
-        this.logger.debug('Token cached', {
-            tokenType: this.tokenCache.tokenType,
-            expiresAt: new Date(this.tokenCache.expiresAt).toISOString(),
-            lifetimeMinutes: Math.round(tokenLifetimeMs / 60000),
-            tokenPreview: this.tokenCache.accessToken 
-                ? `${this.tokenCache.accessToken.substring(0, 10)}...` 
-                : 'empty'
-        });
-    }
-
-    /**
-     * Update the settings used for token requests
-     * @param {Object} newSettings - New settings to use
+     * Update settings and clear token cache if credentials changed
+     * @param {Object} newSettings - New settings object
      */
     updateSettings(newSettings) {
-        if (!newSettings || typeof newSettings !== 'object') {
-            this.logger.warn('Invalid settings provided to updateSettings');
-            return;
-        }
+        const credentialsChanged = 
+            newSettings.apiClientId !== this.settings.apiClientId ||
+            newSettings.apiSecret !== this.settings.apiSecret ||
+            newSettings.environmentId !== this.settings.environmentId ||
+            newSettings.region !== this.settings.region;
         
-        // Only update if settings have actually changed
-        const settingsChanged = Object.keys(newSettings).some(
-            key => this.settings[key] !== newSettings[key]
-        );
+        this.settings = { ...this.settings, ...newSettings };
         
-        if (settingsChanged) {
-            this.logger.debug('Updating token manager settings');
-            this.settings = { ...this.settings, ...newSettings };
-            // Clear any cached token since settings changed
-            this.clearToken();
+        if (credentialsChanged) {
+            this.logger.debug('API credentials changed, clearing token cache');
+            this.tokenCache = {
+                accessToken: null,
+                expiresAt: 0,
+                tokenType: 'Bearer',
+                lastRefresh: 0
+            };
         }
-    }
-
-    /**
-     * Clear the cached token
-     */
-    clearToken() {
-        this.tokenCache = {
-            accessToken: null,
-            expiresAt: 0,
-            tokenType: null
-        };
-        this.logger.debug('Cleared cached token');
     }
 }
 
-module.exports = TokenManager;
+export default TokenManager;

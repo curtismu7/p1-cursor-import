@@ -127,6 +127,83 @@ To use this application, you'll need:
    - `users:create`
    - `users:update`
 
+---
+
+## API Endpoints: Settings & Logs
+
+### Settings API (`/api/settings`)
+
+- **GET `/api/settings`**
+  - Returns the current settings (from `data/settings.json` or defaults).
+  - **Response:**
+    ```json
+    {
+      "success": true,
+      "data": {
+        "environmentId": "...",
+        "apiClientId": "...",
+        "populationId": "...",
+        "region": "NorthAmerica"
+      }
+    }
+    ```
+
+- **POST `/api/settings`**
+  - Updates the settings. Requires JSON body with at least `environmentId` and `apiClientId`.
+  - If `region` is missing, defaults to `NorthAmerica`. If `apiSecret` is omitted but exists, it is preserved.
+  - **Request Body Example:**
+    ```json
+    {
+      "environmentId": "env-123",
+      "apiClientId": "client-abc",
+      "apiSecret": "supersecret",
+      "populationId": "pop-xyz",
+      "region": "Europe"
+    }
+    ```
+  - **Response:**
+    ```json
+    {
+      "success": true,
+      "message": "Settings saved successfully",
+      "data": {
+        "environmentId": "env-123",
+        "apiClientId": "client-abc",
+        "populationId": "pop-xyz",
+        "region": "Europe"
+      }
+    }
+    ```
+
+---
+
+### Logs API (`/api/logs`)
+
+- **POST `/api/logs/ui`**
+  - Adds a UI log entry (kept in memory).
+  - **Body:** `{ "level": "info", "message": "...", "data": { ... } }`
+  - **Response:** `{ "success": true, "message": "UI log entry created", "id": "..." }`
+
+- **GET `/api/logs/ui`**
+  - Returns recent UI logs from memory.
+  - Query params: `limit`, `level`
+  - **Response:** `{ "success": true, "count": 1, "total": 1, "logs": [ ... ] }`
+
+- **POST `/api/logs/disk`**
+  - Appends a log entry to disk (`logs/client.log`).
+  - **Body:** `{ "level": "info", "message": "...", "data": { ... } }`
+  - **Response:** `{ "success": true, "message": "Disk log entry created", "id": "..." }`
+
+- **GET `/api/logs/disk`**
+  - Reads logs from disk.
+  - Query params: `limit`, `level`
+  - **Response:** `{ "success": true, "count": 1, "total": 1, "logs": [ ... ] }`
+
+- **Legacy Endpoints**
+  - `/api/logs/` (GET/POST): For backward compatibility, proxies to `/api/logs/disk`.
+
+---
+
 ## Security
 
 - API credentials are stored in the browser's localStorage (encrypted in modern browsers)

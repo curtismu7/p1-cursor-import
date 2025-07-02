@@ -1,22 +1,33 @@
-const fs = require('fs');
-const path = require('path');
+import { existsSync, readFileSync } from 'fs';
+import { dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
 
-function loadEnv() {
-  const envPath = path.resolve(__dirname, '../../.env');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+export function loadEnv() {
+  const envPath = resolve(__dirname, '../../.env');
   
-  if (fs.existsSync(envPath)) {
-    const envFile = fs.readFileSync(envPath, 'utf-8');
+  if (existsSync(envPath)) {
+    const envFile = readFileSync(envPath, 'utf-8');
     const envVars = envFile.split('\n').reduce((acc, line) => {
+      // Skip comments and empty lines
+      if (line.startsWith('#') || !line.trim()) {
+        return acc;
+      }
+      
       const [key, ...value] = line.split('=');
       if (key && value) {
-        acc[key] = value.join('=').trim();
+        // Remove surrounding quotes if present
+        const cleanValue = value.join('=').trim().replace(/^['"]|['"]$/g, '');
+        acc[key] = cleanValue;
       }
       return acc;
     }, {});
     
-    // Set environment variables
+    // Set environment variables if they don't already exist
     Object.entries(envVars).forEach(([key, value]) => {
-      if (!process.env[key]) {
+      if (key && !process.env[key]) {
         process.env[key] = value;
       }
     });

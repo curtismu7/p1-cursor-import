@@ -1,4 +1,4 @@
-class VersionManager {
+export class VersionManager {
     constructor() {
         this.version = '1.1.2'; // Update this with each new version
         console.log(`Version Manager initialized with version ${this.version}`);
@@ -64,4 +64,4 @@ class VersionManager {
     }
 }
 
-module.exports = VersionManager;
+// ES Module export

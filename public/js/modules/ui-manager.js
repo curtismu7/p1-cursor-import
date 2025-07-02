@@ -1,23 +1,126 @@
-class UIManager {
+export class UIManager {
     constructor(logger) {
         this.logger = logger;
         this.currentView = 'import';
-        
         // Initialize UI elements
         this.views = {
             'import': document.getElementById('import-view'),
             'settings': document.getElementById('settings-view'),
             'logs': document.getElementById('logs-view')
         };
-        
         // Navigation elements
         this.navItems = document.querySelectorAll('.nav-item');
-        
         // Logs view elements
         this.logsView = this.views.logs;
-        
         // Connection status element
         this.connectionStatusElement = document.getElementById('connection-status');
+
+        // Attach navigation click listeners
+        this.navItems.forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                const view = item.getAttribute('data-view');
+                if (view) {
+                    this.showView(view);
+                }
+            });
+        });
+    }
+
+    /**
+     * Switch between different views
+     * @param {string} viewName - The name of the view to switch to ('import', 'settings', 'logs')
+     */
+    /**
+     * Show a specific view (alias for switchView with async/await support)
+     * @param {string} viewName - The name of the view to show
+     * @returns {Promise<boolean>} True if view was shown successfully
+     * @throws {Error} If view is not found
+     */
+    async showView(viewName) {
+        // Hide all views and remove 'active'
+        Object.entries(this.views).forEach(([name, element]) => {
+            if (element) {
+                element.style.display = 'none';
+                element.classList.remove('active');
+            }
+            const navItem = document.querySelector(`[data-view="${name}"]`);
+            if (navItem) navItem.classList.remove('active');
+        });
+        // Show the selected view
+        const viewElement = this.views[viewName];
+        if (viewElement) {
+            viewElement.style.display = 'block';
+            viewElement.classList.add('active');
+            this.currentView = viewName;
+            const navItem = document.querySelector(`[data-view="${viewName}"]`);
+            if (navItem) navItem.classList.add('active');
+            // Special handling for logs/settings
+            switch(viewName) {
+                case 'logs':
+                    await this.loadAndDisplayLogs();
+                    this.scrollLogsToBottom();
+                    break;
+                case 'settings':
+                    // Load settings when the settings view is shown
+                    if (window.app && typeof window.app.checkSettingsAndRestore === 'function') {
+                        window.app.checkSettingsAndRestore();
+                    }
+                    const currentStatus = this.connectionStatusElement?.classList.contains('status-connected') ? 'connected' : 'disconnected';
+                    const currentMessage = this.connectionStatusElement?.querySelector('.status-message')?.textContent || '';
+                    this.updateSettingsConnectionStatus(currentStatus, currentMessage);
+                    break;
+            }
+            return true;
+        } else {
+            console.warn(`View '${viewName}' not found`);
+            return false;
+        }
+    }
+    
+    /**
+     * Switch between different views
+     * @param {string} viewName - The name of the view to switch to ('import', 'settings', 'logs')
+     */
+    switchView(viewName) {
+        // Convert view name to lowercase for case-insensitive comparison
+        const normalizedViewName = viewName.toLowerCase();
+        const viewElement = this.views[normalizedViewName];
+        
+        if (!viewElement) {
+            console.error(`View '${viewName}' not found`);
+            throw new Error(`View '${viewName}' not found`);
+        }
+
+        // Hide all views
+        Object.entries(this.views).forEach(([name, element]) => {
+            if (element) {
+                element.style.display = 'none';
+                element.classList.remove('active');
+            }
+            // Update nav items
+            const navItem = document.querySelector(`[data-view="${name}"]`);
+            if (navItem) {
+                navItem.classList.remove('active');
+            }
+        });
+
+        // Show the selected view
+        viewElement.style.display = 'block';
+        viewElement.classList.add('active');
+        this.currentView = normalizedViewName;
+
+        // Update active state of nav item
+        const activeNavItem = document.querySelector(`[data-view="${normalizedViewName}"]`);
+        if (activeNavItem) {
+            activeNavItem.classList.add('active');
+        }
+        // Save current view to localStorage for persistence
+        try {
+            localStorage.setItem('currentView', normalizedViewName);
+        } catch (e) {}
+        this.logger.debug(`Switched to ${viewName} view`);
+        return true;
     }
 
     /**
@@ -73,37 +176,90 @@ class UIManager {
             return;
         }
         
-        // Clear existing classes
+        // Clear existing classes and reset styles
         element.className = 'connection-status';
+        element.style.display = 'flex';
+        element.style.alignItems = 'center';
+        element.style.padding = '10px 15px';
+        element.style.borderRadius = '4px';
+        element.style.margin = '10px 0';
+        element.style.fontWeight = '500';
+        element.style.transition = 'all 0.3s ease';
         
-        // Add status class
-        element.classList.add(`status-${status}`);
-        
-        // Add icon based on status
+        // Set styles based on status
         let icon = '';
         switch(status) {
             case 'connected':
+                element.style.backgroundColor = '#e6f7e6';
+                element.style.color = '#2e7d32';
+                element.style.border = '1px solid #a5d6a7';
                 icon = '✓';
                 break;
             case 'error':
-                icon = '⚠️';
+                element.style.backgroundColor = '#ffebee';
+                element.style.color = '#c62828';
+                element.style.border = '1px solid #ef9a9a';
+                icon = '!';
+                break;
+            case 'connecting':
+                element.style.backgroundColor = '#e3f2fd';
+                element.style.color = '#1565c0';
+                element.style.border = '1px solid #90caf9';
+                icon = '↻';
+                // Add spinning animation
+                const style = document.createElement('style');
+                style.id = 'spin-animation';
+                style.textContent = `
+                    @keyframes spin {
+                        0% { transform: rotate(0deg); }
+                        100% { transform: rotate(360deg); }
+                    }
+                    .spinning {
+                        display: inline-block;
+                        animation: spin 1s linear infinite;
+                    }
+                `;
+                if (!document.getElementById('spin-animation')) {
+                    document.head.appendChild(style);
+                }
                 break;
             case 'disconnected':
             default:
-                icon = '⚠️';
+                element.style.backgroundColor = '#f5f5f5';
+                element.style.color = '#424242';
+                element.style.border = '1px solid #e0e0e0';
+                icon = '!';
         }
         
-        // Update with icon and message
-        element.innerHTML = `<span class="status-icon">${icon}</span> <span class="status-message">${message}</span>`;
+        // Create status icon
+        const iconSpan = document.createElement('span');
+        iconSpan.className = 'status-icon';
+        iconSpan.textContent = icon;
+        iconSpan.style.marginRight = '8px';
+        iconSpan.style.fontWeight = 'bold';
         
-        // Show the status element
-        element.style.display = 'flex';
+        if (status === 'connecting') {
+            iconSpan.classList.add('spinning');
+        }
+        
+        // Create message span
+        const messageSpan = document.createElement('span');
+        messageSpan.className = 'status-message';
+        messageSpan.textContent = message;
+        
+        // Clear and update the element
+        element.innerHTML = '';
+        element.appendChild(iconSpan);
+        element.appendChild(messageSpan);
         
         // If connected and auto-hide is enabled, hide after 5 seconds
         if (status === 'connected' && autoHide) {
             setTimeout(() => {
                 if (element) {
-                    element.style.display = 'none';
+                    element.style.opacity = '0';
+                    setTimeout(() => {
+                        if (element) element.style.display = 'none';
+                    }, 300);
                 }
             }, 5000);
         }
@@ -113,48 +269,13 @@ class UIManager {
      * Switch to the specified view
      * @param {string} viewName - Name of the view to show ('import', 'settings', 'logs')
      */
-    async showView(viewName) {
-        console.log(`Switching to view: ${viewName}`);
-        
-        // Hide all views
-        Object.values(this.views).forEach(view => {
-            if (view) view.classList.remove('active');
-        });
-        
-        // Deactivate all nav items
-        this.navItems.forEach(item => {
-            if (item) item.classList.remove('active');
-        });
-        
-        // Show the selected view
-        if (this.views[viewName]) {
-            this.views[viewName].classList.add('active');
-            this.currentView = viewName;
-            
-            // Activate the corresponding nav item
-            const navItem = document.querySelector(`[data-view="${viewName}"]`);
-            if (navItem) {
-                navItem.classList.add('active');
-            }
-            
-            // Special handling for specific views
-            switch(viewName) {
-                case 'logs':
-                    this.scrollLogsToBottom();
-                    await this.loadAndDisplayLogs();
-                    break;
-                case 'settings':
-                    // Update settings connection status when switching to settings view
-                    const currentStatus = this.connectionStatusElement?.classList.contains('status-connected') ? 'connected' : 'disconnected';
-                    const currentMessage = this.connectionStatusElement?.querySelector('.status-message')?.textContent || '';
-                    this.updateSettingsConnectionStatus(currentStatus, currentMessage);
-                    break;
-            }
-            
-            return true;
-        } else {
-            console.warn(`View '${viewName}' not found`);
-            return false;
+    /**
+     * Scroll the logs container to the bottom
+     */
+    scrollLogsToBottom() {
+        if (this.logsView) {
+            const logsContainer = this.logsView.querySelector('.logs-container') || this.logsView;
+            logsContainer.scrollTop = logsContainer.scrollHeight;
         }
     }
 
@@ -167,77 +288,138 @@ class UIManager {
             return;
         }
 
+        // Safe logging function
+        const safeLog = (message, level = 'log', data = null) => {
+            try {
+                if (this.logger) {
+                    if (typeof this.logger[level] === 'function') {
+                        this.logger[level](message, data);
+                        return;
+                    } else if (typeof this.logger.log === 'function') {
+                        this.logger.log(message, level, data);
+                        return;
+                    }
+                }
+                // Fallback to console
+                if (console[level]) {
+                    console[level](message, data);
+                } else {
+                    console.log(`[${level.toUpperCase()}]`, message, data);
+                }
+            } catch (logError) {
+                console.error('Error in safeLog:', logError);
+            }
+        };
+
+        // Get or create log entries container
+        let logEntries = this.logsView.querySelector('.log-entries');
+        if (!logEntries) {
+            logEntries = document.createElement('div');
+            logEntries.className = 'log-entries';
+            this.logsView.appendChild(logEntries);
+        }
+
         // Show loading indicator
         const loadingElement = document.createElement('div');
         loadingElement.id = 'logs-loading';
         loadingElement.textContent = 'Loading logs...';
         loadingElement.style.padding = '1rem';
         loadingElement.style.textAlign = 'center';
-        loadingElement.style.color = '#';
+        loadingElement.style.color = '#666';
         
-        const logEntries = this.logsView.querySelector('.log-entries');
-        if (logEntries) {
-            logEntries.innerHTML = '';
-            logEntries.appendChild(loadingElement);
-        }
+        // Clear existing content and show loading
+        logEntries.innerHTML = '';
+        logEntries.appendChild(loadingElement);
         
         try {
             // Fetch logs from the UI logs endpoint
+            safeLog('Fetching logs from /api/logs/ui...', 'debug');
             const response = await fetch('/api/logs/ui?limit=200');
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             
             const responseData = await response.json();
-            console.log('UI logs response:', {
-                success: responseData.success,
-                count: responseData.count,
-                total: responseData.total
-            });
+            safeLog('Received logs from server', 'debug', { count: responseData.logs?.length });
             
-            // Process logs
-            if (this.logger) {
-                this.logger.clearLogs();
-                
-                if (responseData.success === true && Array.isArray(responseData.logs)) {
-                    // Process logs in reverse chronological order
-                    const logsToProcess = [...responseData.logs].reverse();
-                    logsToProcess.forEach((log, index) => {
-                        try {
-                            if (log && typeof log === 'object') {
-                                this.logger._log(
-                                    String(log.level || 'info').toLowerCase(),
-                                    String(log.message || 'No message'),
-                                    typeof log.data === 'object' ? log.data : {}
-                                );
-                            } else {
-                                console.warn(`Skipping invalid log entry at index ${index}:`, log);
-                            }
-                        } catch (logError) {
-                            console.error(`Error processing log entry at index ${index}:`, logError);
-                        }
-                    });
-                } else {
-                    console.warn('No valid log entries found in response');
+            // Clear any existing logs in the UI
+            logEntries.innerHTML = '';
+            
+            if (responseData.success === true && Array.isArray(responseData.logs)) {
+                if (responseData.logs.length === 0) {
+                    const noLogsElement = document.createElement('div');
+                    noLogsElement.className = 'log-entry info';
+                    noLogsElement.textContent = 'No logs available';
+                    logEntries.appendChild(noLogsElement);
+                    return;
                 }
+                
+                // Process logs in reverse chronological order (newest first)
+                const logsToProcess = [...responseData.logs].reverse();
+                
+                logsToProcess.forEach((log, index) => {
+                    try {
+                        if (log && typeof log === 'object') {
+                            const logElement = document.createElement('div');
+                            const logLevel = (log.level || 'info').toLowerCase();
+                            logElement.className = `log-entry log-${logLevel}`;
+                            
+                            const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+                            const level = log.level ? log.level.toUpperCase() : 'INFO';
+                            const message = log.message || 'No message';
+                            
+                            logElement.innerHTML = `
+                                <span class="log-timestamp">[${timestamp}]</span>
+                                <span class="log-level">${level}</span>
+                                <span class="log-message">${message}</span>
+                            `;
+                            
+                            // Add data if present
+                            if (log.data && Object.keys(log.data).length > 0) {
+                                const dataElement = document.createElement('pre');
+                                dataElement.className = 'log-data';
+                                dataElement.textContent = JSON.stringify(log.data, null, 2);
+                                logElement.appendChild(dataElement);
+                            }
+                            
+                            logEntries.appendChild(logElement);
+                        } else {
+                            safeLog(`Skipping invalid log entry at index ${index}`, 'warn', log);
+                        }
+                    } catch (logError) {
+                        safeLog(`Error processing log entry at index ${index}: ${logError.message}`, 'error', { error: logError });
+                    }
+                });
+                
+                // Scroll to bottom after adding logs
+                this.scrollLogsToBottom();
+            } else {
+                safeLog('No valid log entries found in response', 'warn');
+                const noLogsElement = document.createElement('div');
+                noLogsElement.className = 'log-entry info';
+                noLogsElement.textContent = 'No logs available';
+                logEntries.appendChild(noLogsElement);
             }
         } catch (error) {
-            console.error('Error fetching logs:', error);
+            safeLog(`Error fetching logs: ${error.message}`, 'error', { 
+                error: {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack
+                }
+            });
             
             // Show error message in the UI
             const errorElement = document.createElement('div');
             errorElement.className = 'log-entry error';
             errorElement.textContent = `Error loading logs: ${error.message}`;
-            
-            if (logEntries) {
-                logEntries.innerHTML = '';
-                logEntries.appendChild(errorElement);
-            }
+            logEntries.innerHTML = '';
+            logEntries.appendChild(errorElement);
         } finally {
             // Remove loading indicator
             const loadingElement = document.getElementById('logs-loading');
-            if (loadingElement) {
-                loadingElement.remove();
+            if (loadingElement && loadingElement.parentNode === logEntries) {
+                logEntries.removeChild(loadingElement);
             }
         }
     }
@@ -363,9 +545,46 @@ class UIManager {
      * @param {string} type - The type of notification ('success', 'warning', 'error')
      */
     showNotification(message, type = 'info') {
-        // Implementation for showing notifications
         console.log(`[${type}] ${message}`);
-        // You can add actual UI notification logic here
+        
+        // Get or create notification container
+        let notificationArea = document.getElementById('notification-area');
+        if (!notificationArea) {
+            console.warn('Notification area not found in the DOM');
+            return;
+        }
+        
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.innerHTML = `
+            <div class="notification-content">
+                <span class="notification-message">${message}</span>
+                <button class="notification-close">&times;</button>
+            </div>
+        `;
+        
+        // Add close button handler
+        const closeButton = notification.querySelector('.notification-close');
+        if (closeButton) {
+            closeButton.addEventListener('click', () => {
+                notification.classList.add('fade-out');
+                setTimeout(() => notification.remove(), 300);
+            });
+        }
+        
+        // Add to notification area
+        notificationArea.appendChild(notification);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.classList.add('fade-out');
+                setTimeout(() => notification.remove(), 300);
+            }
+        }, 5000);
+        
+        return notification;
     }
     
     /**
@@ -502,7 +721,165 @@ class UIManager {
             return 'import';
         }
     }
+    
+    /**
+     * Load and display logs in the logs view
+     */
+    async loadAndDisplayLogs() {
+        const logsView = document.getElementById('logs-view');
+        if (!logsView) {
+            console.error('Logs view element not found');
+            return;
+        }
+        
+        // Show loading indicator
+        let loadingElement = document.getElementById('logs-loading');
+        if (!loadingElement) {
+            loadingElement = document.createElement('div');
+            loadingElement.id = 'logs-loading';
+            loadingElement.textContent = 'Loading logs...';
+            logsView.appendChild(loadingElement);
+        } else {
+            loadingElement.textContent = 'Loading logs...';
+            loadingElement.style.display = 'block';
+        }
+        
+        // Clear existing logs
+        let logEntriesContainer = logsView.querySelector('.log-entries');
+        if (!logEntriesContainer) {
+            logEntriesContainer = document.createElement('div');
+            logEntriesContainer.className = 'log-entries';
+            logsView.appendChild(logEntriesContainer);
+        } else {
+            logEntriesContainer.innerHTML = '';
+        }
+        
+        try {
+            const response = await fetch('/api/logs/ui?limit=200');
+            const data = await response.json();
+            
+            if (data.success && Array.isArray(data.logs)) {
+                // Hide loading indicator
+                loadingElement.style.display = 'none';
+                
+                // Process and display logs
+                data.logs.forEach(log => {
+                    if (!log) {
+                        console.warn('Skipping null log entry');
+                        return;
+                    }
+                    
+                    // Create log entry element
+                    const logEntry = document.createElement('div');
+                    logEntry.className = `log-entry log-${log.level || 'info'}`;
+                    
+                    // Format the log message
+                    const timestamp = log.timestamp ? new Date(log.timestamp).toISOString() : new Date().toISOString();
+                    const level = (log.level || 'info').toUpperCase();
+                    const message = log.message || '';
+                    const meta = log.meta ? ' ' + JSON.stringify(log.meta) : '';
+                    
+                    logEntry.textContent = `[${timestamp}] ${level}: ${message}${meta}`;
+                    
+                    // Append to container
+                    logEntriesContainer.appendChild(logEntry);
+                    
+                    // Log the entry using the logger (for testing purposes)
+                    if (this.logger && typeof this.logger._log === 'function') {
+                        this.logger._log(log.level || 'info', log.message || '', log.meta || {});
+                    }
+                });
+                
+                // Scroll to bottom
+                logEntriesContainer.scrollTop = logEntriesContainer.scrollHeight;
+            } else {
+                const errorMsg = data.error || 'Failed to load logs';
+                logEntriesContainer.innerHTML = `<div class="error">${errorMsg}</div>`;
+                console.error('Failed to load logs:', errorMsg);
+                
+                if (this.logger && typeof this.logger.error === 'function') {
+                    this.logger.error('Failed to load logs:', errorMsg);
+                }
+            }
+        } catch (error) {
+            const errorMsg = error.message || 'Error loading logs';
+            logEntriesContainer.innerHTML = `<div class="error">${errorMsg}</div>`;
+            console.error('Error loading logs:', error);
+            
+            if (this.logger && typeof this.logger.error === 'function') {
+                this.logger.error('Error loading logs:', error);
+            }
+        } finally {
+            // Ensure loading indicator is hidden
+            if (loadingElement) {
+                loadingElement.style.display = 'none';
+            }
+        }
+    }
+    
+    /**
+     * Add a form with submission handling
+     * @param {string} formId - The ID of the form element
+     * @param {string} action - The URL to submit the form to
+     * @param {Function} onSuccess - Callback for successful submission
+     * @param {Function} onError - Callback for submission error
+     */
+    addForm(formId, action, onSuccess, onError) {
+        const form = document.getElementById(formId);
+        if (!form) {
+            console.error(`Form with ID '${formId}' not found`);
+            return;
+        }
+        
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            
+            const formData = new FormData(form);
+            const formDataObj = {};
+            formData.forEach((value, key) => {
+                formDataObj[key] = value;
+            });
+            
+            try {
+                const response = await fetch(action, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formDataObj),
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Form submission failed');
+                }
+                
+                if (typeof onSuccess === 'function') {
+                    onSuccess(data);
+                }
+            } catch (error) {
+                console.error('Form submission error:', error);
+                if (typeof onError === 'function') {
+                    onError({ error: error.message });
+                }
+            }
+        });
+    }
+    
+    /**
+     * Update the content of an element
+     * @param {string} elementId - The ID of the element to update
+     * @param {string} content - The new content to set
+     */
+    updateElementContent(elementId, content) {
+        const element = document.getElementById(elementId);
+        if (element) {
+            element.textContent = content;
+        } else {
+            console.error(`Element with ID ${elementId} not found`);
+        }
+    }
 }
 
-// Export the UIManager class as a named export
-module.exports = { UIManager };
+// No need for module.exports with ES modules

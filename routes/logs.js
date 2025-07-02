@@ -1,7 +1,11 @@
-const express = require('express');
-const fs = require('fs').promises;
-const path = require('path');
-const { v4: uuidv4 } = require('uuid');
+import express from 'express';
+import { promises as fs } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { v4 as uuidv4 } from 'uuid';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 const join = path.join;
@@ -241,4 +245,4 @@ router.get('/', (req, res) => {
     return router.handle({ ...req, url: '/api/logs/disk', method: 'GET' }, res);
 });
 
-module.exports = router;
+export default router;

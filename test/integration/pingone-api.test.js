@@ -1,5 +1,6 @@
-const fetch = require('node-fetch');
-const { loadEnv } = require('../helpers/loadEnv');
+import fetch from 'node-fetch';
+import { loadEnv } from '../helpers/loadEnv.js';
+import { jest } from '@jest/globals';
 
 // Load environment variables from .env file
 loadEnv();

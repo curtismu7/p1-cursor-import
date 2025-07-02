@@ -1,4 +1,4 @@
-const fetch = require('node-fetch');
+import fetch from 'node-fetch';
 
 class TokenManager {
     constructor(logger) {
@@ -12,8 +12,9 @@ class TokenManager {
      * @returns {Promise<string>} Access token
      */
     async getAccessToken() {
-        // Return cached token if it's still valid
-        if (this.token && this.tokenExpiry > Date.now() + 60000) {
+        // Return cached token if it's still valid (with 5 minute buffer)
+        const bufferTime = 5 * 60 * 1000; // 5 minutes in milliseconds
+        if (this.token && this.tokenExpiry && (this.tokenExpiry - bufferTime) > Date.now()) {
             return this.token;
         }
 
@@ -69,9 +70,13 @@ class TokenManager {
 
             const data = await response.json();
             
-            // Cache the token
+            // Cache the token with expiry time (subtract 5 minutes as buffer)
+            const expiresInMs = (data.expires_in || 3600) * 1000; // Default to 1 hour if not specified
             this.token = data.access_token;
-            this.tokenExpiry = Date.now() + (data.expires_in * 1000);
+            this.tokenExpiry = Date.now() + expiresInMs;
+            
+            // Log token details for debugging
+            this.logger.info(`New token obtained, expires in ${Math.floor(expiresInMs / 1000 / 60)} minutes`);
             
             this.logger.info('Successfully obtained new access token');
             return this.token;
@@ -108,5 +113,4 @@ class TokenManager {
     }
 }
 
-// CommonJS export
-module.exports = { TokenManager };
+export default TokenManager;
