@@ -30,26 +30,49 @@ export class PingOneClient {
      * @returns {string|null} Cached token or null if not available or expired
      */
     getCachedToken() {
-        if (typeof localStorage === 'undefined') {
+        try {
+            // Check if localStorage is available
+            if (typeof localStorage === 'undefined' || typeof window === 'undefined') {
+                return null;
+            }
+            
+            // Check if localStorage is accessible (it might be disabled in private browsing)
+            const testKey = 'pingone_test_key';
+            try {
+                localStorage.setItem(testKey, testKey);
+                localStorage.removeItem(testKey);
+            } catch (e) {
+                console.warn('localStorage is not available:', e.message);
+                return null;
+            }
+            
+            const token = localStorage.getItem('pingone_worker_token');
+            const expiry = localStorage.getItem('pingone_token_expiry');
+            
+            if (!token || !expiry) {
+                return null;
+            }
+            
+            const expiryTime = parseInt(expiry, 10);
+            
+            // Check if expiryTime is a valid number
+            if (isNaN(expiryTime)) {
+                console.warn('Invalid token expiry time');
+                return null;
+            }
+            
+            const now = Date.now();
+            
+            // If token is expired or will expire in the next 5 minutes, return null
+            if (now >= expiryTime - (5 * 60 * 1000)) {
+                return null;
+            }
+            
+            return token;
+        } catch (error) {
+            console.error('Error accessing token cache:', error);
             return null;
         }
-        
-        const token = localStorage.getItem('pingone_worker_token');
-        const expiry = localStorage.getItem('pingone_token_expiry');
-        
-        if (!token || !expiry) {
-            return null;
-        }
-        
-        const expiryTime = parseInt(expiry, 10);
-        const now = Date.now();
-        
-        // If token is expired or will expire in the next 5 minutes, return null
-        if (now >= expiryTime - (5 * 60 * 1000)) {
-            return null;
-        }
-        
-        return token;
     }
     
     /**
@@ -87,10 +110,20 @@ export class PingOneClient {
             const data = await response.json();
             
             // Cache the new token
-            if (typeof localStorage !== 'undefined') {
-                const expiryTime = Date.now() + (data.expires_in * 1000);
-                localStorage.setItem('pingone_worker_token', data.access_token);
-                localStorage.setItem('pingone_token_expiry', expiryTime.toString());
+            try {
+                if (typeof localStorage !== 'undefined' && typeof window !== 'undefined') {
+                    const expiryTime = Date.now() + (data.expires_in * 1000);
+                    try {
+                        localStorage.setItem('pingone_worker_token', data.access_token);
+                        localStorage.setItem('pingone_token_expiry', expiryTime.toString());
+                    } catch (storageError) {
+                        console.warn('Failed to store token in localStorage:', storageError);
+                        // Continue without storing the token
+                    }
+                }
+            } catch (error) {
+                console.warn('Error accessing localStorage:', error);
+                // Continue without storing the token
             }
             
             return data.access_token;

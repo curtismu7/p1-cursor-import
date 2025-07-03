@@ -124,151 +124,244 @@ export class UIManager {
     }
 
     /**
-     * Update the connection status display
-     * @param {string} status - The connection status ('connected', 'disconnected', 'error')
-     * @param {string} message - The status message to display
+     * Update the settings status in the UI
+     * @param {boolean} hasRequiredSettings - Whether all required settings are present
+     */
+    updateSettingsStatus(hasRequiredSettings) {
+        const statusElement = document.getElementById('settings-status');
+        if (!statusElement) return;
+        
+        if (hasRequiredSettings) {
+            statusElement.innerHTML = `
+                <i class="fas fa-check-circle"></i>
+                <span>All required settings are configured</span>
+            `;
+            statusElement.className = 'status-message status-success';
+        } else {
+            statusElement.innerHTML = `
+                <i class="fas fa-exclamation-triangle"></i>
+                <span>Missing required settings</span>
+            `;
+            statusElement.className = 'status-message status-warning';
+        }
+    }
+    
+    /**
+     * Update the connection status display with enhanced error handling and logging
+     * @param {string} status - The connection status ('connected', 'disconnected', 'error', 'connecting')
+     * @param {string} [message] - The status message to display (optional)
      * @param {boolean} [updateSettingsStatus=true] - Whether to also update the settings page status
+     * @returns {boolean} - Returns true if update was successful, false otherwise
      */
     updateConnectionStatus(status, message, updateSettingsStatus = true) {
-        console.log(`Updating connection status: ${status} - ${message}`);
-        
-        // Update main status
-        this._updateStatusElement('connection-status', status, message);
-        
-        // Also update settings status if we're on the settings page
-        if (updateSettingsStatus && this.currentView === 'settings') {
-            this.updateSettingsConnectionStatus(status, message);
+        try {
+            // Validate input
+            if (!status) {
+                console.warn('No status provided to updateConnectionStatus');
+                return false;
+            }
+            
+            const normalizedStatus = status.toLowerCase();
+            const normalizedMessage = message || this._getDefaultStatusMessage(normalizedStatus);
+            
+            console.debug(`Updating connection status to: ${normalizedStatus} - ${normalizedMessage}`);
+            
+            // Update main connection status
+            const mainUpdateSuccess = this._updateStatusElement('connection-status', normalizedStatus, normalizedMessage);
+            
+            // Also update settings status if needed and possible
+            let settingsUpdateSuccess = true;
+            if (updateSettingsStatus) {
+                settingsUpdateSuccess = this.updateSettingsConnectionStatus(normalizedStatus, normalizedMessage);
+            }
+            
+            // Update any UI elements that depend on connection status
+            this._updateConnectionDependentUI(normalizedStatus);
+            
+            // Log the status change
+            this._logStatusChange(normalizedStatus, normalizedMessage);
+            
+            return mainUpdateSuccess && settingsUpdateSuccess;
+            
+        } catch (error) {
+            console.error('Error in updateConnectionStatus:', error);
+            this._handleStatusUpdateError(error, status, message);
+            return false;
         }
     }
     
     /**
-     * Update the settings page connection status
-     * @param {string} status - The connection status ('connected', 'disconnected', 'error')
-     * @param {string} message - The status message to display
+     * Update the connection status in the settings page
+     * @param {string} status - The connection status ('connected', 'disconnected', 'error', 'connecting')
+     * @param {string} [message] - The status message to display (optional)
+     * @returns {boolean} - Returns true if update was successful, false otherwise
      */
     updateSettingsConnectionStatus(status, message) {
-        // Default messages for statuses if not provided
-        if (!message) {
-            switch(status) {
-                case 'connected':
-                    message = 'Successfully connected to PingOne';
-                    break;
-                case 'error':
-                    message = 'Connection error. Please check your settings.';
-                    break;
-                case 'disconnected':
-                default:
-                    message = 'Not connected. Please save your API credentials and test the connection.';
+        try {
+            if (!status) {
+                console.warn('No status provided to updateSettingsConnectionStatus');
+                return false;
             }
+            
+            const normalizedStatus = status.toLowerCase();
+            const normalizedMessage = message || this._getDefaultStatusMessage(normalizedStatus);
+            
+            return this._updateStatusElement('settings-connection-status', normalizedStatus, normalizedMessage);
+            
+        } catch (error) {
+            console.error('Error in updateSettingsConnectionStatus:', error);
+            return false;
         }
-        
-        this._updateStatusElement('settings-connection-status', status, message, false);
     }
     
     /**
-     * Internal method to update a status element
+     * Update UI elements that depend on connection status
      * @private
+     * @param {string} status - The current connection status
      */
-    _updateStatusElement(elementId, status, message, autoHide = true) {
-        let element = document.getElementById(elementId);
-        if (!element) {
-            console.warn(`Status element with ID '${elementId}' not found`);
-            return;
-        }
-        
-        // Clear existing classes and reset styles
-        element.className = 'connection-status';
-        element.style.display = 'flex';
-        element.style.alignItems = 'center';
-        element.style.padding = '10px 15px';
-        element.style.borderRadius = '4px';
-        element.style.margin = '10px 0';
-        element.style.fontWeight = '500';
-        element.style.transition = 'all 0.3s ease';
-        
-        // Set styles based on status
-        let icon = '';
-        switch(status) {
-            case 'connected':
-                element.style.backgroundColor = '#e6f7e6';
-                element.style.color = '#2e7d32';
-                element.style.border = '1px solid #a5d6a7';
-                icon = '✓';
-                break;
-            case 'error':
-                element.style.backgroundColor = '#ffebee';
-                element.style.color = '#c62828';
-                element.style.border = '1px solid #ef9a9a';
-                icon = '!';
-                break;
-            case 'connecting':
-                element.style.backgroundColor = '#e3f2fd';
-                element.style.color = '#1565c0';
-                element.style.border = '1px solid #90caf9';
-                icon = '↻';
-                // Add spinning animation
-                const style = document.createElement('style');
-                style.id = 'spin-animation';
-                style.textContent = `
-                    @keyframes spin {
-                        0% { transform: rotate(0deg); }
-                        100% { transform: rotate(360deg); }
-                    }
-                    .spinning {
-                        display: inline-block;
-                        animation: spin 1s linear infinite;
-                    }
-                `;
-                if (!document.getElementById('spin-animation')) {
-                    document.head.appendChild(style);
+    _updateConnectionDependentUI(status) {
+        try {
+            // Update connection button state
+            const connectButton = document.getElementById('connect-button');
+            if (connectButton) {
+                connectButton.disabled = status === 'connected';
+                connectButton.textContent = status === 'connected' ? 'Connected' : 'Connect';
+                connectButton.className = `btn ${status === 'connected' ? 'btn-success' : 'btn-primary'}`;
+            }
+            
+            // Update import button state
+            const importButton = document.getElementById('import-button');
+            if (importButton) {
+                importButton.disabled = status !== 'connected';
+                importButton.title = status === 'connected' 
+                    ? 'Start user import' 
+                    : 'Please connect to PingOne first';
+            }
+            
+            // Update status indicator in navigation
+            const statusIndicator = document.getElementById('nav-connection-status');
+            if (statusIndicator) {
+                statusIndicator.className = `nav-status-indicator status-${status}`;
+                statusIndicator.title = `${status.charAt(0).toUpperCase() + status.slice(1)}: ${this._getDefaultStatusMessage(status)}`;
+            }
+            
+            // Show/hide connection error message
+            const errorElement = document.getElementById('connection-error');
+            if (errorElement) {
+                if (status === 'error') {
+                    errorElement.style.display = 'block';
+                } else {
+                    errorElement.style.display = 'none';
                 }
-                break;
-            case 'disconnected':
-            default:
-                element.style.backgroundColor = '#f5f5f5';
-                element.style.color = '#424242';
-                element.style.border = '1px solid #e0e0e0';
-                icon = '!';
-        }
-        
-        // Create status icon
-        const iconSpan = document.createElement('span');
-        iconSpan.className = 'status-icon';
-        iconSpan.textContent = icon;
-        iconSpan.style.marginRight = '8px';
-        iconSpan.style.fontWeight = 'bold';
-        
-        if (status === 'connecting') {
-            iconSpan.classList.add('spinning');
-        }
-        
-        // Create message span
-        const messageSpan = document.createElement('span');
-        messageSpan.className = 'status-message';
-        messageSpan.textContent = message;
-        
-        // Clear and update the element
-        element.innerHTML = '';
-        element.appendChild(iconSpan);
-        element.appendChild(messageSpan);
-        
-        // If connected and auto-hide is enabled, hide after 5 seconds
-        if (status === 'connected' && autoHide) {
-            setTimeout(() => {
-                if (element) {
-                    element.style.opacity = '0';
-                    setTimeout(() => {
-                        if (element) element.style.display = 'none';
-                    }, 300);
-                }
-            }, 5000);
+            }
+            
+        } catch (error) {
+            console.error('Error updating connection-dependent UI:', error);
         }
     }
-
+    
     /**
-     * Switch to the specified view
-     * @param {string} viewName - Name of the view to show ('import', 'settings', 'logs')
+     * Helper method to update a status element with validation and error handling
+     * @private
+     * @param {string} elementId - The ID of the element to update
+     * @param {string} status - The status class to apply
+     * @param {string} message - The message to display
+     * @returns {boolean} - Returns true if update was successful, false otherwise
      */
+    _updateStatusElement(elementId, status, message) {
+        if (!elementId) {
+            console.warn('No elementId provided to _updateStatusElement');
+            return false;
+        }
+        
+        const element = document.getElementById(elementId);
+        if (!element) {
+            console.warn(`Element with ID '${elementId}' not found`);
+            return false;
+        }
+        
+        try {
+            // Update the element's content and classes
+            element.textContent = message || '';
+            
+            // Remove all status classes
+            element.className = element.className
+                .split(' ')
+                .filter(cls => !cls.startsWith('status-'))
+                .join(' ');
+                
+            // Add the new status class
+            element.classList.add(`status-${status}`);
+            
+            // Add ARIA attributes for accessibility
+            element.setAttribute('aria-live', 'polite');
+            element.setAttribute('aria-atomic', 'true');
+            
+            return true;
+            
+        } catch (error) {
+            console.error(`Error updating element '${elementId}':`, error);
+            return false;
+        }
+    }
+    
+    /**
+     * Log status changes for debugging and auditing
+     * @private
+     * @param {string} status - The connection status
+     * @param {string} message - The status message
+     */
+    _logStatusChange(status, message) {
+        const timestamp = new Date().toISOString();
+        console.debug(`[${timestamp}] Connection status changed to: ${status} - ${message}`);
+        
+        // You could also log this to a server endpoint for auditing
+        // this._logToServer('connection-status', { status, message, timestamp });
+    }
+    
+    /**
+     * Handle errors that occur during status updates
+     * @private
+     * @param {Error} error - The error that occurred
+     * @param {string} status - The status that was being set
+     * @param {string} message - The message that was being set
+     */
+    _handleStatusUpdateError(error, status, message) {
+        const errorMessage = `Failed to update status to '${status}': ${error.message}`;
+        console.error(errorMessage, error);
+        
+        // Try to show a user-visible error if possible
+        try {
+            const errorElement = document.getElementById('connection-error');
+            if (errorElement) {
+                errorElement.textContent = `Error: ${errorMessage}. ${message || ''}`;
+                errorElement.style.display = 'block';
+            }
+        } catch (uiError) {
+            console.error('Failed to display error to user:', uiError);
+        }
+    }
+    
+    /**
+     * Get the default status message for a given status
+     * @private
+     * @param {string} status - The connection status
+     * @returns {string} The default status message
+     */
+    _getDefaultStatusMessage(status) {
+        switch(status) {
+            case 'connected':
+                return 'Successfully connected to PingOne';
+            case 'connecting':
+                return 'Connecting to PingOne...';
+            case 'error':
+                return 'Connection error. Please check your settings.';
+            case 'disconnected':
+            default:
+                return 'Not connected. Please configure your API credentials and test the connection.';
+        }
+    }
+    
     /**
      * Scroll the logs container to the bottom
      */
@@ -424,6 +517,28 @@ export class UIManager {
         }
     }
 
+    /**
+     * Show the import status section
+     * @param {number} totalUsers - Total number of users to import
+     */
+    /**
+     * Show or hide the import status section
+     * @param {boolean} isImporting - Whether import is in progress
+     */
+    setImporting(isImporting) {
+        const importButton = document.getElementById('start-import');
+        const cancelButton = document.getElementById('cancel-import');
+        
+        if (importButton) {
+            importButton.disabled = isImporting;
+            importButton.textContent = isImporting ? 'Importing...' : 'Start Import';
+        }
+        
+        if (cancelButton) {
+            cancelButton.style.display = isImporting ? 'inline-block' : 'none';
+        }
+    }
+    
     /**
      * Show the import status section
      * @param {number} totalUsers - Total number of users to import

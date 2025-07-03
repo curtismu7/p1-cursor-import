@@ -27,32 +27,57 @@ class FileLogger {
         
         this.initializationPromise = (async () => {
             try {
-                if (window.showSaveFilePicker) {
-                    try {
-                        this.fileHandle = await window.showSaveFilePicker({
-                            suggestedName: this.filename,
-                            types: [{
-                                description: 'Log File',
-                                accept: { 'text/plain': ['.log'] },
-                            }],
-                            excludeAcceptAllOption: false
-                        });
-                        
-                        this.writableStream = await this.fileHandle.createWritable({ keepExistingData: true });
-                        this.initialized = true;
-                        await this._processQueue();
-                        return true;
-                    } catch (error) {
-                        console.warn('File System Access API not available:', error);
-                        this.initialized = false;
-                        return false;
-                    }
+                // Check if we're in a secure context and the API is available
+                if (!window.isSecureContext || !window.showSaveFilePicker) {
+                    throw new Error('File System Access API not available in this context');
                 }
-                return false;
+                
+                // Only proceed if we're handling a user gesture
+                if (!window.__fileLoggerUserGesture) {
+                    // Set up event listeners
+                    window.addEventListener('online', () => this.handleOnline());
+                    window.addEventListener('offline', () => this.handleOffline());
+                    
+                    // Set up user gesture detection for file logger
+                    const handleUserGesture = () => {
+                        window.__fileLoggerUserGesture = true;
+                        window.removeEventListener('click', handleUserGesture);
+                        window.removeEventListener('keydown', handleUserGesture);
+                        
+                        // Try to initialize the file logger if it hasn't been initialized yet
+                        if (this.fileLogger && !this.fileLogger._initialized && this.fileLogger._logger === null) {
+                            this.fileLogger._ensureInitialized().catch(console.warn);
+                        }
+                    };
+                    
+                    window.addEventListener('click', handleUserGesture, { once: true, passive: true });
+                    window.addEventListener('keydown', handleUserGesture, { once: true, passive: true });
+                    throw new Error('Waiting for user gesture to initialize file logger');
+                }
+                
+                try {
+                    this.fileHandle = await window.showSaveFilePicker({
+                        suggestedName: this.filename,
+                        types: [{
+                            description: 'Log File',
+                            accept: { 'text/plain': ['.log'] },
+                        }],
+                        excludeAcceptAllOption: true
+                    });
+                    
+                    this.writableStream = await this.fileHandle.createWritable({ keepExistingData: true });
+                    this.initialized = true;
+                    await this._processQueue();
+                    return true;
+                } catch (error) {
+                    console.warn('File System Access API not available:', error);
+                    this.initialized = false;
+                    return false;
+                }
             } catch (error) {
-                console.error('Error initializing file logger:', error);
+                console.warn('File logger initialization deferred:', error.message);
                 this.initialized = false;
-                throw error;
+                return false;
             }
         })();
         

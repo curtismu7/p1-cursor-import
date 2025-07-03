@@ -1224,35 +1224,64 @@ class FileLogger {
     }
     this.initializationPromise = (async () => {
       try {
-        if (window.showSaveFilePicker) {
-          try {
-            this.fileHandle = await window.showSaveFilePicker({
-              suggestedName: this.filename,
-              types: [{
-                description: 'Log File',
-                accept: {
-                  'text/plain': ['.log']
-                }
-              }],
-              excludeAcceptAllOption: false
-            });
-            this.writableStream = await this.fileHandle.createWritable({
-              keepExistingData: true
-            });
-            this.initialized = true;
-            await this._processQueue();
-            return true;
-          } catch (error) {
-            console.warn('File System Access API not available:', error);
-            this.initialized = false;
-            return false;
-          }
+        // Check if we're in a secure context and the API is available
+        if (!window.isSecureContext || !window.showSaveFilePicker) {
+          throw new Error('File System Access API not available in this context');
         }
-        return false;
+
+        // Only proceed if we're handling a user gesture
+        if (!window.__fileLoggerUserGesture) {
+          // Set up event listeners
+          window.addEventListener('online', () => this.handleOnline());
+          window.addEventListener('offline', () => this.handleOffline());
+
+          // Set up user gesture detection for file logger
+          const handleUserGesture = () => {
+            window.__fileLoggerUserGesture = true;
+            window.removeEventListener('click', handleUserGesture);
+            window.removeEventListener('keydown', handleUserGesture);
+
+            // Try to initialize the file logger if it hasn't been initialized yet
+            if (this.fileLogger && !this.fileLogger._initialized && this.fileLogger._logger === null) {
+              this.fileLogger._ensureInitialized().catch(console.warn);
+            }
+          };
+          window.addEventListener('click', handleUserGesture, {
+            once: true,
+            passive: true
+          });
+          window.addEventListener('keydown', handleUserGesture, {
+            once: true,
+            passive: true
+          });
+          throw new Error('Waiting for user gesture to initialize file logger');
+        }
+        try {
+          this.fileHandle = await window.showSaveFilePicker({
+            suggestedName: this.filename,
+            types: [{
+              description: 'Log File',
+              accept: {
+                'text/plain': ['.log']
+              }
+            }],
+            excludeAcceptAllOption: true
+          });
+          this.writableStream = await this.fileHandle.createWritable({
+            keepExistingData: true
+          });
+          this.initialized = true;
+          await this._processQueue();
+          return true;
+        } catch (error) {
+          console.warn('File System Access API not available:', error);
+          this.initialized = false;
+          return false;
+        }
       } catch (error) {
-        console.error('Error initializing file logger:', error);
+        console.warn('File logger initialization deferred:', error.message);
         this.initialized = false;
-        throw error;
+        return false;
       }
     })();
     return this.initializationPromise;
@@ -1655,14 +1684,92 @@ class Logger {
       close: () => Promise.resolve()
     };
 
-    // Try to initialize the actual file logger
-    try {
-      this.fileLogger = new _fileLogger.FileLogger('client.log');
-      this.initialized = true;
-      this.fileLogger.info('Logger initialized');
-    } catch (error) {
-      console.warn('Could not initialize file logger, using console fallback', error);
-    }
+    // Initialize file logger lazily when first used
+    this.fileLogger = {
+      _initialized: false,
+      _logger: null,
+      _queue: [],
+      _ensureInitialized: async () => {
+        if (this.fileLogger._initialized) return true;
+        try {
+          this.fileLogger._logger = new _fileLogger.FileLogger('client.log');
+          this.fileLogger._initialized = true;
+          await this.fileLogger._logger.info('Logger initialized');
+          // Process any queued messages
+          const queue = [...this.fileLogger._queue];
+          this.fileLogger._queue = [];
+          for (const {
+            method,
+            args
+          } of queue) {
+            await this.fileLogger._logger[method](...args);
+          }
+          return true;
+        } catch (error) {
+          console.warn('Could not initialize file logger, using console fallback', error);
+          this.fileLogger._initialized = false;
+          return false;
+        }
+      },
+      debug: async (message, data, context) => {
+        console.debug("[DEBUG] ".concat(message), data, context);
+        if (this.fileLogger._initialized) {
+          return this.fileLogger._logger.debug(message, data, context);
+        } else if (this.fileLogger._logger === null) {
+          this.fileLogger._queue.push({
+            method: 'debug',
+            args: [message, data, context]
+          });
+          // Try to initialize on first log
+          setTimeout(() => this.fileLogger._ensureInitialized(), 0);
+        }
+      },
+      info: async (message, data, context) => {
+        console.info("[INFO] ".concat(message), data, context);
+        if (this.fileLogger._initialized) {
+          return this.fileLogger._logger.info(message, data, context);
+        } else if (this.fileLogger._logger === null) {
+          this.fileLogger._queue.push({
+            method: 'info',
+            args: [message, data, context]
+          });
+          // Try to initialize on first log
+          setTimeout(() => this.fileLogger._ensureInitialized(), 0);
+        }
+      },
+      warn: async (message, data, context) => {
+        console.warn("[WARN] ".concat(message), data, context);
+        if (this.fileLogger._initialized) {
+          return this.fileLogger._logger.warn(message, data, context);
+        } else if (this.fileLogger._logger === null) {
+          this.fileLogger._queue.push({
+            method: 'warn',
+            args: [message, data, context]
+          });
+          // Try to initialize on first log
+          setTimeout(() => this.fileLogger._ensureInitialized(), 0);
+        }
+      },
+      error: async (message, data, context) => {
+        console.error("[ERROR] ".concat(message), data, context);
+        if (this.fileLogger._initialized) {
+          return this.fileLogger._logger.error(message, data, context);
+        } else if (this.fileLogger._logger === null) {
+          this.fileLogger._queue.push({
+            method: 'error',
+            args: [message, data, context]
+          });
+          // Try to initialize on first log
+          setTimeout(() => this.fileLogger._ensureInitialized(), 0);
+        }
+      },
+      close: async () => {
+        if (this.fileLogger._initialized && this.fileLogger._logger) {
+          return this.fileLogger._logger.close();
+        }
+        return Promise.resolve();
+      }
+    };
 
     // Set up event listeners
     window.addEventListener('online', () => this.handleOnline());

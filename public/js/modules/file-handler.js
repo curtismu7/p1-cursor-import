@@ -46,6 +46,14 @@ class FileHandler {
         return this.currentFile;
     }
     
+    /**
+     * Get the list of parsed users
+     * @returns {Array} Array of user objects
+     */
+    getUsers() {
+        return this.lastParsedUsers || [];
+    }
+    
     saveFileInfo(fileInfo) {
         try {
             const fileData = {
@@ -190,7 +198,21 @@ class FileHandler {
                         throw new Error(`Missing required columns: ${missingHeaders.join(', ')}`);
                     }
                     
-                    resolve({ headers, rows });
+                    // Convert rows to user objects and store them
+                    this.lastParsedUsers = rows.map(row => {
+                        const user = {};
+                        headers.forEach((header, index) => {
+                            user[header] = row[header] || '';
+                        });
+                        return user;
+                    });
+                    
+                    resolve({ 
+                        success: true, 
+                        headers, 
+                        rows: this.lastParsedUsers,
+                        userCount: this.lastParsedUsers.length
+                    });
                 } catch (error) {
                     reject(error);
                 }

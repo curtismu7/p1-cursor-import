@@ -65,6 +65,8 @@ let _apiFactoryInstance = null;
 const initAPIFactory = (logger, settingsManager) => {
     if (!_apiFactoryInstance) {
         _apiFactoryInstance = new APIFactory(logger, settingsManager);
+        // Set the default factory instance for backward compatibility
+        defaultAPIFactory = _apiFactoryInstance;
     }
     return _apiFactoryInstance;
 };

@@ -34,14 +34,83 @@ class Logger {
             close: () => Promise.resolve()
         };
         
-        // Try to initialize the actual file logger
-        try {
-            this.fileLogger = new FileLogger('client.log');
-            this.initialized = true;
-            this.fileLogger.info('Logger initialized');
-        } catch (error) {
-            console.warn('Could not initialize file logger, using console fallback', error);
-        }
+        // Initialize file logger lazily when first used
+        this.fileLogger = {
+            _initialized: false,
+            _logger: null,
+            _queue: [],
+            
+            _ensureInitialized: async () => {
+                if (this.fileLogger._initialized) return true;
+                try {
+                    this.fileLogger._logger = new FileLogger('client.log');
+                    this.fileLogger._initialized = true;
+                    await this.fileLogger._logger.info('Logger initialized');
+                    // Process any queued messages
+                    const queue = [...this.fileLogger._queue];
+                    this.fileLogger._queue = [];
+                    for (const { method, args } of queue) {
+                        await this.fileLogger._logger[method](...args);
+                    }
+                    return true;
+                } catch (error) {
+                    console.warn('Could not initialize file logger, using console fallback', error);
+                    this.fileLogger._initialized = false;
+                    return false;
+                }
+            },
+            
+            debug: async (message, data, context) => {
+                console.debug(`[DEBUG] ${message}`, data, context);
+                if (this.fileLogger._initialized) {
+                    return this.fileLogger._logger.debug(message, data, context);
+                } else if (this.fileLogger._logger === null) {
+                    this.fileLogger._queue.push({ method: 'debug', args: [message, data, context] });
+                    // Try to initialize on first log
+                    setTimeout(() => this.fileLogger._ensureInitialized(), 0);
+                }
+            },
+            
+            info: async (message, data, context) => {
+                console.info(`[INFO] ${message}`, data, context);
+                if (this.fileLogger._initialized) {
+                    return this.fileLogger._logger.info(message, data, context);
+                } else if (this.fileLogger._logger === null) {
+                    this.fileLogger._queue.push({ method: 'info', args: [message, data, context] });
+                    // Try to initialize on first log
+                    setTimeout(() => this.fileLogger._ensureInitialized(), 0);
+                }
+            },
+            
+            warn: async (message, data, context) => {
+                console.warn(`[WARN] ${message}`, data, context);
+                if (this.fileLogger._initialized) {
+                    return this.fileLogger._logger.warn(message, data, context);
+                } else if (this.fileLogger._logger === null) {
+                    this.fileLogger._queue.push({ method: 'warn', args: [message, data, context] });
+                    // Try to initialize on first log
+                    setTimeout(() => this.fileLogger._ensureInitialized(), 0);
+                }
+            },
+            
+            error: async (message, data, context) => {
+                console.error(`[ERROR] ${message}`, data, context);
+                if (this.fileLogger._initialized) {
+                    return this.fileLogger._logger.error(message, data, context);
+                } else if (this.fileLogger._logger === null) {
+                    this.fileLogger._queue.push({ method: 'error', args: [message, data, context] });
+                    // Try to initialize on first log
+                    setTimeout(() => this.fileLogger._ensureInitialized(), 0);
+                }
+            },
+            
+            close: async () => {
+                if (this.fileLogger._initialized && this.fileLogger._logger) {
+                    return this.fileLogger._logger.close();
+                }
+                return Promise.resolve();
+            }
+        };
         
         // Set up event listeners
         window.addEventListener('online', () => this.handleOnline());
@@ -100,10 +169,16 @@ class Logger {
         const logFn = console[level] || console.log;
         logFn(`[${timestamp}] [${level.toUpperCase()}] ${message}`, data);
         
-        // Save to file logger
+        // Save to file logger if available
         if (this.fileLogger) {
             try {
-                await this.fileLogger.log(level, message, data);
+                // Use the appropriate log level method on fileLogger
+                const logMethod = this.fileLogger[level] || this.fileLogger.info;
+                if (typeof logMethod === 'function') {
+                    await logMethod.call(this.fileLogger, message, data);
+                } else {
+                    console.warn(`Log method '${level}' not available on fileLogger`);
+                }
             } catch (error) {
                 console.error('Error saving log to file:', error);
             }

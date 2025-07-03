@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PingOne Settings Tester</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+    <style>
+        .status-box { padding: 15px; margin: 15px 0; border-radius: 5px; }
+        .status-connected { background-color: #e6f7e6; border: 1px solid #a5d6a7; color: #2e7d32; }
+        .status-disconnected { background-color: #f5f5f5; border: 1px solid #e0e0e0; color: #424242; }
+        .status-connecting { background-color: #e3f2fd; border: 1px solid #90caf9; color: #1565c0; }
+        .status-error { background-color: #ffebee; border: 1px solid #ef9a9a; color: #c62828; }
+        .test-result { margin-top: 10px; padding: 10px; border-radius: 4px; display: none; }
+        .test-success { background-color: #e6f7e6; border: 1px solid #a5d6a7; color: #2e7d32; }
+        .test-error { background-color: #ffebee; border: 1px solid #ef9a9a; color: #c62828; }
+        .required::after { content: " *"; color: #dc3545; }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <h1 class="mb-4">PingOne Settings Tester</h1>
+        
+        <!-- Connection Status -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2 class="h5 mb-0">Connection Status</h2>
+            </div>
+            <div class="card-body">
+                <div id="connection-status" class="status-box status-disconnected">
+                    <i class="bi bi-question-circle"></i>
+                    <span id="status-text">Status: Not connected</span>
+                </div>
+                <button id="test-connection" class="btn btn-primary">
+                    <span class="spinner-border spinner-border-sm d-none" id="test-spinner"></span>
+                    Test Connection
+                </button>
+                <div id="test-result" class="test-result"></div>
+            </div>
+        </div>
+        
+        <!-- Settings Form -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="h5 mb-0">Settings</h2>
+            </div>
+            <div class="card-body">
+                <form id="settings-form">
+                    <div class="mb-3">
+                        <label for="apiClientId" class="form-label required">API Client ID</label>
+                        <input type="text" class="form-control" id="apiClientId" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="apiSecret" class="form-label required">API Secret</label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="apiSecret" required>
+                            <button class="btn btn-outline-secondary toggle-password" type="button">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="environmentId" class="form-label required">Environment ID</label>
+                        <input type="text" class="form-control" id="environmentId" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="region" class="form-label required">Region</label>
+                        <select class="form-select" id="region" required>
+                            <option value="NorthAmerica">North America</option>
+                            <option value="Europe">Europe</option>
+                            <option value="AsiaPacific">Asia Pacific</option>
+                            <option value="Canada">Canada</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="populationId" class="form-label">Population ID (Optional)</label>
+                        <input type="text" class="form-control" id="populationId">
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <button type="button" id="load-settings" class="btn btn-outline-secondary">
+                            Load Settings
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <span class="spinner-border spinner-border-sm d-none" id="save-spinner"></span>
+                            Save Settings
+                        </button>
+                    </div>
+                </form>
+                <div id="save-result" class="test-result mt-3"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // DOM Elements
+            const form = document.getElementById('settings-form');
+            const testBtn = document.getElementById('test-connection');
+            const loadBtn = document.getElementById('load-settings');
+            const testSpinner = document.getElementById('test-spinner');
+            const saveSpinner = document.getElementById('save-spinner');
+            const testResult = document.getElementById('test-result');
+            const saveResult = document.getElementById('save-result');
+            const statusBox = document.getElementById('connection-status');
+            const statusText = document.getElementById('status-text');
+            const togglePasswordBtns = document.querySelectorAll('.toggle-password');
+            
+            // Toggle password visibility
+            togglePasswordBtns.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const input = this.previousElementSibling;
+                    const icon = this.querySelector('i');
+                    
+                    if (input.type === 'password') {
+                        input.type = 'text';
+                        icon.classList.remove('bi-eye');
+                        icon.classList.add('bi-eye-slash');
+                    } else {
+                        input.type = 'password';
+                        icon.classList.remove('bi-eye-slash');
+                        icon.classList.add('bi-eye');
+                    }
+                });
+            });
+            
+            // Show result message
+            function showResult(element, message, type = 'success') {
+                element.textContent = message;
+                element.className = `test-result test-${type} show`;
+                element.style.display = 'block';
+            }
+            
+            // Update connection status
+            function updateStatus(status, message) {
+                // Remove all status classes
+                statusBox.className = 'status-box';
+                
+                // Add appropriate status class
+                switch(status) {
+                    case 'connected':
+                        statusBox.classList.add('status-connected');
+                        break;
+                    case 'connecting':
+                        statusBox.classList.add('status-connecting');
+                        break;
+                    case 'error':
+                        statusBox.classList.add('status-error');
+                        break;
+                    default:
+                        statusBox.classList.add('status-disconnected');
+                }
+                
+                statusText.textContent = `Status: ${message}`;
+            }
+            
+            // Load settings
+            async function loadSettings() {
+                try {
+                    const response = await fetch('/api/settings');
+                    const data = await response.json();
+                    
+                    if (response.ok && data.success) {
+                        const settings = data.data || {};
+                        document.getElementById('apiClientId').value = settings.apiClientId || '';
+                        document.getElementById('apiSecret').value = settings.apiSecret || '';
+                        document.getElementById('environmentId').value = settings.environmentId || '';
+                        document.getElementById('region').value = settings.region || 'NorthAmerica';
+                        document.getElementById('populationId').value = settings.populationId || '';
+                        
+                        // Update connection status if available
+                        if (settings.connectionStatus) {
+                            updateStatus(
+                                settings.connectionStatus, 
+                                settings.connectionMessage || 'Connection status loaded'
+                            );
+                        }
+                        
+                        showResult(saveResult, 'Settings loaded successfully', 'success');
+                    } else {
+                        throw new Error(data.message || 'Failed to load settings');
+                    }
+                } catch (error) {
+                    showResult(saveResult, `Error loading settings: ${error.message}`, 'error');
+                }
+            }
+            
+            // Save settings
+            async function saveSettings() {
+                const settings = {
+                    apiClientId: document.getElementById('apiClientId').value.trim(),
+                    apiSecret: document.getElementById('apiSecret').value.trim(),
+                    environmentId: document.getElementById('environmentId').value.trim(),
+                    region: document.getElementById('region').value,
+                    populationId: document.getElementById('populationId').value.trim()
+                };
+                
+                try {
+                    saveSpinner.classList.remove('d-none');
+                    
+                    const response = await fetch('/api/settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(settings)
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok && data.success) {
+                        showResult(saveResult, 'Settings saved successfully', 'success');
+                    } else {
+                        throw new Error(data.message || 'Failed to save settings');
+                    }
+                } catch (error) {
+                    showResult(saveResult, `Error saving settings: ${error.message}`, 'error');
+                } finally {
+                    saveSpinner.classList.add('d-none');
+                }
+            }
+            
+            // Test connection
+            async function testConnection() {
+                try {
+                    testSpinner.classList.remove('d-none');
+                    testBtn.disabled = true;
+                    updateStatus('connecting', 'Testing connection...');
+                    
+                    const response = await fetch('/api/health');
+                    const data = await response.json();
+                    
+                    if (response.ok && data.server) {
+                        const { pingOneInitialized, lastError } = data.server;
+                        
+                        if (pingOneInitialized) {
+                            updateStatus('connected', 'Successfully connected to PingOne');
+                            showResult(testResult, 'Connection test successful', 'success');
+                        } else {
+                            updateStatus('error', lastError || 'Not connected to PingOne');
+                            showResult(testResult, `Connection failed: ${lastError || 'Unknown error'}`, 'error');
+                        }
+                    } else {
+                        throw new Error(data.message || 'Failed to test connection');
+                    }
+                } catch (error) {
+                    updateStatus('error', 'Connection error');
+                    showResult(testResult, `Error: ${error.message}`, 'error');
+                } finally {
+                    testSpinner.classList.add('d-none');
+                    testBtn.disabled = false;
+                }
+            }
+            
+            // Event Listeners
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                await saveSettings();
+            });
+            
+            loadBtn.addEventListener('click', loadSettings);
+            testBtn.addEventListener('click', testConnection);
+            
+            // Load settings on page load
+            loadSettings();
+        });
+    </script>
+</body>
+</html>

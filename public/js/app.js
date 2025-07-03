@@ -54,6 +54,9 @@ class App {
             // Set up event listeners
             this.setupEventListeners();
             
+            // Check server connection status first
+            await this.checkServerConnectionStatus();
+            
             // Check settings and restore previous file if available
             await this.checkSettingsAndRestore();
             
@@ -222,6 +225,64 @@ class App {
         }
     }
     
+    /**
+     * Check the server's connection status to PingOne
+     * @returns {Promise<boolean>} Whether the server is connected to PingOne
+     */
+    async checkServerConnectionStatus() {
+        try {
+            this.logger.fileLogger.debug('Checking server connection status...');
+            
+            // Show connecting status in UI
+            this.uiManager.updateConnectionStatus('connecting', 'Checking connection status...');
+            
+            const response = await this.localClient.get('/api/health');
+            
+            if (!response || !response.data) {
+                throw new Error('Invalid response from server');
+            }
+            
+            const { server } = response.data;
+            
+            if (!server) {
+                throw new Error('Server status not available');
+            }
+            
+            const { pingOneInitialized, lastError } = server;
+            
+            if (pingOneInitialized) {
+                this.logger.fileLogger.info('Server is connected to PingOne');
+                this.uiManager.updateConnectionStatus('connected', 'Connected to PingOne');
+                return true;
+            } else {
+                const errorMessage = lastError || 'Not connected to PingOne';
+                this.logger.fileLogger.warn('Server is not connected to PingOne', { error: errorMessage });
+                this.uiManager.updateConnectionStatus('disconnected', errorMessage);
+                return false;
+            }
+        } catch (error) {
+            const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
+            this.logger.fileLogger.error('Error checking server connection status', { error: errorMessage });
+            
+            // More specific error handling
+            let statusMessage = 'Error checking connection status';
+            if (error.response) {
+                // Server responded with error status
+                statusMessage = `Server error: ${error.response.status} ${errorMessage}`;
+            } else if (error.request) {
+                // Request was made but no response received
+                statusMessage = 'No response from server. Please check your connection.';
+            }
+            
+            this.uiManager.updateConnectionStatus('error', statusMessage);
+            return false;
+        }
+    }
+
+    /**
+     * Test the PingOne connection by getting an access token
+     * @returns {Promise<Object>} Result of the connection test
+     */
     async testPingOneConnection() {
         try {
             this.logger.fileLogger.info('Testing PingOne connection');
@@ -394,20 +455,43 @@ class App {
         try {
             this.logger.fileLogger.debug('File selected', { fileName: file.name, fileSize: file.size });
             
+            // Show loading state
+            this.uiManager.showLoading(true, 'Processing file...');
+            
             // Process the file using the file handler
             const result = await this.fileHandler.processCSV(file);
             
-            if (result.success) {
-                this.logger.fileLogger.info('File processed successfully', { rows: result.count });
+            if (result && result.success) {
+                const userCount = result.userCount || 0;
+                this.logger.fileLogger.info('File processed successfully', { 
+                    rows: userCount,
+                    headers: result.headers 
+                });
+                
+                // Show success message
+                this.uiManager.showNotification(`Successfully processed ${userCount} users`, 'success');
                 
                 // Enable import button if we have users and settings are valid
-                this.checkSettings();
+                const isValid = await this.checkSettings();
+                
+                if (isValid) {
+                    this.uiManager.showNotification('Ready to import users', 'info');
+                }
+                
+                return result;
             } else {
-                throw new Error(result.error || 'Failed to process file');
+                const errorMsg = result?.error || 'Failed to process file';
+                throw new Error(errorMsg);
             }
         } catch (error) {
-            this.logger.fileLogger.error('Error processing file', { error: error.message });
+            const errorMsg = error.message || 'An unknown error occurred while processing the file';
+            this.logger.fileLogger.error('Error processing file', { error: errorMsg });
+            this.uiManager.showNotification(errorMsg, 'error');
             console.error('File processing error:', error);
+            throw error; // Re-throw to allow caller to handle if needed
+        } finally {
+            // Always hide loading state
+            this.uiManager.showLoading(false);
         }
     }
     
@@ -418,16 +502,21 @@ class App {
             const users = this.fileHandler.getUsers ? this.fileHandler.getUsers() : [];
             const hasUsers = Array.isArray(users) && users.length > 0;
 
+            // Check server connection status if we have required settings
+            if (hasRequiredSettings) {
+                await this.checkServerConnectionStatus();
+            }
+
             // Enable Import button only if both users and settings are valid
             const enableImport = hasRequiredSettings && hasUsers;
             this.uiManager.setImportButtonState(enableImport);
 
-            // Optionally update UI for settings status
+            // Update UI for settings status
             this.uiManager.updateSettingsStatus(hasRequiredSettings);
 
             return enableImport;
         } catch (error) {
-            this.logger.fileLogger.error('Error saving settings', { error: error.message });
+            this.logger.fileLogger.error('Error checking settings', { error: error.message });
             this.uiManager.setImportButtonState(false);
             return false;
         }

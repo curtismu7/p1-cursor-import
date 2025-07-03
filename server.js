@@ -29,27 +29,71 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/api/logs', logsRouter);
 app.use('/api/settings', settingsRouter);
 
-// Debug: List all registered routes
+/**
+ * List all registered routes for debugging
+ * @param {Object} app - Express app instance
+ */
 function listRoutes(app) {
+  if (!app || !app._router || !Array.isArray(app._router.stack)) {
+    console.warn('Cannot list routes: Invalid app or router');
+    return;
+  }
+
+  console.log('\n=== Registered Routes ===');
   const routes = [];
+  
   app._router.stack.forEach((middleware) => {
     if (middleware.route) { // routes registered directly on the app
       routes.push(middleware.route);
     } else if (middleware.name === 'router') { // router middleware 
       middleware.handle.stack.forEach((handler) => {
         if (handler.route) {
-          routes.push(handler.route);
+          routes.push({
+            ...handler.route,
+            path: middleware.regexp.source.replace(/^\^|\$\//g, '') + handler.route.path
+          });
         }
       });
     }
   });
-  console.log('Registered routes:');
+  
+  // Sort routes by path for better readability
+  routes.sort((a, b) => a.path.localeCompare(b.path));
+  
+  // Calculate column widths
+  let maxMethodLength = 0;
+  let maxPathLength = 0;
+  
   routes.forEach(route => {
-    const methods = Object.keys(route.methods).join(', ').toUpperCase();
-    console.log(`${methods} ${route.path}`);
+    const methods = Object.keys(route.methods).join(',').toUpperCase();
+    maxMethodLength = Math.max(maxMethodLength, methods.length);
+    maxPathLength = Math.max(maxPathLength, route.path.length);
   });
+  
+  // Print routes in a formatted table
+  console.log(
+    'METHOD'.padEnd(maxMethodLength + 2) + 
+    'PATH'.padEnd(Math.min(maxPathLength + 2, 50)) + 
+    'HANDLER'
+  );
+  console.log('-'.repeat(80));
+  
+  routes.forEach(route => {
+    const methods = Object.keys(route.methods)
+      .filter(method => method !== '_all')
+      .map(method => method.toUpperCase())
+      .join(',');
+      
+    console.log(
+      methods.padEnd(maxMethodLength + 2) + 
+      route.path.padEnd(Math.min(maxPathLength + 2, 50)) +
+      (route.stack ? route.stack[0].name : 'anonymous')
+    );
+  });
+  
+  console.log('\nTotal routes:', routes.length);
+  console.log('='.repeat(80) + '\n');
 }
-listRoutes(app);
 
 // --- Static Files ---
 app.use(express.static(path.join(__dirname, 'public')));
@@ -608,47 +652,104 @@ app.post('/api/logs', async (req, res) => {
 });
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
     try {
+        // Get server status
+        const serverStatus = serverState.getStatus();
+        
+        // Check if we have all required PingOne environment variables
+        const hasRequiredPingOneVars = process.env.PINGONE_CLIENT_ID && 
+                                     process.env.PINGONE_CLIENT_SECRET && 
+                                     process.env.PINGONE_ENVIRONMENT_ID;
+        
+        // Get memory usage and hostname
+        const memoryUsage = process.memoryUsage();
+        const memoryUsagePercent = (memoryUsage.heapUsed / memoryUsage.heapTotal) * 100;
+        const { hostname } = await import('os');
+        
+        // Prepare status object
         const status = {
             status: 'ok',
             timestamp: new Date().toISOString(),
             uptime: process.uptime(),
-            server: serverState.getStatus(),
+            server: {
+                ...serverStatus,
+                pingOne: {
+                    initialized: serverStatus.pingOneInitialized,
+                    hasRequiredConfig: hasRequiredPingOneVars,
+                    environmentId: process.env.PINGONE_ENVIRONMENT_ID ? 'configured' : 'not configured',
+                    region: process.env.PINGONE_REGION || 'not configured',
+                    populationId: process.env.PINGONE_POPULATION_ID || 'not configured'
+                }
+            },
             system: {
                 node: process.version,
                 platform: process.platform,
-                memory: process.memoryUsage(),
+                memory: memoryUsage,
+                memoryUsage: `${Math.round(memoryUsagePercent)}%`,
                 cpu: process.cpuUsage ? process.cpuUsage() : { user: 0, system: 0 },
-                env: process.env.NODE_ENV || 'development'
+                env: process.env.NODE_ENV || 'development',
+                pid: process.pid,
+                cwd: process.cwd()
             },
-            // Add any additional health checks here
             checks: {
-                database: 'ok', // Add actual database health check
-                storage: 'ok',  // Add storage health check
-                memory: process.memoryUsage().heapUsed / process.memoryUsage().heapTotal < 0.9 ? 'ok' : 'warn'
+                // Critical checks
+                pingOneConfigured: hasRequiredPingOneVars ? 'ok' : 'error',
+                pingOneConnected: serverStatus.pingOneInitialized ? 'ok' : 'error',
+                
+                // System resource checks
+                memory: memoryUsagePercent < 90 ? 'ok' : 'warn',
+                diskSpace: 'ok',  // Add actual disk space check if needed
+                
+                // Application health checks
+                api: 'ok',
+                storage: 'ok',
+                logging: 'ok'
+            },
+            // Add any additional non-critical information
+            info: {
+                nodeEnv: process.env.NODE_ENV || 'development',
+                appVersion: process.env.npm_package_version || 'unknown',
+                hostname: hostname()
             }
         };
         
-        // If any critical check fails, return 503
-        const isHealthy = Object.values(status.checks).every(check => check === 'ok');
+        // Determine overall status based on critical checks
+        const criticalChecks = {
+            pingOneConfigured: status.checks.pingOneConfigured,
+            pingOneConnected: hasRequiredPingOneVars ? status.checks.pingOneConnected : 'ok',
+            memory: status.checks.memory
+        };
         
-        if (!isHealthy) {
+        const hasCriticalErrors = Object.values(criticalChecks).some(check => check === 'error');
+        const hasWarnings = Object.values(status.checks).some(check => check === 'warn');
+        
+        // Set appropriate status code and message
+        if (hasCriticalErrors) {
+            status.status = 'error';
+            status.message = 'One or more critical services are not healthy';
             logger.warn('Health check failed', { status });
-            return res.status(503).json({
-                ...status,
-                status: 'degraded',
-                message: 'One or more services are not healthy'
-            });
+            return res.status(503).json(status);
+        } else if (hasWarnings) {
+            status.status = 'degraded';
+            status.message = 'One or more services have warnings';
+            logger.info('Health check completed with warnings', { status });
+        } else {
+            status.message = 'All services are operational';
+            logger.debug('Health check passed', { status });
         }
         
         res.json(status);
     } catch (error) {
-        logger.error('Health check failed:', error);
+        const errorId = Math.random().toString(36).substring(2, 10);
+        logger.error(`Health check failed [${errorId}]:`, error);
+        
         res.status(500).json({
             status: 'error',
             error: 'Internal server error during health check',
-            message: error.message
+            message: error.message,
+            errorId: errorId,
+            timestamp: new Date().toISOString()
         });
     }
 });
@@ -1194,23 +1295,36 @@ const startServer = async () => {
         logTime('⚠️  Continuing despite logging system initialization error');
     }
     
-    // Initialize token manager with timeout (completely non-blocking)
-    logTime('🔑 Starting PingOne connection in background...');
-    serverState.pingOneInitialized = false;
-    
     // Log environment variables (masking sensitive data)
     const maskedEnv = {
         NODE_ENV: process.env.NODE_ENV,
         PORT: process.env.PORT,
         PINGONE_CLIENT_ID: process.env.PINGONE_CLIENT_ID ? '***' + process.env.PINGONE_CLIENT_ID.slice(-4) : 'Not set',
         PINGONE_ENVIRONMENT_ID: process.env.PINGONE_ENVIRONMENT_ID ? '***' + process.env.PINGONE_ENVIRONMENT_ID.slice(-4) : 'Not set',
-        PINGONE_REGION: process.env.PINGONE_REGION || 'Not set'
+        PINGONE_REGION: process.env.PINGONE_REGION || 'Not set',
+        HAS_CLIENT_SECRET: !!process.env.PINGONE_CLIENT_SECRET
     };
+    
     console.log('🌐 Environment variables:', JSON.stringify(maskedEnv, null, 2));
     
-    // Only attempt to connect to PingOne if required environment variables are set
-    if (process.env.PINGONE_CLIENT_ID && process.env.PINGONE_CLIENT_SECRET && process.env.PINGONE_ENVIRONMENT_ID) {
-        // Start PingOne initialization but don't wait for it
+    // Initialize token manager with timeout (completely non-blocking)
+    logTime('🔑 Starting PingOne connection in background...');
+    serverState.pingOneInitialized = false;
+    
+    // Debug: Check if we have all required PingOne environment variables
+    const hasRequiredPingOneVars = process.env.PINGONE_CLIENT_ID && 
+                                 process.env.PINGONE_CLIENT_SECRET && 
+                                 process.env.PINGONE_ENVIRONMENT_ID;
+    
+    console.log('🔍 PingOne Environment Check:', {
+        hasClientId: !!process.env.PINGONE_CLIENT_ID,
+        hasClientSecret: !!process.env.PINGONE_CLIENT_SECRET,
+        hasEnvId: !!process.env.PINGONE_ENVIRONMENT_ID,
+        hasRegion: !!process.env.PINGONE_REGION
+    });
+    
+    if (hasRequiredPingOneVars) {
+        // Start PingOne initialization in the background
         tokenManager.getAccessToken()
             .then(token => {
                 logTime('✅ Successfully connected to PingOne API');
@@ -1218,24 +1332,48 @@ const startServer = async () => {
                 logger.info('Successfully connected to PingOne API');
             })
             .catch(error => {
+                logTime(`⚠️  Warning: Could not connect to PingOne API (${error.message})`);
+                logger.warn(`Could not connect to PingOne API: ${error.message}`);
+                // Don't fail the server startup, just mark as not initialized
+                serverState.pingOneInitialized = false;
+                
+                // Log additional error details for debugging
+                if (error.response) {
+                    console.error('PingOne API Error Response:', {
+                        status: error.response.status,
+                        statusText: error.response.statusText,
+                        headers: error.response.headers,
+                        data: error.response.data
+                    });
+                } else if (error.request) {
+                    console.error('PingOne API Request Error:', {
+                        message: error.message,
+                        code: error.code,
+                        stack: process.env.NODE_ENV !== 'production' ? error.stack : undefined
+                    });
+                } else {
+                    console.error('PingOne API Error:', {
+                        message: error.message,
+                        code: error.code,
+                        stack: process.env.NODE_ENV !== 'production' ? error.stack : undefined
+                    });
+                }
+                
                 const warningMsg = 'Failed to initialize PingOne token manager. Some features may not work.';
                 console.warn(`⚠️  ${warningMsg}`);
                 console.warn('Error details:', error.message);
+                logger.warn(warningMsg, { error: error.message });
                 
                 if (!process.env.PINGONE_CLIENT_ID || !process.env.PINGONE_CLIENT_SECRET || !process.env.PINGONE_ENVIRONMENT_ID) {
                     console.warn('⚠️  Missing required PingOne environment variables. Please check your .env file.');
                 }
                 
-                logger.warn(warningMsg, {
-                    error: error.message,
-                    stack: process.env.NODE_ENV !== 'production' ? error.stack : undefined,
-                    code: error.code
-                });
-                
                 serverState.pingOneInitialized = false;
             });
     } else {
-        logTime('⚠️  PingOne environment variables not set. PingOne features will be disabled.');
+        const warningMsg = 'PingOne environment variables not set. PingOne features will be disabled.';
+        logTime(`⚠️  ${warningMsg}`);
+        logger.warn(warningMsg);
         serverState.pingOneInitialized = false;
     }
     
@@ -1676,6 +1814,11 @@ const startServer = async () => {
         });
     });
 };
+
+// List all registered routes before starting the server
+if (process.env.NODE_ENV !== 'production') {
+    listRoutes(app);
+}
 
 // Start the server
 const serverPromise = startServer().catch(error => {
