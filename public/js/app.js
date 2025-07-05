@@ -8,40 +8,56 @@ import { VersionManager } from './modules/version-manager.js';
 
 class App {
     constructor() {
-        // Initialize logger with the log container
-        const logContainer = document.getElementById('logs-container');
-        this.logger = new Logger(logContainer);
-        
-        // Initialize settings manager first as it's used by other components
-        this.settingsManager = new SettingsManager(this.logger);
-        
-        // Initialize API factory with required dependencies
-        const factory = initAPIFactory(this.logger, this.settingsManager);
-        
-        // Initialize API clients
-        this.pingOneClient = factory.getPingOneClient();
-        this.localClient = factory.getLocalClient();
-        
-        // Initialize other components
-        this.uiManager = new UIManager(this.logger);
-        this.fileHandler = new FileHandler(this.logger, this.uiManager);
-        
-        // Initialize version manager and update UI
-        this.versionManager = new VersionManager();
-        this.versionManager.updateTitle();
-        
-        // Track import state
-        this.isImporting = false;
-        this.currentImportAbortController = null;
-        
-        // Bind methods
-        this.handleFileSelect = this.handleFileSelect.bind(this);
-        this.handleSaveSettings = this.handleSaveSettings.bind(this);
-        this.testPingOneConnection = this.testPingOneConnection.bind(this);
-        this.cancelImport = this.cancelImport.bind(this);
-        
-        // Initialize the application
-        this.init();
+        try {
+            // Initialize logger with the log container
+            const logContainer = document.getElementById('logs-container');
+            this.logger = new Logger(logContainer);
+            
+            // Initialize settings manager first as it's used by other components
+            this.settingsManager = new SettingsManager(this.logger);
+            
+            // Initialize UI components
+            this.uiManager = new UIManager(this.logger);
+            this.fileHandler = new FileHandler(this.logger, this.uiManager);
+            this.versionManager = new VersionManager();
+            
+            // Track import state
+            this.isImporting = false;
+            this.currentImportAbortController = null;
+            
+            // Initialize API clients as null - they'll be set in initializeAsync()
+            this.pingOneClient = null;
+            this.localClient = null;
+            this.factory = null;
+            
+            // Show loading state
+            this.uiManager.showLoading('Initializing application...');
+            
+            // Start async initialization
+            this.initializeAsync().catch(error => {
+                const errorMsg = `Failed to initialize application: ${error.message}`;
+                this.logger.fileLogger.error(errorMsg, { error });
+                this.uiManager.showError('Initialization Error', errorMsg);
+            });
+            
+            // Bind methods
+            this.handleFileSelect = this.handleFileSelect.bind(this);
+            this.handleSaveSettings = this.handleSaveSettings.bind(this);
+            this.testPingOneConnection = this.testPingOneConnection.bind(this);
+            this.cancelImport = this.cancelImport.bind(this);
+            
+            // Initialize the application
+            this.init();
+        } catch (error) {
+            console.error('Error initializing application:', error);
+            // Try to show error in UI if possible
+            const errorContainer = document.getElementById('app-error');
+            if (errorContainer) {
+                errorContainer.textContent = `Initialization error: ${error.message}`;
+                errorContainer.style.display = 'block';
+            }
+            throw error; // Re-throw to be caught by the global error handler
+        }
     }
 
     async init() {
@@ -49,6 +65,22 @@ class App {
             // Add initial test logs
             this.logger.fileLogger.info('Application starting...');
             this.logger.fileLogger.debug('Logger initialized');
+            
+            // Initialize API factory and clients
+            try {
+                this.logger.fileLogger.info('Initializing API factory...');
+                await initAPIFactory(this.logger, this.settingsManager);
+                
+                // Now that factory is initialized, get the clients
+                this.pingOneClient = this.factory.getPingOneClient();
+                this.localClient = this.factory.getLocalClient();
+                this.logger.fileLogger.info('API clients initialized successfully');
+            } catch (error) {
+                const errorMsg = `Failed to initialize API: ${error.message}`;
+                this.logger.fileLogger.error(errorMsg, { error });
+                throw new Error(errorMsg);
+            }
+            
             this.logger.fileLogger.info('Initializing UI components');
             
             // Set up event listeners
@@ -62,8 +94,63 @@ class App {
             
             this.logger.fileLogger.info('Application initialization complete');
         } catch (error) {
-            this.logger.fileLogger.error('Error initializing application', { error: error.message });
+            const errorMsg = `Error initializing application: ${error.message}`;
+            this.logger.fileLogger.error(errorMsg, { error });
             console.error('Initialization error:', error);
+            
+            // Show error in UI if possible
+            if (this.uiManager) {
+                this.uiManager.showError('Initialization Error', errorMsg);
+            } else {
+                // Fallback error display
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'error-message';
+                errorDiv.style.color = 'red';
+                errorDiv.style.padding = '1rem';
+                errorDiv.style.margin = '1rem';
+                errorDiv.style.border = '1px solid #f5c6cb';
+                errorDiv.style.borderRadius = '4px';
+                errorDiv.style.backgroundColor = '#f8d7da';
+                errorDiv.textContent = errorMsg;
+                document.body.prepend(errorDiv);
+            }
+        }
+    }
+    
+    async checkSettingsAndRestore() {
+        try {
+            this.logger.fileLogger.info('Checking for saved settings...');
+            
+            // Get settings from the settings manager
+            const settings = await this.settingsManager.getSettings();
+            
+            if (settings && Object.keys(settings).length > 0) {
+                this.logger.fileLogger.info('Found saved settings', { hasSettings: true });
+                
+                // Update the form with saved settings
+                this.populateSettingsForm(settings);
+                
+                // Check if we have a previously loaded file
+                if (settings.lastLoadedFile) {
+                    this.logger.fileLogger.info('Found last loaded file in settings', { 
+                        fileName: settings.lastLoadedFile.name,
+                        size: settings.lastLoadedFile.size
+                    });
+                    
+                    // Update UI to show the loaded file
+                    this.uiManager.updateFileInfo(settings.lastLoadedFile);
+                }
+                
+                return true;
+            } else {
+                this.logger.fileLogger.info('No saved settings found');
+                return false;
+            }
+        } catch (error) {
+            const errorMsg = `Error checking/restoring settings: ${error.message}`;
+            this.logger.fileLogger.error(errorMsg, { error });
+            console.error(errorMsg, error);
+            throw error; // Re-throw to be handled by the caller
         }
     }
     
@@ -290,22 +377,25 @@ class App {
             // Show connecting status in UI
             this.uiManager.updateConnectionStatus('connecting', 'Connecting to PingOne...');
             
-            // Test connection by getting the access token
-            const token = await this.pingOneClient.getAccessToken();
+            // Get current settings
+            const settings = this.settingsManager.getSettings();
             
-            if (token) {
-                // Save the token to localStorage
-                if (typeof localStorage !== 'undefined') {
-                    localStorage.setItem('pingone_worker_token', token);
-                    // Set token expiry (1 hour from now)
-                    const expiryTime = Date.now() + (60 * 60 * 1000);
-                    localStorage.setItem('pingone_token_expiry', expiryTime.toString());
-                }
-                
+            if (!settings || !settings.apiClientId || !settings.apiSecret || !settings.environmentId) {
+                throw new Error('Missing required settings. Please configure your API credentials first.');
+            }
+            
+            // Use the local client from the factory
+            const response = await this.localClient.post('/api/pingone/test-connection', {
+                apiClientId: settings.apiClientId,
+                apiSecret: settings.apiSecret,
+                environmentId: settings.environmentId,
+                region: settings.region || 'NorthAmerica'
+            });
+            
+            if (response.success) {
                 this.logger.fileLogger.info('Successfully connected to PingOne API');
                 
                 // Update connection status in settings
-                const settings = this.settingsManager.getSettings();
                 settings.connectionStatus = 'connected';
                 settings.connectionMessage = 'Connected';
                 settings.lastConnectionTest = new Date().toISOString();
@@ -318,24 +408,25 @@ class App {
                 
                 return { success: true };
             } else {
-                throw new Error('No access token received');
+                throw new Error(response.message || 'Failed to connect to PingOne API');
             }
         } catch (error) {
-            this.logger.fileLogger.error('Failed to connect to PingOne', { error: error.message });
+            const errorMessage = error.message || 'Connection failed';
+            this.logger.fileLogger.error('Failed to connect to PingOne', { error: errorMessage });
             
             // Update connection status in settings
-            const settings = this.settingsManager.getSettings();
+            const settings = this.settingsManager.getSettings() || {};
             settings.connectionStatus = 'disconnected';
-            settings.connectionMessage = error.message || 'Connection failed';
+            settings.connectionMessage = errorMessage;
             settings.lastConnectionTest = new Date().toISOString();
             
             // Save updated settings
             await this.saveSettings(settings);
             
             // Update UI status
-            this.uiManager.updateConnectionStatus('error', error.message || 'Connection failed');
+            this.uiManager.updateConnectionStatus('error', errorMessage);
             
-            return { success: false, error: error.message };
+            return { success: false, error: errorMessage };
         }
     }
     
@@ -495,6 +586,14 @@ class App {
         }
     }
     
+    /**
+     * Checks if the current settings are valid and updates the UI accordingly
+     * @returns {Promise<boolean>} True if settings are valid, false otherwise
+     */
+    /**
+     * Checks if the current settings are valid and updates the UI accordingly
+     * @returns {Promise<boolean>} True if settings are valid, false otherwise
+     */
     async checkSettings() {
         try {
             const settings = this.settingsManager.getSettings();
@@ -513,8 +612,8 @@ class App {
 
             // Update UI for settings status
             this.uiManager.updateSettingsStatus(hasRequiredSettings);
-
-            return enableImport;
+            return hasRequiredSettings;
+            
         } catch (error) {
             this.logger.fileLogger.error('Error checking settings', { error: error.message });
             this.uiManager.setImportButtonState(false);
@@ -523,84 +622,89 @@ class App {
     }
     
     /**
-     * Populate the settings form with the provided settings
+     * Populates the settings form with the provided settings
      * @param {Object} settings - The settings to populate the form with
      */
     populateSettingsForm(settings) {
+        if (!settings) {
+            this.logger.warn('No settings provided to populate form');
+            return;
+        }
+        
+        this.logger.debug('Populating settings form with:', {
+            ...settings,
+            apiSecret: settings.apiSecret ? '***' : '[empty]'
+        });
+        
         try {
-            console.log('Starting to populate settings form with:', settings);
-            
-            if (!settings) {
-                console.warn('No settings provided to populateSettingsForm');
-                return;
-            }
-            
-            // Set text inputs with fallback to empty string if undefined
+            // Define form fields and their corresponding settings keys
             const fields = {
-                'environment-id': settings.environmentId || settings['environment-id'] || '',
-                'api-client-id': settings.apiClientId || settings['api-client-id'] || '',
-                'api-secret': settings.apiSecret || settings['api-secret'] || '',
-                'population-id': settings.populationId || settings['population-id'] || ''
+                // API Settings
+                'environment-id': settings.environmentId || '',
+                'api-client-id': settings.apiClientId || '',
+                'api-secret': settings.apiSecret || '',
+                'population-id': settings.populationId || '',
+                'region': settings.region || 'NorthAmerica',
+                
+                // Import Settings
+                'default-password': settings.defaultPassword || '',
+                'send-welcome-email': settings.sendWelcomeEmail || false,
+                'update-existing': settings.updateExisting || false
             };
+            
+            // Track which fields were actually set
+            const setFields = [];
+            const missingFields = [];
             
             // Set each field
             for (const [id, value] of Object.entries(fields)) {
-                const element = document.getElementById(id);
-                if (element) {
-                    // For API secret, only set if it's not empty (to avoid showing placeholder text as actual value)
-                    if (id === 'api-secret' && !value) {
-                        console.log(`Skipping empty API secret`);
+                try {
+                    const element = document.getElementById(id);
+                    if (!element) {
+                        missingFields.push(id);
                         continue;
                     }
                     
-                    element.value = value;
-                    console.log(`Set ${id} to:`, value ? (id.includes('secret') ? '***' : value) : '(empty)');
-                } else {
-                    console.warn(`Element not found: ${id}`);
-                }
-            }
-            
-            // Handle region dropdown - default to NorthAmerica if not set
-            const regionSelect = document.getElementById('region');
-            if (regionSelect) {
-                // Get the region value, trying both camelCase and kebab-case versions
-                let regionValue = settings.region || settings['region'] || 'NorthAmerica';
-                console.log('Raw region value:', regionValue);
-                
-                // Normalize the region value (remove spaces and make lowercase)
-                const normalizedRegion = regionValue.replace(/\s+/g, '').toLowerCase();
-                console.log('Normalized region:', normalizedRegion);
-                
-                // Find and select the matching option
-                let found = false;
-                for (const option of regionSelect.options) {
-                    const optionValue = option.value.toLowerCase();
-                    if (optionValue === normalizedRegion) {
-                        option.selected = true;
-                        found = true;
-                        console.log('Set region to:', option.value);
-                        break;
-                    }
-                }
-                
-                if (!found) {
-                    console.warn(`Region '${regionValue}' not found in dropdown, defaulting to NorthAmerica`);
-                    console.log('Available regions:', Array.from(regionSelect.options).map(o => o.value));
-                    
-                    // Set default to NorthAmerica if the region is not found
-                    for (const option of regionSelect.options) {
-                        if (option.value.toLowerCase() === 'northamerica') {
-                            option.selected = true;
-                            console.log('Defaulted region to NorthAmerica');
-                            break;
+                    // Handle different input types
+                    if (element.type === 'checkbox') {
+                        element.checked = Boolean(value);
+                    } else if (element.tagName === 'SELECT' && element.multiple) {
+                        // Handle multi-select
+                        const values = Array.isArray(value) ? value : [value];
+                        Array.from(element.options).forEach(option => {
+                            option.selected = values.includes(option.value);
+                        });
+                    } else {
+                        // For API secret, only set if it's not empty
+                        if (id === 'api-secret' && !value) {
+                            continue;
+                        }
+                        
+                        // For password fields, use placeholder
+                        if ((id.includes('password') || id.includes('secret')) && value) {
+                            element.value = '********'; // Placeholder for passwords
+                        } else {
+                            element.value = value !== null && value !== undefined ? value : '';
                         }
                     }
+                    
+                    setFields.push(id);
+                    
+                } catch (fieldError) {
+                    this.logger.error(`Error setting field ${id}:`, fieldError);
                 }
-            } else {
-                console.warn('Region select element not found');
             }
             
-            // Update the connection status display
+            // Log results
+            if (setFields.length > 0) {
+                this.logger.debug(`Successfully set ${setFields.length} form fields`);
+            }
+            
+            if (missingFields.length > 0) {
+                this.logger.debug(`Could not find ${missingFields.length} form fields:`, missingFields);
+            }
+            
+            // Update connection status display if status element exists
             const statusElement = document.getElementById('settings-connection-status');
             if (statusElement) {
                 const status = (settings.connectionStatus || 'disconnected').toLowerCase();
@@ -627,72 +731,77 @@ class App {
                 }
             }
             
-            console.log('Finished populating settings form');
-            this.logger.fileLogger.debug('Settings form populated');
+            this.logger.debug('Finished populating settings form');
+            
         } catch (error) {
-            const errorMessage = `Error populating settings form: ${error.message}`;
-            this.logger.fileLogger.error(errorMessage, { error: error.message });
-            console.error('Error details:', error);
+            const errorMsg = `Error populating settings form: ${error.message}`;
+            this.logger.error(errorMsg, error);
+            this.uiManager.showError('Form Error', 'Failed to populate settings form');
+            throw error;
+        } finally {
+            // Always hide loading state
+            this.uiManager.showLoading(false);
         }
     }
     
-    async checkSettingsAndRestore() {
+    /**
+     * Asynchronously initializes the application
+     * @private
+     */
+    async initializeAsync() {
         try {
-            console.log('1. Starting checkSettingsAndRestore');
-            this.logger.log('Attempting to load settings from API...', 'debug');
+            // Initialize API factory first
+            this.logger.fileLogger.info('Initializing API factory...');
+            this.factory = await initAPIFactory(this.logger, this.settingsManager);
             
-            // Load settings from the local API
-            console.log('2. Fetching settings from /api/settings');
-            const response = await this.localClient.get('/api/settings');
-            console.log('3. Settings API response:', response);
+            // Initialize API clients
+            this.pingOneClient = this.factory.getPingOneClient();
+            this.localClient = this.factory.getLocalClient();
+            this.logger.fileLogger.info('API clients initialized successfully');
             
-            if (response && response.data) {
-                const settings = response.data;
-                console.log('4. Settings data received:', settings);
-                
-                console.log('5. Saving settings to settings manager');
-                await this.settingsManager.saveSettings(settings);
-                this.logger.log('Settings restored and saved', 'info');
-                
-                // Populate the settings form
-                console.log('6. About to populate settings form with:', settings);
-                if (typeof this.populateSettingsForm === 'function') {
-                    console.log('7. populateSettingsForm is a function, calling it');
-                    this.populateSettingsForm(settings);
-                } else {
-                    console.error('7. ERROR: populateSettingsForm is not a function on this object');
-                    console.log('Available methods on app:', Object.getOwnPropertyNames(Object.getPrototypeOf(this)));
-                }
-                
-                // Check if we have a previous file to restore
-                if (settings.lastProcessedFile) {
-                    this.logger.log('Restoring previous file...', 'info');
-                    // Here you would add logic to restore the previous file
-                    // This would depend on how you're handling file persistence
-                }
-            } else {
-                console.warn('No settings data in response:', response);
-                this.logger.warn('No settings data received from server', 'warning');
-            }
+            // Now that API clients are ready, load settings
+            await this.checkSettingsAndRestore();
             
-            // Update UI based on settings
-            console.log('8. Calling checkSettings');
-            await this.checkSettings();
+            // Initialize the rest of the UI
+            this.logger.fileLogger.info('Initializing UI components');
+            this.setupEventListeners();
             
+            // Check server connection status
+            await this.checkServerConnectionStatus();
+            
+            this.logger.fileLogger.info('Application initialization complete');
+            console.log(`PingOne Import Tool ${this.versionManager.getFormattedVersion()} initialized`);
         } catch (error) {
-            const errorMessage = error.message || 'Unknown error';
-            console.error('ERROR in checkSettingsAndRestore:', error);
-            console.error('Error stack:', error.stack);
-            this.logger.warn(`Error loading settings: ${errorMessage}`, 'warning');
+            const errorMsg = `Failed to initialize application: ${error.message}`;
+            this.logger.fileLogger.error(errorMsg, { error });
+            this.uiManager.showError('Initialization Error', errorMsg);
         }
     }
 }
 
 // Initialize the application when the DOM is fully loaded
 document.addEventListener('DOMContentLoaded', () => {
-    const app = new App();
-    console.log(`PingOne Import Tool ${app.versionManager.getFormattedVersion()} initialized`);
-    
-    // Expose app to window for debugging and global access
-    window.app = app;
+    try {
+        // Create the app instance - this will start the async initialization
+        const app = new App();
+        
+        // Expose app to window for debugging and global access
+        window.app = app;
+        
+        // Log that the app is initializing
+        console.log('PingOne Import Tool initializing...');
+    } catch (error) {
+        console.error('Failed to initialize application:', error);
+        
+        // Show error in the UI if possible
+        const errorDiv = document.createElement('div');
+        errorDiv.style.color = 'red';
+        errorDiv.style.padding = '1rem';
+        errorDiv.style.margin = '1rem';
+        errorDiv.style.border = '1px solid #f5c6cb';
+        errorDiv.style.borderRadius = '4px';
+        errorDiv.style.backgroundColor = '#f8d7da';
+        errorDiv.textContent = `Failed to initialize application: ${error.message}`;
+        document.body.prepend(errorDiv);
+    }
 });

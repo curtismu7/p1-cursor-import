@@ -56,19 +56,62 @@ class APIFactory {
 
 // Create a singleton instance but don't export it directly
 let _apiFactoryInstance = null;
+let isInitializing = false;
+let initializationPromise = null;
 
 /**
  * Initialize the API factory with required dependencies
  * @param {Object} logger - Logger instance
  * @param {Object} settingsManager - Settings manager instance
+ * @returns {Promise<APIFactory>} Initialized API factory instance
  */
-const initAPIFactory = (logger, settingsManager) => {
-    if (!_apiFactoryInstance) {
-        _apiFactoryInstance = new APIFactory(logger, settingsManager);
-        // Set the default factory instance for backward compatibility
-        defaultAPIFactory = _apiFactoryInstance;
+const initAPIFactory = async (logger, settingsManager) => {
+    // If already initialized, return the existing instance
+    if (_apiFactoryInstance) {
+        return _apiFactoryInstance;
     }
-    return _apiFactoryInstance;
+    
+    // If initialization is in progress, wait for it to complete
+    if (isInitializing) {
+        if (initializationPromise) {
+            return initializationPromise;
+        }
+    }
+    
+    // Set initialization flag and create a new promise
+    isInitializing = true;
+    initializationPromise = new Promise(async (resolve, reject) => {
+        try {
+            // Create the factory instance
+            const factory = new APIFactory(logger, settingsManager);
+            
+            // Set the instance
+            _apiFactoryInstance = factory;
+            defaultAPIFactory = factory;
+            
+            // Log successful initialization
+            if (logger && logger.info) {
+                logger.info('API Factory initialized successfully');
+            } else {
+                console.log('API Factory initialized successfully');
+            }
+            
+            resolve(factory);
+        } catch (error) {
+            const errorMsg = `Failed to initialize API Factory: ${error.message}`;
+            if (logger && logger.error) {
+                logger.error(errorMsg, { error });
+            } else {
+                console.error(errorMsg, error);
+            }
+            reject(new Error(errorMsg));
+        } finally {
+            isInitializing = false;
+            initializationPromise = null;
+        }
+    });
+    
+    return initializationPromise;
 };
 
 // Export the singleton instance and initialization function

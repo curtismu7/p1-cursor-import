@@ -19,6 +19,12 @@
     </style>
 </head>
 <body>
+    <!-- Add a container for logs -->
+    <div id="logs-container" class="container-fluid bg-dark text-light p-3" style="display: none;">
+        <h4>Logs</h4>
+        <div id="log-entries" class="font-monospace small" style="max-height: 200px; overflow-y: auto;"></div>
+    </div>
+
     <div class="container py-4">
         <h1 class="mb-4">PingOne Settings Tester</h1>
         
@@ -92,8 +98,23 @@
         </div>
     </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
+    <!-- Import required modules -->
+    <script type="module">
+        import { initAPIFactory } from './js/modules/api-factory.js';
+        import { Logger } from './js/modules/logger.js';
+        import { SettingsManager } from './js/modules/settings-manager.js';
+        
+        document.addEventListener('DOMContentLoaded', async function() {
+            // Initialize logger with console fallback
+            const logContainer = document.getElementById('log-entries');
+            const logger = logContainer ? new Logger(logContainer) : console;
+            
+            // Initialize settings manager
+            const settingsManager = new SettingsManager(logger);
+            
+            // Initialize API factory
+            const apiFactory = initAPIFactory(logger, settingsManager);
+            
             // DOM Elements
             const form = document.getElementById('settings-form');
             const testBtn = document.getElementById('test-connection');
@@ -225,25 +246,37 @@
                     testBtn.disabled = true;
                     updateStatus('connecting', 'Testing connection...');
                     
-                    const response = await fetch('/api/health');
-                    const data = await response.json();
+                    // Get current settings from the form
+                    const settings = {
+                        apiClientId: document.getElementById('apiClientId').value.trim(),
+                        apiSecret: document.getElementById('apiSecret').value.trim(),
+                        environmentId: document.getElementById('environmentId').value.trim(),
+                        region: document.getElementById('region').value,
+                        populationId: document.getElementById('populationId').value.trim()
+                    };
                     
-                    if (response.ok && data.server) {
-                        const { pingOneInitialized, lastError } = data.server;
-                        
-                        if (pingOneInitialized) {
-                            updateStatus('connected', 'Successfully connected to PingOne');
-                            showResult(testResult, 'Connection test successful', 'success');
-                        } else {
-                            updateStatus('error', lastError || 'Not connected to PingOne');
-                            showResult(testResult, `Connection failed: ${lastError || 'Unknown error'}`, 'error');
-                        }
+                    // First save the settings
+                    await saveSettings();
+                    
+                    // Then test the connection using the server-side endpoint
+                    const response = await fetch('/api/pingone/test-connection', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(settings)
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (response.ok && result.success) {
+                        updateStatus('connected', 'Successfully connected to PingOne');
+                        showResult(testResult, 'Connection test successful', 'success');
                     } else {
-                        throw new Error(data.message || 'Failed to test connection');
+                        updateStatus('error', 'Failed to connect to PingOne');
+                        showResult(testResult, `Connection failed: ${result.message || 'Unknown error'}`, 'error');
                     }
                 } catch (error) {
                     updateStatus('error', 'Connection error');
-                    showResult(testResult, `Error: ${error.message}`, 'error');
+                    showResult(testResult, `Error: ${error.message || 'Unknown error occurred'}`, 'error');
                 } finally {
                     testSpinner.classList.add('d-none');
                     testBtn.disabled = false;
@@ -262,6 +295,15 @@
             // Load settings on page load
             loadSettings();
         });
+    </script>
+    <script>
+        // Fallback for browsers that don't support type="module"
+        if (document.querySelector('script[type="module"]')) {
+            const fallback = document.createElement('div');
+            fallback.className = 'alert alert-warning';
+            fallback.textContent = 'Your browser does not support ES modules. Please use a modern browser.';
+            document.body.prepend(fallback);
+        }
     </script>
 </body>
 </html>

@@ -8,7 +8,7 @@
     "start": "node --experimental-modules --experimental-json-modules server.js",
     "dev": "nodemon --experimental-modules --experimental-json-modules server.js",
     "build:bundle": "browserify public/js/app.js -t [ babelify --configFile ./.babelrc --presets [ @babel/preset-env ] --plugins [ @babel/plugin-transform-runtime ] ] -o public/js/bundle.js",
-    "test": "NODE_OPTIONS=--experimental-vm-modules jest --detectOpenHandles --forceExit",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest --detectOpenHandles --forceExit --config=jest.simple.config.js",
     "test:unit": "cross-env NODE_ENV=test jest test/**/*.test.js --config=jest.config.mjs",
     "test:integration": "cross-env NODE_ENV=test jest test/integration/**/*.test.js --config=jest.config.mjs",
     "test:api": "cross-env NODE_ENV=test jest test/api/**/*.test.js --config=jest.config.mjs",
@@ -19,7 +19,8 @@
     "test:debug": "cross-env NODE_OPTIONS='--inspect-brk --experimental-vm-modules --experimental-specifier-resolution=node' NODE_ENV=test jest --runInBand --config=jest.config.mjs",
     "test:all": "NODE_ENV=test jest --config=jest.config.mjs",
     "setup": "cp .env.example .env",
-    "postinstall": "npm run build:bundle"
+    "postinstall": "npm run build:bundle",
+    "build": "browserify public/js/app.js -t [ babelify --global ] -o public/js/bundle.js"
   },
   "keywords": [
     "pingone",
@@ -60,15 +61,15 @@
     "xss-clean": "^0.1.1"
   },
   "devDependencies": {
-    "@babel/core": "^7.27.7",
+    "@babel/core": "^7.28.0",
     "@babel/plugin-proposal-class-properties": "^7.18.6",
     "@babel/plugin-proposal-export-default-from": "^7.27.1",
     "@babel/plugin-proposal-export-namespace-from": "^7.18.9",
     "@babel/plugin-proposal-private-methods": "^7.18.6",
     "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
     "@babel/plugin-transform-modules-commonjs": "^7.27.1",
-    "@babel/plugin-transform-runtime": "^7.27.4",
-    "@babel/preset-env": "^7.27.2",
+    "@babel/plugin-transform-runtime": "^7.28.0",
+    "@babel/preset-env": "^7.28.0",
     "@babel/preset-react": "^7.27.1",
     "@babel/preset-typescript": "^7.27.1",
     "@babel/register": "^7.27.0",
@@ -77,8 +78,8 @@
     "@jest/globals": "^29.7.0",
     "@testing-library/dom": "^9.3.4",
     "@testing-library/jest-dom": "^6.6.3",
-    "@testing-library/react": "^16.3.0",
-    "@testing-library/user-event": "^14.6.1",
+    "@testing-library/react": "^12.1.5",
+    "@testing-library/user-event": "^13.5.0",
     "@types/jest": "^30.0.0",
     "babel-jest": "^29.7.0",
     "babel-plugin-istanbul": "^6.1.1",

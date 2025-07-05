@@ -738,7 +738,7 @@ class App {
       throw error;
     } finally {
       // Always hide loading state
-      this.uiManager.showLoading(false);
+      this.uiManager.hideLoading();
     }
   }
 

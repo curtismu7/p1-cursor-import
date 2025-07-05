@@ -16,7 +16,7 @@ dotenv.config();
 
 // Initialize Express app
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 4000;
 
 // --- Middleware (must come BEFORE routers) ---
 app.use(express.json({ limit: '10mb' }));
@@ -426,6 +426,48 @@ const initializeLoggingSystem = async () => {
         return false;
     }
 };
+
+// Test PingOne connection endpoint
+app.post('/api/pingone/test-connection', async (req, res) => {
+    const { apiClientId, apiSecret, environmentId, region } = req.body;
+    
+    if (!apiClientId || !apiSecret || !environmentId) {
+        return res.status(400).json({
+            success: false,
+            message: 'Missing required fields: apiClientId, apiSecret, and environmentId are required'
+        });
+    }
+    
+    try {
+        // Test the connection by getting an access token
+        const tokenManager = new TokenManager(console, {
+            apiClientId,
+            apiSecret,
+            environmentId,
+            region: region || 'NorthAmerica'
+        });
+        
+        const token = await tokenManager.getAccessToken();
+        
+        if (token) {
+            return res.json({
+                success: true,
+                message: 'Successfully connected to PingOne API'
+            });
+        } else {
+            return res.status(401).json({
+                success: false,
+                message: 'Failed to authenticate with PingOne API: No token received'
+            });
+        }
+    } catch (error) {
+        console.error('PingOne connection test failed:', error);
+        return res.status(401).json({
+            success: false,
+            message: `Failed to connect to PingOne API: ${error.message || 'Unknown error'}`
+        });
+    }
+});
 
 // API routes
 // GET logs endpoint for the frontend

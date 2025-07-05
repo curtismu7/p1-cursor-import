@@ -219,6 +219,22 @@ export class PingOneClient {
     }
 
     /**
+     * Test the connection to PingOne API
+     * @returns {Promise<boolean>} True if connection is successful, false otherwise
+     */
+    async testConnection() {
+        try {
+            const settings = this.getSettings();
+            // Try to get the populations endpoint as a way to test the connection
+            await this.request('GET', `/v1/environments/${settings.environmentId}/populations?limit=1`);
+            return true;
+        } catch (error) {
+            this.logger.error('PingOne connection test failed:', error);
+            return false;
+        }
+    }
+
+    /**
      * Import users into PingOne
      * @param {Array<Object>} users - Array of user objects to import
      * @param {Object} options - Import options

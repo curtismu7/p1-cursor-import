@@ -7,121 +7,306 @@ class Logger {
         this.maxLogs = 1000;
         this.initialized = false;
         this.offlineLogs = [];
-        this.isOnline = window.navigator.onLine;
+        this.isOnline = typeof window !== 'undefined' ? window.navigator.onLine : true;
         this.logContainer = null;
         
         // Initialize log container
         this._initLogContainer(logContainer);
         
-        // Setup file logger with safe defaults
-        this.fileLogger = {
-            debug: (message, data, context) => {
-                console.debug(`[DEBUG] ${message}`, data, context);
-                return Promise.resolve();
-            },
-            info: (message, data, context) => {
-                console.info(`[INFO] ${message}`, data, context);
-                return Promise.resolve();
-            },
-            warn: (message, data, context) => {
-                console.warn(`[WARN] ${message}`, data, context);
-                return Promise.resolve();
-            },
-            error: (message, data, context) => {
-                console.error(`[ERROR] ${message}`, data, context);
-                return Promise.resolve();
-            },
-            close: () => Promise.resolve()
-        };
+        // Create a safe file logger that won't throw errors
+        this.fileLogger = this._createSafeFileLogger();
         
-        // Initialize file logger lazily when first used
-        this.fileLogger = {
+        // Mark as initialized
+        this.initialized = true;
+    }
+    
+    /**
+     * Create a safe file logger that handles initialization and errors
+     * @private
+     */
+    _createSafeFileLogger() {
+        const logger = {
             _initialized: false,
             _logger: null,
             _queue: [],
+            _initializing: false,
             
-            _ensureInitialized: async () => {
-                if (this.fileLogger._initialized) return true;
-                try {
-                    this.fileLogger._logger = new FileLogger('client.log');
-                    this.fileLogger._initialized = true;
-                    await this.fileLogger._logger.info('Logger initialized');
-                    // Process any queued messages
-                    const queue = [...this.fileLogger._queue];
-                    this.fileLogger._queue = [];
-                    for (const { method, args } of queue) {
-                        await this.fileLogger._logger[method](...args);
+            // Public logging methods that match console API
+            log: function(...args) {
+                const [message, data, context] = this._processArgs(...args);
+                this._log('info', message, data, context);
+            },
+            debug: function(...args) {
+                const [message, data, context] = this._processArgs(...args);
+                this._log('debug', message, data, context);
+            },
+            info: function(...args) {
+                const [message, data, context] = this._processArgs(...args);
+                this._log('info', message, data, context);
+            },
+            warn: function(...args) {
+                const [message, data, context] = this._processArgs(...args);
+                this._log('warn', message, data, context);
+            },
+            error: function(...args) {
+                const [message, data, context] = this._processArgs(...args);
+                this._log('error', message, data, context);
+            },
+            
+            // Helper method to process log arguments
+            _processArgs: function(...args) {
+                let message = '';
+                let data = null;
+                let context = null;
+
+                if (args.length > 0) {
+                    if (typeof args[0] === 'string') {
+                        message = args[0];
+                        if (args.length > 1 && typeof args[1] === 'object') {
+                            data = args[1];
+                            if (args.length > 2 && typeof args[2] === 'object') {
+                                context = args[2];
+                            }
+                        }
+                    } else if (typeof args[0] === 'object') {
+                        data = args[0];
+                        message = 'Log data';
+                        if (args.length > 1 && typeof args[1] === 'object') {
+                            context = args[1];
+                        }
                     }
-                    return true;
+                }
+
+                return [message, data, context];
+            },
+            
+            // Internal log method that handles queuing and initialization
+            _log: async function(level, message, data, context) {
+                // Always log to console for debugging
+                const consoleLevel = level === 'log' ? 'info' : level;
+                if (console[consoleLevel]) {
+                    console[consoleLevel](`[${level.toUpperCase()}]`, message, data || '', context || '');
+                } else {
+                    console.log(`[${level.toUpperCase()}]`, message, data || '', context || '');
+                }
+                
+                // If we're not in a browser environment, don't try to use FileLogger
+                if (typeof window === 'undefined') {
+                    return;
+                }
+                
+                // Use arrow function to maintain 'this' context
+                const logToFile = async () => {
+                    // If not initialized, queue the message
+                    if (!this._initialized) {
+                        this._queue.push({ level, message, data, context });
+                        // Start initialization if not already in progress
+                        if (!this._initializing) {
+                            await this._initialize();
+                        }
+                        return;
+                    }
+                    
+                    // If we have a logger, use it
+                    if (this._logger) {
+                        try {
+                            await this._logger[level](message, data, context);
+                        } catch (error) {
+                            console.error('Error writing to log file:', error);
+                        }
+                    }
+                };
+                
+                // Don't wait for the file logging to complete
+                logToFile().catch(console.error);
+            },
+            
+            // Initialize the file logger
+            _initialize: async function() {
+                if (this._initializing || this._initialized) return;
+                this._initializing = true;
+                
+                try {
+                    // Only initialize in a secure context with the File System Access API
+                    if (window.isSecureContext && window.showSaveFilePicker) {
+                        this._logger = new FileLogger('client.log');
+                        await this._logger.info('Logger initialized');
+                        
+                        // Process any queued messages
+                        const queue = [...this._queue];
+                        this._queue = [];
+                        
+                        for (const { level, message, data, context } of queue) {
+                            try {
+                                await this._logger[level](message, data, context);
+                            } catch (err) {
+                                console.error('Error processing queued log:', err);
+                            }
+                        }
+                    }
                 } catch (error) {
-                    console.warn('Could not initialize file logger, using console fallback', error);
-                    this.fileLogger._initialized = false;
-                    return false;
+                    console.error('Failed to initialize file logger:', error);
+                } finally {
+                    this._initialized = true;
+                    this._initializing = false;
                 }
             },
             
-            debug: async (message, data, context) => {
-                console.debug(`[DEBUG] ${message}`, data, context);
-                if (this.fileLogger._initialized) {
-                    return this.fileLogger._logger.debug(message, data, context);
-                } else if (this.fileLogger._logger === null) {
-                    this.fileLogger._queue.push({ method: 'debug', args: [message, data, context] });
-                    // Try to initialize on first log
-                    setTimeout(() => this.fileLogger._ensureInitialized(), 0);
+            // Close the file logger
+            close: async function() {
+                try {
+                    if (this._logger && typeof this._logger.close === 'function') {
+                        await this._logger.close();
+                    }
+                } catch (error) {
+                    console.error('Error closing file logger:', error);
                 }
-            },
-            
-            info: async (message, data, context) => {
-                console.info(`[INFO] ${message}`, data, context);
-                if (this.fileLogger._initialized) {
-                    return this.fileLogger._logger.info(message, data, context);
-                } else if (this.fileLogger._logger === null) {
-                    this.fileLogger._queue.push({ method: 'info', args: [message, data, context] });
-                    // Try to initialize on first log
-                    setTimeout(() => this.fileLogger._ensureInitialized(), 0);
-                }
-            },
-            
-            warn: async (message, data, context) => {
-                console.warn(`[WARN] ${message}`, data, context);
-                if (this.fileLogger._initialized) {
-                    return this.fileLogger._logger.warn(message, data, context);
-                } else if (this.fileLogger._logger === null) {
-                    this.fileLogger._queue.push({ method: 'warn', args: [message, data, context] });
-                    // Try to initialize on first log
-                    setTimeout(() => this.fileLogger._ensureInitialized(), 0);
-                }
-            },
-            
-            error: async (message, data, context) => {
-                console.error(`[ERROR] ${message}`, data, context);
-                if (this.fileLogger._initialized) {
-                    return this.fileLogger._logger.error(message, data, context);
-                } else if (this.fileLogger._logger === null) {
-                    this.fileLogger._queue.push({ method: 'error', args: [message, data, context] });
-                    // Try to initialize on first log
-                    setTimeout(() => this.fileLogger._ensureInitialized(), 0);
-                }
-            },
-            
-            close: async () => {
-                if (this.fileLogger._initialized && this.fileLogger._logger) {
-                    return this.fileLogger._logger.close();
-                }
-                return Promise.resolve();
             }
         };
         
-        // Set up event listeners
-        window.addEventListener('online', () => this.handleOnline());
-        window.addEventListener('offline', () => this.handleOffline());
+        // Initialize on first user interaction if in browser
+        if (typeof window !== 'undefined') {
+            const initOnInteraction = () => {
+                window.removeEventListener('click', initOnInteraction);
+                window.removeEventListener('keydown', initOnInteraction);
+                logger._initialize().catch(console.error);
+            };
+            
+            window.addEventListener('click', initOnInteraction);
+            window.addEventListener('keydown', initOnInteraction);
+        }
+        
+        return logger;
+    }
+    
+    // Public logging methods that match console API
+    log(message, data, context) {
+        this._addToLogs('info', message, data, context);
+        this.fileLogger.log(message, data, context);
+    }
+    
+    debug(message, data, context) {
+        this._addToLogs('debug', message, data, context);
+        this.fileLogger.debug(message, data, context);
+    }
+    
+    info(message, data, context) {
+        this._addToLogs('info', message, data, context);
+        this.fileLogger.info(message, data, context);
+    }
+    
+    warn(message, data, context) {
+        this._addToLogs('warn', message, data, context);
+        this.fileLogger.warn(message, data, context);
+    }
+    
+    error(message, data, context) {
+        this._addToLogs('error', message, data, context);
+        this.fileLogger.error(message, data, context);
+    }
+    
+    // Internal method to add logs to the in-memory array and UI
+    _addToLogs(level, message, data, context) {
+        const timestamp = new Date().toISOString();
+        const logEntry = { timestamp, level, message, data, context };
+        
+        // Add to logs array
+        this.logs.push(logEntry);
+        
+        // Keep only the most recent logs
+        if (this.logs.length > this.maxLogs) {
+            this.logs.shift();
+        }
+        
+        // Update UI if log container exists
+        this._updateLogUI(logEntry);
+    }
+    
+    /**
+     * Update the UI with a new log entry
+     * @private
+     * @param {Object} logEntry - The log entry to display
+     */
+    _updateLogUI(logEntry) {
+        if (!this.logContainer || !(this.logContainer instanceof HTMLElement)) {
+            return;
+        }
+        
+        try {
+            const logElement = document.createElement('div');
+            logElement.className = `log-entry log-${logEntry.level}`;
+            
+            const timeStr = new Date(logEntry.timestamp).toLocaleTimeString();
+            
+            // Create a more structured log entry
+            const timeElement = document.createElement('span');
+            timeElement.className = 'log-time';
+            timeElement.textContent = timeStr;
+            
+            const levelElement = document.createElement('span');
+            levelElement.className = `log-level ${logEntry.level}`;
+            levelElement.textContent = logEntry.level.toUpperCase();
+            
+            const messageElement = document.createElement('div');
+            messageElement.className = 'log-message';
+            messageElement.textContent = logEntry.message;
+            
+            // Create a container for the log header (time, level, message)
+            const headerElement = document.createElement('div');
+            headerElement.className = 'log-header';
+            headerElement.appendChild(timeElement);
+            headerElement.appendChild(levelElement);
+            headerElement.appendChild(messageElement);
+            
+            logElement.appendChild(headerElement);
+            
+            // Add data if it exists
+            if (logEntry.data) {
+                const dataElement = document.createElement('pre');
+                dataElement.className = 'log-data';
+                dataElement.textContent = JSON.stringify(logEntry.data, null, 2);
+                logElement.appendChild(dataElement);
+            }
+            
+            // Add context if it exists
+            if (logEntry.context) {
+                const contextElement = document.createElement('pre');
+                contextElement.className = 'log-context';
+                contextElement.textContent = `Context: ${JSON.stringify(logEntry.context, null, 2)}`;
+                logElement.appendChild(contextElement);
+            }
+            
+            // Add to the top of the log container
+            if (this.logContainer.firstChild) {
+                this.logContainer.insertBefore(logElement, this.logContainer.firstChild);
+            } else {
+                this.logContainer.appendChild(logElement);
+            }
+            
+            // Auto-scroll to top (since we're adding to the top)
+            this.logContainer.scrollTop = 0;
+            
+            // Limit the number of log entries in the UI
+            const maxUILogs = 100;
+            while (this.logContainer.children.length > maxUILogs) {
+                this.logContainer.removeChild(this.logContainer.lastChild);
+            }
+        } catch (error) {
+            console.error('Error updating log UI:', error);
+        }
     }
     
     _initLogContainer(logContainer) {
-        if (logContainer && typeof logContainer === 'object') {
-            this.logContainer = logContainer;
-        } else {
-            this.logContainer = document.getElementById('log-entries') || document.createElement('div');
+        try {
+            if (logContainer && typeof logContainer === 'string') {
+                this.logContainer = document.querySelector(logContainer);
+            } else if (logContainer instanceof HTMLElement) {
+                this.logContainer = logContainer;
+            } else {
+                this.logContainer = document.getElementById('log-entries') || document.createElement('div');
+            }
+        } catch (error) {
+            console.error('Error initializing log container:', error);
         }
     }
     

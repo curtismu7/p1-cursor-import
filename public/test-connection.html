@@ -111,8 +111,21 @@
         </div>
     </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
+    <!-- Import required modules -->
+    <script type="module">
+        import { initAPIFactory } from './js/modules/api-factory.js';
+        import { Logger } from './js/modules/logger.js';
+        import { SettingsManager } from './js/modules/settings-manager.js';
+        
+        document.addEventListener('DOMContentLoaded', async function() {
+            // Initialize logger
+            const logger = new Logger(console);
+            
+            // Initialize settings manager
+            const settingsManager = new SettingsManager(logger);
+            
+            // Initialize API factory
+            const apiFactory = initAPIFactory(logger, settingsManager);
             const connectionStatus = document.getElementById('connection-status');
             const statusText = document.getElementById('status-text');
             const statusSpinner = document.getElementById('status-spinner');
@@ -154,7 +167,14 @@
                     testSpinner.classList.remove('d-none');
                     updateStatus('connecting', 'Connecting to PingOne...');
                     
-                    // Make API request
+                    // Get the PingOne client from the API factory
+                    const pingOneClient = apiFactory.getPingOneClient();
+                    
+                    // Test the connection using the PingOne client
+                    const isConnected = await pingOneClient.testConnection();
+                    
+                    // For demonstration, we'll still fetch the health data
+                    // In a real app, we'd get this from the PingOne client
                     const response = await fetch('/api/health');
                     const data = await response.json();
                     
@@ -168,11 +188,11 @@
                     // Update UI with server info
                     updateServerInfo(data);
                     
-                    // Check PingOne status
-                    if (data.server.pingOneInitialized) {
+                    // Update status based on connection test
+                    if (isConnected) {
                         updateStatus('connected', 'Successfully connected to PingOne');
                     } else {
-                        updateStatus('error', data.server.lastError || 'Not connected to PingOne');
+                        updateStatus('error', 'Failed to connect to PingOne');
                     }
                     
                 } catch (error) {
@@ -232,6 +252,15 @@
             // Initial test
             testConnection();
         });
+    </script>
+    <script>
+        // Fallback for browsers that don't support type="module"
+        if (document.querySelector('script[type="module"]')) {
+            const fallback = document.createElement('div');
+            fallback.className = 'alert alert-warning';
+            fallback.textContent = 'Your browser does not support ES modules. Please use a modern browser.';
+            document.body.prepend(fallback);
+        }
     </script>
 </body>
 </html>

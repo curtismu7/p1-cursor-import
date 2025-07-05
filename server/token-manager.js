@@ -2,9 +2,16 @@ import fetch from 'node-fetch';
 
 class TokenManager {
     constructor(logger) {
-        this.logger = logger;
+        this.logger = logger || {
+            debug: console.debug.bind(console),
+            info: console.log.bind(console),
+            warn: console.warn.bind(console),
+            error: console.error.bind(console)
+        };
         this.token = null;
         this.tokenExpiry = null;
+        this.isRefreshing = false;
+        this.refreshQueue = [];
     }
 
     /**
@@ -12,10 +19,25 @@ class TokenManager {
      * @returns {Promise<string>} Access token
      */
     async getAccessToken() {
-        // Return cached token if it's still valid (with 5 minute buffer)
-        const bufferTime = 5 * 60 * 1000; // 5 minutes in milliseconds
-        if (this.token && this.tokenExpiry && (this.tokenExpiry - bufferTime) > Date.now()) {
+        // Return cached token if it's still valid (with 2 minute buffer)
+        const bufferTime = 2 * 60 * 1000; // 2 minutes in milliseconds
+        const now = Date.now();
+        
+        // If we have a valid token, return it
+        if (this.token && this.tokenExpiry && (this.tokenExpiry - bufferTime) > now) {
+            const timeLeft = Math.ceil((this.tokenExpiry - now - bufferTime) / 1000 / 60);
+            if (timeLeft <= 5) { // Only log if token is about to expire soon
+                this.logger.debug(`Using cached token (expires in ${timeLeft} minutes)`);
+            }
             return this.token;
+        }
+        
+        // If we're already refreshing, queue this request
+        if (this.isRefreshing) {
+            this.logger.debug('Token refresh in progress, queuing request');
+            return new Promise((resolve, reject) => {
+                this.refreshQueue.push({ resolve, reject });
+            });
         }
 
         const clientId = process.env.PINGONE_CLIENT_ID;
@@ -75,13 +97,22 @@ class TokenManager {
             this.token = data.access_token;
             this.tokenExpiry = Date.now() + expiresInMs;
             
-            // Log token details for debugging
-            this.logger.info(`New token obtained, expires in ${Math.floor(expiresInMs / 1000 / 60)} minutes`);
+            const expiresInMinutes = Math.floor(expiresInMs / 1000 / 60);
+            this.logger.info(`New token obtained, expires in ${expiresInMinutes} minutes`);
             
-            this.logger.info('Successfully obtained new access token');
+            if (expiresInMinutes < 10) {
+                this.logger.warn(`Token has short expiration time: ${expiresInMinutes} minutes`);
+            }
+            
+            // Process any queued requests
+            this.processQueue(null, this.token);
+            
             return this.token;
             
         } catch (error) {
+            // Process any queued requests with the error
+            this.processQueue(error);
+            
             this.logger.error(`Error getting access token: ${error.message}`);
             throw error;
         }
@@ -93,6 +124,25 @@ class TokenManager {
     clearToken() {
         this.token = null;
         this.tokenExpiry = null;
+    }
+    
+    /**
+     * Process any queued token requests
+     * @private
+     */
+    processQueue(error, token = null) {
+        // Reset the refreshing flag
+        this.isRefreshing = false;
+        
+        // Process all queued requests
+        while (this.refreshQueue.length > 0) {
+            const { resolve, reject } = this.refreshQueue.shift();
+            if (error) {
+                reject(error);
+            } else {
+                resolve(token);
+            }
+        }
     }
 
     /**

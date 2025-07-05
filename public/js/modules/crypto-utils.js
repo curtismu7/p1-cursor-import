@@ -86,7 +86,5 @@ class CryptoUtils {
 }
 
 // Export the class and a singleton instance
-module.exports = { 
-    CryptoUtils,
-    cryptoUtils: new CryptoUtils() 
-};
+export { CryptoUtils };
+export const cryptoUtils = new CryptoUtils();
