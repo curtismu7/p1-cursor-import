@@ -19,6 +19,9 @@ class App {
             // Initialize UI components
             this.uiManager = new UIManager(this.logger);
             this.fileHandler = new FileHandler(this.logger, this.uiManager);
+            
+            // Make UI manager available globally for other modules
+            window.uiManager = this.uiManager;
             this.versionManager = new VersionManager();
             
             // Track import state
@@ -435,6 +438,9 @@ class App {
             this.logger.fileLogger.warn('Import already in progress');
             return;
         }
+        
+        // Reset Import Progress screen for new import
+        this.uiManager.resetImportProgress();
         
         try {
             this.isImporting = true;

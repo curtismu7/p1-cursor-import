@@ -637,6 +637,33 @@ export class UIManager {
     }
     
     /**
+     * Reset/Clear the Import Progress area for a new import
+     */
+    resetImportProgress() {
+        // Progress bar
+        const progressBar = document.getElementById('import-progress');
+        if (progressBar) {
+            progressBar.style.width = '0%';
+            progressBar.setAttribute('aria-valuenow', 0);
+        }
+        const progressPercent = document.getElementById('import-progress-percent');
+        if (progressPercent) progressPercent.textContent = '0%';
+        const progressText = document.getElementById('import-progress-text');
+        if (progressText) progressText.textContent = 'Ready';
+        const progressCount = document.getElementById('import-progress-count');
+        if (progressCount) progressCount.textContent = '0 of 0 users';
+        // Stats
+        const successCount = document.getElementById('import-success-count');
+        if (successCount) successCount.textContent = '0';
+        const failedCount = document.getElementById('import-failed-count');
+        if (failedCount) failedCount.textContent = '0';
+        const skippedCount = document.getElementById('import-skipped-count');
+        if (skippedCount) skippedCount.textContent = '0';
+        // Hide population warning
+        this.hidePopulationWarning && this.hidePopulationWarning();
+    }
+
+    /**
      * Set the import button state
      * @param {boolean} enabled - Whether the button should be enabled
      * @param {string} [text] - Optional button text
@@ -688,6 +715,14 @@ export class UIManager {
         if (!notificationArea) {
             console.warn('Notification area not found in the DOM');
             return;
+        }
+        
+        // Remove existing success notification if type is success
+        if (type === 'success') {
+            const existingSuccess = notificationArea.querySelector('.notification-success');
+            if (existingSuccess) {
+                existingSuccess.remove();
+            }
         }
         
         // Create notification element
@@ -787,13 +822,15 @@ export class UIManager {
         // Set up Clear Logs button
         const clearLogsBtn = document.getElementById('clear-logs');
         if (clearLogsBtn) {
+            // Hide the button by default
+            clearLogsBtn.style.display = 'none';
             clearLogsBtn.addEventListener('click', async (e) => {
                 e.preventDefault();
                 try {
                     const response = await fetch('/api/logs/ui', { method: 'DELETE' });
                     const data = await response.json();
                     if (data.success) {
-                        this.showNotification('Logs cleared', 'success');
+                        this.showNotification('Logs cleared. Only UI logs are cleared. Server logs are not affected.', 'info');
                         await this.loadAndDisplayLogs();
                     } else {
                         this.showNotification('Failed to clear logs: ' + (data.error || 'Unknown error'), 'error');
@@ -806,6 +843,21 @@ export class UIManager {
         // Make sure the current view is visible
         const currentView = this.getLastView();
         this.showView(currentView);
+
+        // Show/hide Clear Logs button based on view
+        const updateClearLogsBtnVisibility = (viewName) => {
+            if (clearLogsBtn) {
+                clearLogsBtn.style.display = (viewName === 'logs') ? '' : 'none';
+            }
+        };
+        // Patch showView to also update button visibility
+        const origShowView = this.showView.bind(this);
+        this.showView = async (viewName) => {
+            updateClearLogsBtnVisibility(viewName);
+            return await origShowView(viewName);
+        };
+        // Set initial visibility
+        updateClearLogsBtnVisibility(currentView);
     }
     
     /**
@@ -1168,6 +1220,31 @@ export class UIManager {
             element.textContent = content;
         } else {
             console.error(`Element with ID ${elementId} not found`);
+        }
+    }
+
+    /**
+     * Show population ID warning message
+     * @param {string} csvPopulationId - The invalid population ID from CSV
+     * @param {string} settingsPopulationId - The population ID from settings that was used instead
+     */
+    showPopulationWarning(csvPopulationId, settingsPopulationId) {
+        const warningArea = document.getElementById('population-warning');
+        const warningText = document.getElementById('population-warning-text');
+        
+        if (warningArea && warningText) {
+            warningText.textContent = `Invalid population ID "${csvPopulationId}" found in CSV file. Using settings population ID "${settingsPopulationId}" instead.`;
+            warningArea.style.display = 'block';
+        }
+    }
+
+    /**
+     * Hide population ID warning message
+     */
+    hidePopulationWarning() {
+        const warningArea = document.getElementById('population-warning');
+        if (warningArea) {
+            warningArea.style.display = 'none';
         }
     }
 }

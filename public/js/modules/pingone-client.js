@@ -260,6 +260,17 @@ export class PingOneClient {
                         enabled: currentUser.enabled !== false
                     };
 
+                    // Validate population ID - if CSV has invalid population ID, use settings
+                    if (currentUser.populationId && currentUser.populationId !== settings.populationId) {
+                        this.logger.warn(`User ${currentUser.email || currentUser.username} has invalid population ID '${currentUser.populationId}', using settings population ID '${settings.populationId}'`, 'warn');
+                        userData.population.id = settings.populationId;
+                        
+                        // Show warning in UI if UI manager is available
+                        if (window.uiManager && typeof window.uiManager.showPopulationWarning === 'function') {
+                            window.uiManager.showPopulationWarning(currentUser.populationId, settings.populationId);
+                        }
+                    }
+
                     // Add password only if provided, otherwise let PingOne generate one
                     if (currentUser.password) {
                         userData.password = {
@@ -274,6 +285,25 @@ export class PingOneClient {
 
                     // Make the API request
                     const result = await this.request('POST', endpoint, userData);
+                    // Check for backend warning (uniqueness violation)
+                    if (result && result.warning === true && /already exists/i.test(result.message)) {
+                        this.logger.warn(`User ${currentUser.email || currentUser.username} already exists, skipping`, 'warn');
+                        skippedCount++;
+                        // Call progress callback for skipped user
+                        if (onProgress) {
+                            onProgress(currentIndex + 1, totalUsers, currentUser, {
+                                success: successCount,
+                                failed: failedCount,
+                                skipped: skippedCount
+                            });
+                        }
+                        return {
+                            success: false,
+                            user: currentUser,
+                            error: 'User already exists',
+                            skipped: true
+                        };
+                    }
                     successCount++;
                     return { success: true, user: currentUser, result };
                 } catch (error) {
@@ -281,7 +311,8 @@ export class PingOneClient {
                     failedCount++;
                     
                     if (options.continueOnError) {
-                        const isSkipped = error.response?.status === 409; // Conflict - user already exists
+                        // Old logic for 409 Conflict (should not be needed now, but keep for safety)
+                        const isSkipped = error.response?.status === 409;
                         if (isSkipped) {
                             this.logger.warn(`User ${currentUser.email} already exists, skipping`, 'warn');
                             skippedCount++;
@@ -315,11 +346,7 @@ export class PingOneClient {
             const batchResults = await Promise.all(batchPromises);
             results.push(...batchResults);
             
-            // Update skipped count from batch results
-            const batchSkipped = batchResults.filter(r => r?.skipped).length;
-            skippedCount += batchSkipped;
-            successCount -= batchSkipped; // Adjust success count if any were skipped
-            
+            // Do NOT update skippedCount or adjust successCount here (already handled per user)
             // Call progress callback after batch completes
             if (onProgress) {
                 const processedCount = Math.min(i + batch.length, totalUsers);

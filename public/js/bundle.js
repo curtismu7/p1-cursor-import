@@ -22,6 +22,9 @@ class App {
       // Initialize UI components
       this.uiManager = new _uiManager.UIManager(this.logger);
       this.fileHandler = new _fileHandler.FileHandler(this.logger, this.uiManager);
+
+      // Make UI manager available globally for other modules
+      window.uiManager = this.uiManager;
       this.versionManager = new _versionManager.VersionManager();
 
       // Track import state
@@ -449,6 +452,9 @@ class App {
       this.logger.fileLogger.warn('Import already in progress');
       return;
     }
+
+    // Reset Import Progress screen for new import
+    this.uiManager.resetImportProgress();
     try {
       this.isImporting = true;
       this.currentImportAbortController = new AbortController();
@@ -2596,6 +2602,17 @@ class PingOneClient {
             enabled: currentUser.enabled !== false
           };
 
+          // Validate population ID - if CSV has invalid population ID, use settings
+          if (currentUser.populationId && currentUser.populationId !== settings.populationId) {
+            this.logger.warn(`User ${currentUser.email || currentUser.username} has invalid population ID '${currentUser.populationId}', using settings population ID '${settings.populationId}'`, 'warn');
+            userData.population.id = settings.populationId;
+
+            // Show warning in UI if UI manager is available
+            if (window.uiManager && typeof window.uiManager.showPopulationWarning === 'function') {
+              window.uiManager.showPopulationWarning(currentUser.populationId, settings.populationId);
+            }
+          }
+
           // Add password only if provided, otherwise let PingOne generate one
           if (currentUser.password) {
             userData.password = {
@@ -2610,6 +2627,25 @@ class PingOneClient {
 
           // Make the API request
           const result = await this.request('POST', endpoint, userData);
+          // Check for backend warning (uniqueness violation)
+          if (result && result.warning === true && /already exists/i.test(result.message)) {
+            this.logger.warn(`User ${currentUser.email || currentUser.username} already exists, skipping`, 'warn');
+            skippedCount++;
+            // Call progress callback for skipped user
+            if (onProgress) {
+              onProgress(currentIndex + 1, totalUsers, currentUser, {
+                success: successCount,
+                failed: failedCount,
+                skipped: skippedCount
+              });
+            }
+            return {
+              success: false,
+              user: currentUser,
+              error: 'User already exists',
+              skipped: true
+            };
+          }
           successCount++;
           return {
             success: true,
@@ -2620,7 +2656,8 @@ class PingOneClient {
           this.logger.error('Error importing user:', error);
           failedCount++;
           if (options.continueOnError) {
-            const isSkipped = error.response?.status === 409; // Conflict - user already exists
+            // Old logic for 409 Conflict (should not be needed now, but keep for safety)
+            const isSkipped = error.response?.status === 409;
             if (isSkipped) {
               this.logger.warn(`User ${currentUser.email} already exists, skipping`, 'warn');
               skippedCount++;
@@ -2654,11 +2691,7 @@ class PingOneClient {
       const batchResults = await Promise.all(batchPromises);
       results.push(...batchResults);
 
-      // Update skipped count from batch results
-      const batchSkipped = batchResults.filter(r => r?.skipped).length;
-      skippedCount += batchSkipped;
-      successCount -= batchSkipped; // Adjust success count if any were skipped
-
+      // Do NOT update skippedCount or adjust successCount here (already handled per user)
       // Call progress callback after batch completes
       if (onProgress) {
         const processedCount = Math.min(i + batch.length, totalUsers);
@@ -3895,6 +3928,33 @@ class UIManager {
   }
 
   /**
+   * Reset/Clear the Import Progress area for a new import
+   */
+  resetImportProgress() {
+    // Progress bar
+    const progressBar = document.getElementById('import-progress');
+    if (progressBar) {
+      progressBar.style.width = '0%';
+      progressBar.setAttribute('aria-valuenow', 0);
+    }
+    const progressPercent = document.getElementById('import-progress-percent');
+    if (progressPercent) progressPercent.textContent = '0%';
+    const progressText = document.getElementById('import-progress-text');
+    if (progressText) progressText.textContent = 'Ready';
+    const progressCount = document.getElementById('import-progress-count');
+    if (progressCount) progressCount.textContent = '0 of 0 users';
+    // Stats
+    const successCount = document.getElementById('import-success-count');
+    if (successCount) successCount.textContent = '0';
+    const failedCount = document.getElementById('import-failed-count');
+    if (failedCount) failedCount.textContent = '0';
+    const skippedCount = document.getElementById('import-skipped-count');
+    if (skippedCount) skippedCount.textContent = '0';
+    // Hide population warning
+    this.hidePopulationWarning && this.hidePopulationWarning();
+  }
+
+  /**
    * Set the import button state
    * @param {boolean} enabled - Whether the button should be enabled
    * @param {string} [text] - Optional button text
@@ -3947,6 +4007,14 @@ class UIManager {
     if (!notificationArea) {
       console.warn('Notification area not found in the DOM');
       return;
+    }
+
+    // Remove existing success notification if type is success
+    if (type === 'success') {
+      const existingSuccess = notificationArea.querySelector('.notification-success');
+      if (existingSuccess) {
+        existingSuccess.remove();
+      }
     }
 
     // Create notification element
@@ -4046,6 +4114,8 @@ class UIManager {
     // Set up Clear Logs button
     const clearLogsBtn = document.getElementById('clear-logs');
     if (clearLogsBtn) {
+      // Hide the button by default
+      clearLogsBtn.style.display = 'none';
       clearLogsBtn.addEventListener('click', async e => {
         e.preventDefault();
         try {
@@ -4054,7 +4124,7 @@ class UIManager {
           });
           const data = await response.json();
           if (data.success) {
-            this.showNotification('Logs cleared', 'success');
+            this.showNotification('Logs cleared. Only UI logs are cleared. Server logs are not affected.', 'info');
             await this.loadAndDisplayLogs();
           } else {
             this.showNotification('Failed to clear logs: ' + (data.error || 'Unknown error'), 'error');
@@ -4067,6 +4137,21 @@ class UIManager {
     // Make sure the current view is visible
     const currentView = this.getLastView();
     this.showView(currentView);
+
+    // Show/hide Clear Logs button based on view
+    const updateClearLogsBtnVisibility = viewName => {
+      if (clearLogsBtn) {
+        clearLogsBtn.style.display = viewName === 'logs' ? '' : 'none';
+      }
+    };
+    // Patch showView to also update button visibility
+    const origShowView = this.showView.bind(this);
+    this.showView = async viewName => {
+      updateClearLogsBtnVisibility(viewName);
+      return await origShowView(viewName);
+    };
+    // Set initial visibility
+    updateClearLogsBtnVisibility(currentView);
   }
 
   /**
@@ -4411,6 +4496,30 @@ class UIManager {
       element.textContent = content;
     } else {
       console.error(`Element with ID ${elementId} not found`);
+    }
+  }
+
+  /**
+   * Show population ID warning message
+   * @param {string} csvPopulationId - The invalid population ID from CSV
+   * @param {string} settingsPopulationId - The population ID from settings that was used instead
+   */
+  showPopulationWarning(csvPopulationId, settingsPopulationId) {
+    const warningArea = document.getElementById('population-warning');
+    const warningText = document.getElementById('population-warning-text');
+    if (warningArea && warningText) {
+      warningText.textContent = `Invalid population ID "${csvPopulationId}" found in CSV file. Using settings population ID "${settingsPopulationId}" instead.`;
+      warningArea.style.display = 'block';
+    }
+  }
+
+  /**
+   * Hide population ID warning message
+   */
+  hidePopulationWarning() {
+    const warningArea = document.getElementById('population-warning');
+    if (warningArea) {
+      warningArea.style.display = 'none';
     }
   }
 }

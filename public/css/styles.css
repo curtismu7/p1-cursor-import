@@ -1725,3 +1725,37 @@ label {
         padding: 0.5rem 1rem;
     }
 }
+
+/* Population Warning Styles */
+.population-warning {
+    margin-bottom: 15px;
+    padding: 10px 15px;
+    background-color: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 4px;
+    border-left: 4px solid #f39c12;
+}
+
+.population-warning .warning-message {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #856404;
+    font-size: 14px;
+}
+
+.population-warning .warning-message i {
+    color: #f39c12;
+    font-size: 16px;
+}
+
+.population-warning .warning-message span {
+    flex: 1;
+    line-height: 1.4;
+}
+
+.notification-success {
+    background-color: #d4edda !important;
+    color: #155724;
+    border-left: 4px solid #28a745;
+}
