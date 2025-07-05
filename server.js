@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import TokenManager from './server/token-manager.js';
 import logsRouter from './routes/logs.js';
 import settingsRouter from './routes/settings.js';
+import pingoneProxyRouter from './routes/pingone-proxy.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -28,6 +29,52 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 app.use('/api/logs', logsRouter);
 app.use('/api/settings', settingsRouter);
+
+// Test PingOne connection endpoint (must be before pingone-proxy router)
+app.post('/api/pingone/test-connection', async (req, res) => {
+    // Use environment variables instead of request body
+    const apiClientId = process.env.PINGONE_CLIENT_ID;
+    const apiSecret = process.env.PINGONE_CLIENT_SECRET;
+    const environmentId = process.env.PINGONE_ENVIRONMENT_ID;
+    const region = process.env.PINGONE_REGION || 'NorthAmerica';
+    
+    if (!apiClientId || !apiSecret || !environmentId) {
+        return res.status(400).json({
+            success: false,
+            message: 'Missing required environment variables: PINGONE_CLIENT_ID, PINGONE_CLIENT_SECRET, and PINGONE_ENVIRONMENT_ID are required'
+        });
+    }
+    
+    try {
+        // Test the connection by getting an access token using the server's token manager
+        const tokenManager = req.app.get('tokenManager');
+        if (!tokenManager) {
+            throw new Error('Token manager not available');
+        }
+        
+        const token = await tokenManager.getAccessToken();
+        
+        if (token) {
+            return res.json({
+                success: true,
+                message: 'Successfully connected to PingOne API'
+            });
+        } else {
+            return res.status(401).json({
+                success: false,
+                message: 'Failed to authenticate with PingOne API: No token received'
+            });
+        }
+    } catch (error) {
+        console.error('PingOne connection test failed:', error);
+        return res.status(401).json({
+            success: false,
+            message: `Failed to connect to PingOne API: ${error.message || 'Unknown error'}`
+        });
+    }
+});
+
+app.use('/api/pingone', pingoneProxyRouter);
 
 /**
  * List all registered routes for debugging
@@ -427,49 +474,7 @@ const initializeLoggingSystem = async () => {
     }
 };
 
-// Test PingOne connection endpoint
-app.post('/api/pingone/test-connection', async (req, res) => {
-    // Use environment variables instead of request body
-    const apiClientId = process.env.PINGONE_CLIENT_ID;
-    const apiSecret = process.env.PINGONE_CLIENT_SECRET;
-    const environmentId = process.env.PINGONE_ENVIRONMENT_ID;
-    const region = process.env.PINGONE_REGION || 'NorthAmerica';
-    
-    if (!apiClientId || !apiSecret || !environmentId) {
-        return res.status(400).json({
-            success: false,
-            message: 'Missing required environment variables: PINGONE_CLIENT_ID, PINGONE_CLIENT_SECRET, and PINGONE_ENVIRONMENT_ID are required'
-        });
-    }
-    
-    try {
-        // Test the connection by getting an access token using the server's token manager
-        const tokenManager = req.app.get('tokenManager');
-        if (!tokenManager) {
-            throw new Error('Token manager not available');
-        }
-        
-        const token = await tokenManager.getAccessToken();
-        
-        if (token) {
-            return res.json({
-                success: true,
-                message: 'Successfully connected to PingOne API'
-            });
-        } else {
-            return res.status(401).json({
-                success: false,
-                message: 'Failed to authenticate with PingOne API: No token received'
-            });
-        }
-    } catch (error) {
-        console.error('PingOne connection test failed:', error);
-        return res.status(401).json({
-            success: false,
-            message: `Failed to connect to PingOne API: ${error.message || 'Unknown error'}`
-        });
-    }
-});
+// Test PingOne connection endpoint is now defined earlier in the file
 
 // API routes
 // GET logs endpoint for the frontend
@@ -811,40 +816,7 @@ app.get('/api/logs', (req, res) => {
 // API Routes
 // Health endpoint is defined later in the file with comprehensive server status
 
-// PingOne API proxy endpoints
-app.get('/api/pingone/*', async (req, res) => {
-    try {
-        const url = `https://api.pingone.com${req.url.replace('/api/pingone', '')}`;
-        
-        // Get the access token from the token manager
-        const tokenManager = req.app.get('tokenManager');
-        const token = await tokenManager.getAccessToken();
-        
-        const response = await fetch(url, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.text();
-            throw new Error(`API request failed with status ${response.status}: ${errorData}`);
-        }
-        
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-            const data = await response.json();
-            res.json(data);
-        } else {
-            const text = await response.text();
-            res.send(text);
-        }
-    } catch (error) {
-        console.error('Error in PingOne API proxy:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
+// PingOne API proxy endpoints - using routes/pingone-proxy.js
 
 // Custom JSON parser middleware for specific content types
 const customJsonParser = (req, res, next) => {
@@ -904,180 +876,7 @@ app.use(customJsonParser);
 // For all other JSON content types, use the standard JSON parser
 app.use(express.json());
 
-app.post('/api/pingone/*', async (req, res) => {
-    try {
-        const url = `https://api.pingone.com${req.url.replace('/api/pingone', '')}`;
-        
-        // Get the access token from the token manager
-        const tokenManager = req.app.get('tokenManager');
-        const token = await tokenManager.getAccessToken();
-        
-        // Check if this is a user import request
-        const isUserImport = url.includes('/users/import');
-        
-        // Set content type and accept headers based on the request type
-        const headers = {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'Accept': isUserImport ? 'application/vnd.pingone.import.users+json' : 'application/json'
-        };
-        
-        // For user imports, we need to add the specific content type header
-        if (isUserImport) {
-            headers['Content-Type'] = 'application/vnd.pingone.import.users+json';
-        }
-        
-        // Log the request details for debugging
-        console.log('\n=== Request Details ===');
-        console.log('URL:', url);
-        console.log('Method: POST');
-        console.log('Headers:', JSON.stringify({
-            ...headers,
-            'Authorization': `Bearer ${token ? '***' + token.slice(-8) : 'missing'}`
-        }, null, 2));
-        console.log('Is User Import:', isUserImport);
-        
-        // For user imports, ensure the request body is in the correct format
-        let requestBody = req.body;
-        
-        if (isUserImport) {
-            console.log('Original request body:', JSON.stringify(req.body, null, 2));
-            
-            // If the body already has a users array, use it as is
-            if (req.body && req.body.users) {
-                requestBody = req.body;
-                console.log('Using existing users array with', requestBody.users.length, 'users');
-            } 
-            // If the body is an array, wrap it in a users object
-            else if (Array.isArray(req.body)) {
-                console.log('Wrapping array in users object');
-                requestBody = { users: req.body };
-            }
-            // If it's a single user object, wrap it in a users array
-            else if (req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0) {
-                console.log('Wrapping single user object in users array');
-                requestBody = { users: [req.body] };
-            } else {
-                console.log('Empty or invalid request body, using as-is');
-            }
-            
-            console.log('Formatted request body:', JSON.stringify(requestBody, null, 2));
-            
-            // Validate the request body structure
-            if (!requestBody.users || !Array.isArray(requestBody.users) || requestBody.users.length === 0) {
-                const error = new Error('Invalid request body: expected an object with a non-empty "users" array');
-                console.error('Validation error:', error.message);
-                return res.status(400).json({
-                    error: 'Invalid Request',
-                    message: error.message,
-                    details: {
-                        expected: { users: '[array of user objects]' },
-                        received: requestBody
-                    }
-                });
-            }
-        }
-
-        // Prepare the request options for PingOne API
-        const requestOptions = {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify(requestBody)
-        };
-        
-        console.log('Request options:', {
-            method: 'POST',
-            url,
-            headers: {
-                ...headers,
-                'Authorization': `Bearer ${token ? '***' + token.slice(-8) : 'missing'}`
-            },
-            body: requestBody ? '*** request body ***' : 'empty',
-            bodyLength: requestBody ? JSON.stringify(requestBody).length : 0
-        });
-
-        console.log('Sending request to PingOne API:', {
-            url,
-            method: 'POST',
-            headers: {
-                ...requestOptions.headers,
-                'Authorization': 'Bearer ***' + (token ? token.slice(-8) : 'missing')
-            },
-            bodyLength: requestOptions.body ? requestOptions.body.length : 0
-        });
-
-        // Log the first 500 characters of the request body for debugging
-        if (requestOptions.body) {
-            console.log('Request body preview:', 
-                requestOptions.body.substring(0, 500) + 
-                (requestOptions.body.length > 500 ? '...' : '')
-            );
-        }
-
-        // Make the request to PingOne API
-        let response;
-        try {
-            response = await fetch(url, requestOptions);
-
-            // Log response status and headers
-            console.log('PingOne API response status:', response.status, response.statusText);
-            console.log('Response headers:', Object.fromEntries([...response.headers.entries()]));
-
-            // Get the response text first (we'll parse it as JSON if possible)
-            const responseText = await response.text();
-
-            // Try to parse as JSON, fall back to text if not JSON
-            let responseData;
-            try {
-                responseData = responseText ? JSON.parse(responseText) : {};
-            } catch (e) {
-                console.log('Response is not JSON, using raw text');
-                responseData = responseText;
-            }
-            
-            // Log response data (truncated if too large)
-            const responseLog = JSON.stringify(responseData);
-            console.log('Response data:', 
-                responseLog.length > 1000 
-                    ? responseLog.substring(0, 1000) + '... [truncated]' 
-                    : responseLog
-            );
-            
-            // Forward the response with the appropriate status code
-            if (response.ok) {
-                res.status(response.status).json(responseData);
-            } else {
-                // For error responses, include more details
-                const errorDetails = {
-                    status: response.status,
-                    statusText: response.statusText,
-                    error: responseData.error || 'Unknown error',
-                    message: responseData.message || 'An error occurred',
-                    details: responseData.details || responseData
-                };
-                
-                console.error('PingOne API error:', JSON.stringify(errorDetails, null, 2));
-                res.status(response.status).json(errorDetails);
-            }
-        } catch (error) {
-            console.error('Error processing PingOne API response:', error);
-            res.status(500).json({ 
-                error: 'Request Failed',
-                message: error.message,
-                code: error.code,
-                stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-            });
-        }
-    } catch (error) {
-        console.error('Error in PingOne API proxy (POST):', error);
-        res.status(500).json({ 
-            error: 'Request Failed',
-            message: error.message,
-            code: error.code,
-            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-        });
-    }
-});
+// PingOne API proxy routes are handled by routes/pingone-proxy.js
 
 // Settings endpoints
 const SETTINGS_FILE = path.join(__dirname, 'data', 'settings.json');

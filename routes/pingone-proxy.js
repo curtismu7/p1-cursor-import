@@ -37,7 +37,7 @@ const PINGONE_API_BASE_URLS = {
     'US': 'https://api.pingone.com',
     'EU': 'https://api.eu.pingone.com',
     'AP': 'https://api.apsoutheast.pingone.com',
-    'default': 'https://auth.pingone.com'
+    'default': 'https://api.pingone.com'
 };
 
 // Middleware to validate required settings
@@ -314,8 +314,7 @@ const proxyRequest = async (req, res) => {
 };
 
 // Apply middleware and routes
-router.use(express.json());
-router.use(express.text({ type: ['application/json', 'application/vnd.pingidentity.*+json'] }));
+// Note: express.json() is already applied by the main server
 
 // Apply CORS headers to all responses
 router.use((req, res, next) => {
