@@ -31,6 +31,180 @@ async function ensureLogsDir() {
 ensureLogsDir().catch(console.error);
 
 /**
+ * Post an error to UI logs for display on screen
+ * POST /api/logs/error
+ * Body: { message: string, details: object, source: string }
+ */
+router.post('/error', express.json(), (req, res) => {
+    try {
+        const { message, details = {}, source = 'server' } = req.body;
+        
+        if (!message) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Error message is required' 
+            });
+        }
+
+        const timestamp = new Date().toISOString();
+        const logEntry = {
+            id: uuidv4(),
+            timestamp,
+            level: 'error',
+            message,
+            data: {
+                ...details,
+                source,
+                type: 'error'
+            },
+            ip: req.ip,
+            userAgent: req.get('user-agent')
+        };
+
+        // Add to in-memory logs
+        uiLogs.push(logEntry);
+        
+        // Keep only the most recent logs
+        if (uiLogs.length > MAX_UI_LOGS) {
+            uiLogs.shift(); // Remove oldest log
+        }
+
+        // Also log to console for debugging
+        console.error(`[UI ERROR] ${source}: ${message}`, details);
+
+        res.json({ 
+            success: true, 
+            message: 'Error logged to UI',
+            id: logEntry.id
+        });
+
+    } catch (error) {
+        console.error('Error processing error log entry:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to process error log entry',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+});
+
+/**
+ * Post a warning to UI logs for display on screen
+ * POST /api/logs/warning
+ * Body: { message: string, details: object, source: string }
+ */
+router.post('/warning', express.json(), (req, res) => {
+    try {
+        const { message, details = {}, source = 'server' } = req.body;
+        
+        if (!message) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Warning message is required' 
+            });
+        }
+
+        const timestamp = new Date().toISOString();
+        const logEntry = {
+            id: uuidv4(),
+            timestamp,
+            level: 'warn',
+            message,
+            data: {
+                ...details,
+                source,
+                type: 'warning'
+            },
+            ip: req.ip,
+            userAgent: req.get('user-agent')
+        };
+
+        // Add to in-memory logs
+        uiLogs.push(logEntry);
+        
+        // Keep only the most recent logs
+        if (uiLogs.length > MAX_UI_LOGS) {
+            uiLogs.shift(); // Remove oldest log
+        }
+
+        // Also log to console for debugging
+        console.warn(`[UI WARNING] ${source}: ${message}`, details);
+
+        res.json({ 
+            success: true, 
+            message: 'Warning logged to UI',
+            id: logEntry.id
+        });
+
+    } catch (error) {
+        console.error('Error processing warning log entry:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to process warning log entry',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+});
+
+/**
+ * Post an info message to UI logs for display on screen
+ * POST /api/logs/info
+ * Body: { message: string, details: object, source: string }
+ */
+router.post('/info', express.json(), (req, res) => {
+    try {
+        const { message, details = {}, source = 'server' } = req.body;
+        
+        if (!message) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Info message is required' 
+            });
+        }
+
+        const timestamp = new Date().toISOString();
+        const logEntry = {
+            id: uuidv4(),
+            timestamp,
+            level: 'info',
+            message,
+            data: {
+                ...details,
+                source,
+                type: 'info'
+            },
+            ip: req.ip,
+            userAgent: req.get('user-agent')
+        };
+
+        // Add to in-memory logs
+        uiLogs.push(logEntry);
+        
+        // Keep only the most recent logs
+        if (uiLogs.length > MAX_UI_LOGS) {
+            uiLogs.shift(); // Remove oldest log
+        }
+
+        // Also log to console for debugging
+        console.info(`[UI INFO] ${source}: ${message}`, details);
+
+        res.json({ 
+            success: true, 
+            message: 'Info logged to UI',
+            id: logEntry.id
+        });
+
+    } catch (error) {
+        console.error('Error processing info log entry:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to process info log entry',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+});
+
+/**
  * Log a UI message (in-memory)
  * POST /api/logs/ui
  * Body: { level: string, message: string, data: object }
@@ -78,6 +252,20 @@ router.post('/ui', express.json(), (req, res) => {
             error: 'Failed to process UI log entry',
             details: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
+    }
+});
+
+/**
+ * Clear UI logs (in-memory)
+ * DELETE /api/logs/ui
+ */
+router.delete('/ui', (req, res) => {
+    try {
+        uiLogs.length = 0;
+        res.json({ success: true, message: 'UI logs cleared' });
+    } catch (error) {
+        console.error('Error clearing UI logs:', error);
+        res.status(500).json({ success: false, error: 'Failed to clear UI logs', details: error.message });
     }
 });
 

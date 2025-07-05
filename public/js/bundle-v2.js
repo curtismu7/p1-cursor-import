@@ -163,12 +163,6 @@ class App {
         // Fallback error display
         const errorDiv = document.createElement('div');
         errorDiv.className = 'error-message';
-        errorDiv.style.color = 'red';
-        errorDiv.style.padding = '1rem';
-        errorDiv.style.margin = '1rem';
-        errorDiv.style.border = '1px solid #f5c6cb';
-        errorDiv.style.borderRadius = '4px';
-        errorDiv.style.backgroundColor = '#f8d7da';
         errorDiv.textContent = errorMsg;
         document.body.prepend(errorDiv);
       }
@@ -846,12 +840,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Show error in the UI if possible
     const errorDiv = document.createElement('div');
-    errorDiv.style.color = 'red';
-    errorDiv.style.padding = '1rem';
-    errorDiv.style.margin = '1rem';
-    errorDiv.style.border = '1px solid #f5c6cb';
-    errorDiv.style.borderRadius = '4px';
-    errorDiv.style.backgroundColor = '#f8d7da';
+            errorDiv.className = 'error-message';
     errorDiv.textContent = "Failed to initialize application: ".concat(error.message);
     document.body.prepend(errorDiv);
   }

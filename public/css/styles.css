@@ -849,12 +849,42 @@ label {
 
 .log-entry.log-warn {
     border-left-color: #f6e05e;
-    background-color: #fffbeb;
+    background-color: #fff3cd;
+}
+
+.log-entry.warning {
+    border-left-color: #ffc107;
+    background-color: #fff3cd;
 }
 
 .log-entry.log-error {
     border-left-color: #fc8181;
     background-color: #fff5f5;
+}
+
+/* Expandable log entry styles */
+.log-entry.expanded {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    border-left-width: 6px;
+    background-color: #f8fafc;
+}
+
+.log-details {
+    margin-top: 0.5rem;
+    padding: 0.75rem;
+    background: #f4f4f4;
+    border-radius: 4px;
+    font-size: 0.9em;
+    color: #333;
+    display: none;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    border-left: 3px solid #e2e8f0;
+}
+
+.log-entry.expanded .log-details {
+    display: block;
 }
 
 /* Log Container */
@@ -1064,18 +1094,15 @@ label {
 /* Alert & Error Messages */
 .alert {
     padding: 1rem;
-    margin-bottom: 1.5rem;
-    border: 1px solid transparent;
-    border-radius: var(--border-radius);
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
+    margin: 1rem 0;
+    border-radius: 4px;
+    border-left: 4px solid;
+    position: relative;
 }
 
 .alert i {
-    font-size: 1.25rem;
-    flex-shrink: 0;
-    margin-top: 0.125rem;
+    margin-right: 0.5rem;
+    font-weight: bold;
 }
 
 .alert-danger {
@@ -1085,27 +1112,27 @@ label {
 }
 
 .alert-danger i {
-    color: #dc3545;
+    color: #721c24;
 }
 
 .alert-info {
-    background-color: #e7f5ff;
-    border-color: #d0ebff;
-    color: #055160;
+    background-color: #d1ecf1;
+    border-color: #bee5eb;
+    color: #0c5460;
 }
 
 .alert-info i {
-    color: #0d6efd;
+    color: #0c5460;
 }
 
 .alert-warning {
     background-color: #fff3cd;
-    border-color: #ffeeba;
+    border-color: #ffeaa7;
     color: #856404;
 }
 
 .alert-warning i {
-    color: #ffc107;
+    color: #856404;
 }
 
 .alert-success {
@@ -1115,7 +1142,117 @@ label {
 }
 
 .alert-success i {
-    color: #198754;
+    color: #155724;
+}
+
+/* Error-specific styling for UI elements */
+.error-message {
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+    padding: 1rem;
+    margin: 1rem 0;
+    border-radius: 4px;
+    position: relative;
+}
+
+.error-message::before {
+    content: "⚠️";
+    margin-right: 0.5rem;
+    font-weight: bold;
+}
+
+.error-container {
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    border-radius: 4px;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+
+.error-text {
+    color: #721c24;
+    font-weight: 500;
+}
+
+/* Log entry error styling */
+.log-entry.error {
+    background-color: #f8d7da;
+    border-left: 4px solid #dc3545;
+}
+
+.log-entry.error .log-message {
+    color: #721c24;
+}
+
+.log-entry.error .log-level {
+    background-color: #dc3545;
+    color: white;
+}
+
+/* Notification error styling */
+.notification.error {
+    background: #dc3545;
+    border-left: 4px solid #721c24;
+}
+
+/* Connection status error styling */
+.connection-status.error {
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+}
+
+.connection-status.error .status-icon {
+    color: #dc3545;
+}
+
+/* Import error styling */
+.import-error {
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    border-radius: 4px;
+    padding: 1rem;
+    margin: 1rem 0;
+    color: #721c24;
+}
+
+.import-error::before {
+    content: "❌";
+    margin-right: 0.5rem;
+    font-weight: bold;
+}
+
+/* Settings error styling */
+.settings-error {
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    border-radius: 4px;
+    padding: 1rem;
+    margin: 1rem 0;
+    color: #721c24;
+}
+
+.settings-error::before {
+    content: "⚠️";
+    margin-right: 0.5rem;
+    font-weight: bold;
+}
+
+/* API error styling */
+.api-error {
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    border-radius: 4px;
+    padding: 1rem;
+    margin: 1rem 0;
+    color: #721c24;
+}
+
+.api-error::before {
+    content: "🔴";
+    margin-right: 0.5rem;
+    font-weight: bold;
 }
 
 .settings-link {
@@ -1351,7 +1488,7 @@ label {
 
 .log-entry.warning {
     border-left-color: #ffc107;
-    background-color: #fff9db;
+    background-color: #fff3cd;
 }
 
 .log-entry.debug {

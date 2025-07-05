@@ -426,8 +426,8 @@ export class UIManager {
         
         try {
             // Fetch logs from the UI logs endpoint
-            safeLog('Fetching logs from /api/logs...', 'debug');
-            const response = await fetch('/api/logs?limit=200');
+            safeLog('Fetching logs from /api/logs/ui...', 'debug');
+            const response = await fetch('/api/logs/ui?limit=200');
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -447,15 +447,17 @@ export class UIManager {
                     return;
                 }
                 
-                // Process logs in reverse chronological order (newest first)
+                // Process logs in chronological order (oldest first, newest last)
+                // Reverse the array since server returns newest first, but we want oldest first
                 const logsToProcess = [...responseData.logs].reverse();
-                
+
                 logsToProcess.forEach((log, index) => {
                     try {
                         if (log && typeof log === 'object') {
                             const logElement = document.createElement('div');
                             const logLevel = (log.level || 'info').toLowerCase();
                             logElement.className = `log-entry log-${logLevel}`;
+                            logElement.style.cursor = 'pointer';
                             
                             const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
                             const level = log.level ? log.level.toUpperCase() : 'INFO';
@@ -466,15 +468,34 @@ export class UIManager {
                                 <span class="log-level">${level}</span>
                                 <span class="log-message">${message}</span>
                             `;
-                            
-                            // Add data if present
+
+                            // Add data if present (collapsed by default)
+                            let detailsElement = null;
                             if (log.data && Object.keys(log.data).length > 0) {
-                                const dataElement = document.createElement('pre');
-                                dataElement.className = 'log-data';
-                                dataElement.textContent = JSON.stringify(log.data, null, 2);
-                                logElement.appendChild(dataElement);
+                                detailsElement = document.createElement('pre');
+                                detailsElement.className = 'log-details';
+                                detailsElement.style.display = 'none';
+                                detailsElement.textContent = JSON.stringify(log, null, 2);
+                                logElement.appendChild(detailsElement);
+                            } else {
+                                // Always allow expansion for full log object
+                                detailsElement = document.createElement('pre');
+                                detailsElement.className = 'log-details';
+                                detailsElement.style.display = 'none';
+                                detailsElement.textContent = JSON.stringify(log, null, 2);
+                                logElement.appendChild(detailsElement);
                             }
-                            
+
+                            // Toggle expand/collapse on click
+                            logElement.addEventListener('click', function (e) {
+                                // Only toggle if not clicking a link or button inside
+                                if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
+                                const expanded = logElement.classList.toggle('expanded');
+                                if (detailsElement) {
+                                    detailsElement.style.display = expanded ? 'block' : 'none';
+                                }
+                            });
+
                             logEntries.appendChild(logElement);
                         } else {
                             safeLog(`Skipping invalid log entry at index ${index}`, 'warn', log);
@@ -763,6 +784,25 @@ export class UIManager {
             });
         }
         
+        // Set up Clear Logs button
+        const clearLogsBtn = document.getElementById('clear-logs');
+        if (clearLogsBtn) {
+            clearLogsBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                try {
+                    const response = await fetch('/api/logs/ui', { method: 'DELETE' });
+                    const data = await response.json();
+                    if (data.success) {
+                        this.showNotification('Logs cleared', 'success');
+                        await this.loadAndDisplayLogs();
+                    } else {
+                        this.showNotification('Failed to clear logs: ' + (data.error || 'Unknown error'), 'error');
+                    }
+                } catch (error) {
+                    this.showNotification('Error clearing logs: ' + error.message, 'error');
+                }
+            });
+        }
         // Make sure the current view is visible
         const currentView = this.getLastView();
         this.showView(currentView);
@@ -870,15 +910,18 @@ export class UIManager {
         }
         
         try {
-            const response = await fetch('/api/logs?limit=200');
+            const response = await fetch('/api/logs/ui?limit=200');
             const data = await response.json();
             
             if (data.success && Array.isArray(data.logs)) {
                 // Hide loading indicator
                 loadingElement.style.display = 'none';
                 
-                // Process and display logs
-                data.logs.forEach(log => {
+                // Process and display logs in chronological order (oldest first, newest last)
+                // Reverse the array since server returns newest first, but we want oldest first
+                const logsToProcess = [...data.logs].reverse();
+                
+                logsToProcess.forEach(log => {
                     if (!log) {
                         console.warn('Skipping null log entry');
                         return;

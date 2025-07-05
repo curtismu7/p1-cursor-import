@@ -68,12 +68,23 @@ class SettingsManager {
      */
     async getDeviceId() {
         try {
+            // Try to get a stored device ID first
+            if (this.isLocalStorageAvailable()) {
+                const storedDeviceId = localStorage.getItem('pingone-device-id');
+                if (storedDeviceId) {
+                    return storedDeviceId;
+                }
+            }
+            
+            // Generate a new device ID based on stable browser characteristics
             const navigatorInfo = {
-                userAgent: navigator.userAgent,
                 platform: navigator.platform,
                 hardwareConcurrency: navigator.hardwareConcurrency,
                 deviceMemory: navigator.deviceMemory,
-                maxTouchPoints: navigator.maxTouchPoints
+                maxTouchPoints: navigator.maxTouchPoints,
+                language: navigator.language,
+                languages: navigator.languages ? navigator.languages.slice(0, 3).join(',') : '',
+                userAgent: navigator.userAgent ? navigator.userAgent.substring(0, 100) : ''
             };
             
             // Create a hash of the navigator info
@@ -81,7 +92,14 @@ class SettingsManager {
             const data = encoder.encode(JSON.stringify(navigatorInfo));
             const hashBuffer = await crypto.subtle.digest('SHA-256', data);
             const hashArray = Array.from(new Uint8Array(hashBuffer));
-            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            const deviceId = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            
+            // Store the device ID for future use
+            if (this.isLocalStorageAvailable()) {
+                localStorage.setItem('pingone-device-id', deviceId);
+            }
+            
+            return deviceId;
         } catch (error) {
             this.logger.error('Failed to generate device ID:', error);
             // Fallback to a random string if crypto API fails
@@ -184,7 +202,7 @@ class SettingsManager {
                             try {
                                 parsedSettings.apiSecret = await this.decryptIfNeeded(parsedSettings.apiSecret);
                             } catch (error) {
-                                this.logger.error('Failed to decrypt API secret', error);
+                                this.logger.warn('Failed to decrypt API secret - device ID may have changed');
                                 parsedSettings.apiSecret = '';
                             }
                         }
@@ -220,7 +238,7 @@ class SettingsManager {
                             try {
                                 parsedSettings.apiSecret = await this.decryptIfNeeded(parsedSettings.apiSecret);
                             } catch (error) {
-                                this.logger.error('Failed to decrypt API secret from localStorage', error);
+                                this.logger.warn('Failed to decrypt API secret from localStorage - device ID may have changed');
                                 parsedSettings.apiSecret = '';
                             }
                         }
@@ -389,8 +407,30 @@ class SettingsManager {
             const encryptedValue = value.substring(4); // Remove 'enc:' prefix
             return await CryptoUtils.decrypt(encryptedValue, this.encryptionKey);
         } catch (error) {
-            this.logger.error('Decryption failed:', error);
-            throw new Error('Failed to decrypt sensitive data');
+            // Log the error but don't show it to the user unless it's a critical failure
+            if (error.name === 'OperationError') {
+                this.logger.warn('Decryption failed due to key mismatch - this is normal when device ID changes');
+                // Clear the encrypted value from localStorage to prevent future decryption attempts
+                if (this.isLocalStorageAvailable()) {
+                    const savedSettings = localStorage.getItem(this.storageKey);
+                    if (savedSettings) {
+                        try {
+                            const parsedSettings = JSON.parse(savedSettings);
+                            if (parsedSettings.apiSecret && parsedSettings.apiSecret.startsWith('enc:')) {
+                                delete parsedSettings.apiSecret;
+                                localStorage.setItem(this.storageKey, JSON.stringify(parsedSettings));
+                                this.logger.info('Cleared encrypted API secret from localStorage');
+                            }
+                        } catch (e) {
+                            this.logger.warn('Failed to clear encrypted data from localStorage');
+                        }
+                    }
+                }
+            } else {
+                this.logger.error('Decryption failed:', error);
+            }
+            // Return empty string instead of throwing error to prevent app from crashing
+            return '';
         }
     }
     

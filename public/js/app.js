@@ -750,7 +750,11 @@ class App {
      */
     async initializeAsync() {
         try {
-            // Initialize API factory first
+            // Load settings first before initializing API factory
+            this.logger.fileLogger.info('Loading settings...');
+            await this.settingsManager.loadSettings();
+            
+            // Initialize API factory after settings are loaded
             this.logger.fileLogger.info('Initializing API factory...');
             this.factory = await initAPIFactory(this.logger, this.settingsManager);
             
@@ -759,7 +763,7 @@ class App {
             this.localClient = this.factory.getLocalClient();
             this.logger.fileLogger.info('API clients initialized successfully');
             
-            // Now that API clients are ready, load settings
+            // Now that API clients are ready, restore settings to UI
             await this.checkSettingsAndRestore();
             
             // Initialize the rest of the UI

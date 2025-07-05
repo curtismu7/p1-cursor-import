@@ -1,66 +1,14 @@
 (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
-var toPropertyKey = require("./toPropertyKey.js");
-function _defineProperty(e, r, t) {
-  return (r = toPropertyKey(r)) in e ? Object.defineProperty(e, r, {
-    value: t,
-    enumerable: !0,
-    configurable: !0,
-    writable: !0
-  }) : e[r] = t, e;
-}
-module.exports = _defineProperty, module.exports.__esModule = true, module.exports["default"] = module.exports;
-},{"./toPropertyKey.js":4}],2:[function(require,module,exports){
-function _interopRequireDefault(e) {
-  return e && e.__esModule ? e : {
-    "default": e
-  };
-}
-module.exports = _interopRequireDefault, module.exports.__esModule = true, module.exports["default"] = module.exports;
-},{}],3:[function(require,module,exports){
-var _typeof = require("./typeof.js")["default"];
-function toPrimitive(t, r) {
-  if ("object" != _typeof(t) || !t) return t;
-  var e = t[Symbol.toPrimitive];
-  if (void 0 !== e) {
-    var i = e.call(t, r || "default");
-    if ("object" != _typeof(i)) return i;
-    throw new TypeError("@@toPrimitive must return a primitive value.");
-  }
-  return ("string" === r ? String : Number)(t);
-}
-module.exports = toPrimitive, module.exports.__esModule = true, module.exports["default"] = module.exports;
-},{"./typeof.js":5}],4:[function(require,module,exports){
-var _typeof = require("./typeof.js")["default"];
-var toPrimitive = require("./toPrimitive.js");
-function toPropertyKey(t) {
-  var i = toPrimitive(t, "string");
-  return "symbol" == _typeof(i) ? i : i + "";
-}
-module.exports = toPropertyKey, module.exports.__esModule = true, module.exports["default"] = module.exports;
-},{"./toPrimitive.js":3,"./typeof.js":5}],5:[function(require,module,exports){
-function _typeof(o) {
-  "@babel/helpers - typeof";
-
-  return module.exports = _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) {
-    return typeof o;
-  } : function (o) {
-    return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o;
-  }, module.exports.__esModule = true, module.exports["default"] = module.exports, _typeof(o);
-}
-module.exports = _typeof, module.exports.__esModule = true, module.exports["default"] = module.exports;
-},{}],6:[function(require,module,exports){
 "use strict";
 
-var _interopRequireDefault = require("@babel/runtime/helpers/interopRequireDefault");
-var _defineProperty2 = _interopRequireDefault(require("@babel/runtime/helpers/defineProperty"));
 var _logger = require("./modules/logger.js");
 var _uiManager = require("./modules/ui-manager.js");
 var _fileHandler = require("./modules/file-handler.js");
 var _settingsManager = require("./modules/settings-manager.js");
 var _apiFactory = require("./modules/api-factory.js");
 var _versionManager = require("./modules/version-manager.js");
-function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
-function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { (0, _defineProperty2.default)(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; } // Main application entry point
+// Main application entry point
+
 class App {
   constructor() {
     try {
@@ -90,7 +38,7 @@ class App {
 
       // Start async initialization
       this.initializeAsync().catch(error => {
-        const errorMsg = "Failed to initialize application: ".concat(error.message);
+        const errorMsg = `Failed to initialize application: ${error.message}`;
         this.logger.fileLogger.error(errorMsg, {
           error
         });
@@ -110,7 +58,7 @@ class App {
       // Try to show error in UI if possible
       const errorContainer = document.getElementById('app-error');
       if (errorContainer) {
-        errorContainer.textContent = "Initialization error: ".concat(error.message);
+        errorContainer.textContent = `Initialization error: ${error.message}`;
         errorContainer.style.display = 'block';
       }
       throw error; // Re-throw to be caught by the global error handler
@@ -132,7 +80,7 @@ class App {
         this.localClient = _apiFactory.apiFactory.getLocalClient();
         this.logger.fileLogger.info('API clients initialized successfully');
       } catch (error) {
-        const errorMsg = "Failed to initialize API: ".concat(error.message);
+        const errorMsg = `Failed to initialize API: ${error.message}`;
         this.logger.fileLogger.error(errorMsg, {
           error
         });
@@ -150,7 +98,7 @@ class App {
       await this.checkSettingsAndRestore();
       this.logger.fileLogger.info('Application initialization complete');
     } catch (error) {
-      const errorMsg = "Error initializing application: ".concat(error.message);
+      const errorMsg = `Error initializing application: ${error.message}`;
       this.logger.fileLogger.error(errorMsg, {
         error
       });
@@ -204,7 +152,7 @@ class App {
         return false;
       }
     } catch (error) {
-      const errorMsg = "Error checking/restoring settings: ".concat(error.message);
+      const errorMsg = `Error checking/restoring settings: ${error.message}`;
       this.logger.fileLogger.error(errorMsg, {
         error
       });
@@ -245,7 +193,7 @@ class App {
           this.uiManager.showNotification('Settings saved successfully', 'success');
         } catch (error) {
           console.error('Error in settings form submission:', error);
-          this.uiManager.showNotification("Error: ".concat(error.message), 'error');
+          this.uiManager.showNotification(`Error: ${error.message}`, 'error');
         }
         return false; // Prevent form submission
       });
@@ -340,19 +288,18 @@ class App {
           success: true
         };
       } catch (error) {
-        var _error$response;
         console.error('Error in handleSaveSettings:', error);
-        const errorMessage = ((_error$response = error.response) === null || _error$response === void 0 || (_error$response = _error$response.data) === null || _error$response === void 0 ? void 0 : _error$response.message) || error.message || 'Unknown error';
+        const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
         this.logger.fileLogger.error('Error saving settings', {
           error: errorMessage
         });
 
         // Update connection status to show error
-        this.uiManager.updateConnectionStatus('error', "Error: ".concat(errorMessage), false);
+        this.uiManager.updateConnectionStatus('error', `Error: ${errorMessage}`, false);
 
         // Show error notification
         if (this.uiManager.showNotification) {
-          this.uiManager.showNotification("Error: ".concat(errorMessage), 'error');
+          this.uiManager.showNotification(`Error: ${errorMessage}`, 'error');
         }
         return {
           success: false,
@@ -365,7 +312,7 @@ class App {
 
       // Show error notification
       if (this.uiManager.showNotification) {
-        this.uiManager.showNotification("Error: ".concat(errorMessage), 'error');
+        this.uiManager.showNotification(`Error: ${errorMessage}`, 'error');
       }
       return {
         success: false,
@@ -411,8 +358,7 @@ class App {
         return false;
       }
     } catch (error) {
-      var _error$response2;
-      const errorMessage = ((_error$response2 = error.response) === null || _error$response2 === void 0 || (_error$response2 = _error$response2.data) === null || _error$response2 === void 0 ? void 0 : _error$response2.message) || error.message || 'Unknown error';
+      const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
       this.logger.fileLogger.error('Error checking server connection status', {
         error: errorMessage
       });
@@ -421,7 +367,7 @@ class App {
       let statusMessage = 'Error checking connection status';
       if (error.response) {
         // Server responded with error status
-        statusMessage = "Server error: ".concat(error.response.status, " ").concat(errorMessage);
+        statusMessage = `Server error: ${error.response.status} ${errorMessage}`;
       } else if (error.request) {
         // Request was made but no response received
         statusMessage = 'No response from server. Please check your connection.';
@@ -522,7 +468,8 @@ class App {
       this.uiManager.showImportStatus(users.length);
 
       // Prepare users for import
-      const usersToImport = users.map((user, index) => _objectSpread(_objectSpread({}, user), {}, {
+      const usersToImport = users.map((user, index) => ({
+        ...user,
         // Add any additional user properties here
         _index: index // Track original position for progress updates
       }));
@@ -551,7 +498,7 @@ class App {
           }
 
           // Update progress in the UI
-          const status = currentUser ? "Importing ".concat(currentUser.email || 'user') : "Processing batch ".concat(Math.ceil(processed / 5), " of ").concat(Math.ceil(total / 5), "...");
+          const status = currentUser ? `Importing ${currentUser.email || 'user'}` : `Processing batch ${Math.ceil(processed / 5)} of ${Math.ceil(total / 5)}...`;
           _this.uiManager.updateImportProgress(processed, total, status, importResult);
         }
       });
@@ -562,7 +509,7 @@ class App {
       });
 
       // Final progress update
-      this.uiManager.updateImportProgress(users.length, users.length, "Import completed: ".concat(result.success, " succeeded, ").concat(result.failed, " failed, ").concat(result.skipped, " skipped"), {
+      this.uiManager.updateImportProgress(users.length, users.length, `Import completed: ${result.success} succeeded, ${result.failed} failed, ${result.skipped} skipped`, {
         success: result.success,
         failed: result.failed,
         skipped: result.skipped
@@ -581,7 +528,7 @@ class App {
           error: error.message
         });
         console.error('Import error:', error);
-        this.uiManager.updateImportProgress(0, 1, "Error: ".concat(error.message), {
+        this.uiManager.updateImportProgress(0, 1, `Error: ${error.message}`, {
           success: 0,
           failed: 0,
           skipped: 0
@@ -620,7 +567,7 @@ class App {
         });
 
         // Show success message
-        this.uiManager.showNotification("Successfully processed ".concat(userCount, " users"), 'success');
+        this.uiManager.showNotification(`Successfully processed ${userCount} users`, 'success');
 
         // Enable import button if we have users and settings are valid
         const isValid = await this.checkSettings();
@@ -629,7 +576,7 @@ class App {
         }
         return result;
       } else {
-        const errorMsg = (result === null || result === void 0 ? void 0 : result.error) || 'Failed to process file';
+        const errorMsg = result?.error || 'Failed to process file';
         throw new Error(errorMsg);
       }
     } catch (error) {
@@ -691,9 +638,10 @@ class App {
       this.logger.warn('No settings provided to populate form');
       return;
     }
-    this.logger.debug('Populating settings form with:', _objectSpread(_objectSpread({}, settings), {}, {
+    this.logger.debug('Populating settings form with:', {
+      ...settings,
       apiSecret: settings.apiSecret ? '***' : '[empty]'
-    }));
+    });
     try {
       // Define form fields and their corresponding settings keys
       const fields = {
@@ -746,16 +694,16 @@ class App {
           }
           setFields.push(id);
         } catch (fieldError) {
-          this.logger.error("Error setting field ".concat(id, ":"), fieldError);
+          this.logger.error(`Error setting field ${id}:`, fieldError);
         }
       }
 
       // Log results
       if (setFields.length > 0) {
-        this.logger.debug("Successfully set ".concat(setFields.length, " form fields"));
+        this.logger.debug(`Successfully set ${setFields.length} form fields`);
       }
       if (missingFields.length > 0) {
-        this.logger.debug("Could not find ".concat(missingFields.length, " form fields:"), missingFields);
+        this.logger.debug(`Could not find ${missingFields.length} form fields:`, missingFields);
       }
 
       // Update connection status display if status element exists
@@ -765,7 +713,7 @@ class App {
         const message = settings.connectionMessage || 'Not connected';
 
         // Update status class
-        statusElement.className = "connection-status status-".concat(status);
+        statusElement.className = `connection-status status-${status}`;
 
         // Update status icon and message
         const iconMap = {
@@ -784,7 +732,7 @@ class App {
       }
       this.logger.debug('Finished populating settings form');
     } catch (error) {
-      const errorMsg = "Error populating settings form: ".concat(error.message);
+      const errorMsg = `Error populating settings form: ${error.message}`;
       this.logger.error(errorMsg, error);
       this.uiManager.showError('Form Error', 'Failed to populate settings form');
       throw error;
@@ -800,7 +748,11 @@ class App {
    */
   async initializeAsync() {
     try {
-      // Initialize API factory first
+      // Load settings first before initializing API factory
+      this.logger.fileLogger.info('Loading settings...');
+      await this.settingsManager.loadSettings();
+
+      // Initialize API factory after settings are loaded
       this.logger.fileLogger.info('Initializing API factory...');
       this.factory = await (0, _apiFactory.initAPIFactory)(this.logger, this.settingsManager);
 
@@ -809,7 +761,7 @@ class App {
       this.localClient = this.factory.getLocalClient();
       this.logger.fileLogger.info('API clients initialized successfully');
 
-      // Now that API clients are ready, load settings
+      // Now that API clients are ready, restore settings to UI
       await this.checkSettingsAndRestore();
 
       // Initialize the rest of the UI
@@ -819,9 +771,9 @@ class App {
       // Check server connection status
       await this.checkServerConnectionStatus();
       this.logger.fileLogger.info('Application initialization complete');
-      console.log("PingOne Import Tool ".concat(this.versionManager.getFormattedVersion(), " initialized"));
+      console.log(`PingOne Import Tool ${this.versionManager.getFormattedVersion()} initialized`);
     } catch (error) {
-      const errorMsg = "Failed to initialize application: ".concat(error.message);
+      const errorMsg = `Failed to initialize application: ${error.message}`;
       this.logger.fileLogger.error(errorMsg, {
         error
       });
@@ -852,12 +804,12 @@ document.addEventListener('DOMContentLoaded', () => {
     errorDiv.style.border = '1px solid #f5c6cb';
     errorDiv.style.borderRadius = '4px';
     errorDiv.style.backgroundColor = '#f8d7da';
-    errorDiv.textContent = "Failed to initialize application: ".concat(error.message);
+    errorDiv.textContent = `Failed to initialize application: ${error.message}`;
     document.body.prepend(errorDiv);
   }
 });
 
-},{"./modules/api-factory.js":7,"./modules/file-handler.js":9,"./modules/logger.js":13,"./modules/settings-manager.js":15,"./modules/ui-manager.js":16,"./modules/version-manager.js":17,"@babel/runtime/helpers/defineProperty":1,"@babel/runtime/helpers/interopRequireDefault":2}],7:[function(require,module,exports){
+},{"./modules/api-factory.js":2,"./modules/file-handler.js":4,"./modules/logger.js":8,"./modules/settings-manager.js":10,"./modules/ui-manager.js":11,"./modules/version-manager.js":12}],2:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -904,7 +856,7 @@ class APIFactory {
    */
   getLocalClient() {
     let baseUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '';
-    const cacheKey = "local_".concat(baseUrl);
+    const cacheKey = `local_${baseUrl}`;
     if (!this.clients.has(cacheKey)) {
       this.clients.set(cacheKey, new _localApiClient.LocalAPIClient(this.logger, baseUrl));
     }
@@ -964,7 +916,7 @@ const initAPIFactory = async (logger, settingsManager) => {
       }
       resolve(factory);
     } catch (error) {
-      const errorMsg = "Failed to initialize API Factory: ".concat(error.message);
+      const errorMsg = `Failed to initialize API Factory: ${error.message}`;
       if (logger && logger.error) {
         logger.error(errorMsg, {
           error
@@ -1005,7 +957,7 @@ const apiFactory = exports.apiFactory = {
 const getAPIFactory = () => defaultAPIFactory;
 exports.getAPIFactory = getAPIFactory;
 
-},{"./local-api-client.js":11,"./pingone-client.js":14}],8:[function(require,module,exports){
+},{"./local-api-client.js":6,"./pingone-client.js":9}],3:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -1079,8 +1031,8 @@ class CryptoUtils {
       }, key, data);
       return new TextDecoder().decode(decrypted);
     } catch (error) {
-      console.error('Decryption failed:', error);
-      throw new Error('Failed to decrypt data. The encryption key may be incorrect.');
+      // Don't log the error here - let the calling code handle it
+      throw error;
     }
   }
 }
@@ -1089,7 +1041,7 @@ class CryptoUtils {
 exports.CryptoUtils = CryptoUtils;
 const cryptoUtils = exports.cryptoUtils = new CryptoUtils();
 
-},{}],9:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -1200,7 +1152,7 @@ class FileHandler {
         return;
       }
       const file = fileInput.files[0];
-      this.logger.log("Handling file selection: ".concat(file.name, " (").concat(file.size, " bytes)"), 'debug');
+      this.logger.log(`Handling file selection: ${file.name} (${file.size} bytes)`, 'debug');
 
       // Update file info in UI first
       this.saveFileInfo(file);
@@ -1212,9 +1164,9 @@ class FileHandler {
         } = _ref;
         this.lastParsedUsers = rows;
         this.showPreview(rows);
-        this.logger.log("Successfully processed ".concat(rows.length, " users from ").concat(file.name), 'success');
+        this.logger.log(`Successfully processed ${rows.length} users from ${file.name}`, 'success');
       }).catch(error => {
-        this.logger.error("Error processing file: ".concat(error.message), 'error', error);
+        this.logger.error(`Error processing file: ${error.message}`, 'error', error);
         this.clearFileInfo();
         // Reset the file input to allow re-upload
         if (this.fileInput) {
@@ -1250,14 +1202,14 @@ class FileHandler {
     const fileName = file.name || '';
     const fileExt = this.getFileExtension(fileName).toLowerCase();
     const fileType = file.type || '';
-    this.logger.log("File info - Name: ".concat(fileName, ", Extension: ").concat(fileExt, ", Type: ").concat(fileType), 'debug');
+    this.logger.log(`File info - Name: ${fileName}, Extension: ${fileExt}, Type: ${fileType}`, 'debug');
 
     // Check if file has a valid extension or is a text file
     const isValidExtension = fileExt && ['csv', 'txt'].includes(fileExt);
     const isTextFile = fileType.match(/text\/.*/) || fileType === ''; // Some browsers might not set type for CSV
 
     if (!isValidExtension && !isTextFile) {
-      const errorMsg = "Unsupported file type: ".concat(fileExt || 'unknown', ". Please upload a CSV or text file.");
+      const errorMsg = `Unsupported file type: ${fileExt || 'unknown'}. Please upload a CSV or text file.`;
       this.logger.error(errorMsg, {
         fileName,
         fileExt,
@@ -1269,7 +1221,7 @@ class FileHandler {
     // Check file size (max 10MB)
     const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
-      throw new Error("File is too large. Maximum size is ".concat(this.formatFileSize(maxSize)));
+      throw new Error(`File is too large. Maximum size is ${this.formatFileSize(maxSize)}`);
     }
 
     // Update UI
@@ -1294,7 +1246,7 @@ class FileHandler {
           // Validate required fields
           const missingHeaders = this.requiredFields.filter(field => !headers.includes(field));
           if (missingHeaders.length > 0) {
-            throw new Error("Missing required columns: ".concat(missingHeaders.join(', ')));
+            throw new Error(`Missing required columns: ${missingHeaders.join(', ')}`);
           }
 
           // Convert rows to user objects and store them
@@ -1380,7 +1332,10 @@ class FileHandler {
     if (!this.fileInfo) return;
     const fileSize = this.formatFileSize(file.size);
     const lastModified = new Date(file.lastModified).toLocaleString();
-    this.fileInfo.innerHTML = "\n            <strong>".concat(file.name, "</strong><br>\n            <small>Size: ").concat(fileSize, " | Modified: ").concat(lastModified, "</small>\n        ");
+    this.fileInfo.innerHTML = `
+            <strong>${file.name}</strong><br>
+            <small>Size: ${fileSize} | Modified: ${lastModified}</small>
+        `;
   }
   showPreview(rows) {
     if (!this.previewContainer) return;
@@ -1396,7 +1351,25 @@ class FileHandler {
     const headers = Object.keys(rows[0]);
     const previewRows = rows.slice(0, 5); // Show first 5 rows
 
-    let html = "\n            <div class=\"table-responsive\">\n                <table class=\"table table-sm table-striped\">\n                    <thead>\n                        <tr>\n                            ".concat(headers.map(h => "<th>".concat(h, "</th>")).join(''), "\n                        </tr>\n                    </thead>\n                    <tbody>\n                        ").concat(previewRows.map(row => "\n                            <tr>\n                                ".concat(headers.map(h => "<td>".concat(row[h] || '', "</td>")).join(''), "\n                            </tr>\n                        ")).join(''), "\n                    </tbody>\n                </table>\n                ").concat(rows.length > 5 ? "<small class=\"text-muted\">Showing 5 of ".concat(rows.length, " rows</small>") : '', "\n            </div>\n        ");
+    let html = `
+            <div class="table-responsive">
+                <table class="table table-sm table-striped">
+                    <thead>
+                        <tr>
+                            ${headers.map(h => `<th>${h}</th>`).join('')}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${previewRows.map(row => `
+                            <tr>
+                                ${headers.map(h => `<td>${row[h] || ''}</td>`).join('')}
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                ${rows.length > 5 ? `<small class="text-muted">Showing 5 of ${rows.length} rows</small>` : ''}
+            </div>
+        `;
     this.previewContainer.innerHTML = html;
 
     // Enable import button after showing preview
@@ -1455,7 +1428,7 @@ class FileHandler {
 }
 exports.FileHandler = FileHandler;
 
-},{}],10:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -1579,7 +1552,7 @@ class FileLogger {
     if (!this.initialized) {
       await this._initialize();
     }
-    const logEntry = "[".concat(timestamp, "] [").concat(level.toUpperCase(), "] ").concat(message, "\n");
+    const logEntry = `[${timestamp}] [${level.toUpperCase()}] ${message}\n`;
     if (this.writableStream) {
       try {
         await this.writableStream.write(logEntry);
@@ -1590,7 +1563,7 @@ class FileLogger {
         await this.writableStream.write(logEntry);
       }
     } else {
-      console[level]("[FileLogger] ".concat(logEntry));
+      console[level](`[FileLogger] ${logEntry}`);
     }
   }
 
@@ -1664,17 +1637,13 @@ class FileLogger {
 }
 exports.FileLogger = FileLogger;
 
-},{}],11:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 "use strict";
 
-var _interopRequireDefault = require("@babel/runtime/helpers/interopRequireDefault");
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.localAPIClient = exports.LocalAPIClient = void 0;
-var _defineProperty2 = _interopRequireDefault(require("@babel/runtime/helpers/defineProperty"));
-function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
-function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { (0, _defineProperty2.default)(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
 /**
  * Local API Client
  * Handles all API calls to the local server (localhost:4000)
@@ -1703,21 +1672,23 @@ class LocalAPIClient {
   async request(method, endpoint) {
     let data = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : null;
     let options = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
-    const url = "".concat(this.baseUrl).concat(endpoint);
+    const url = `${this.baseUrl}${endpoint}`;
 
     // Prepare headers
-    const headers = _objectSpread({
+    const headers = {
       'Accept': 'application/json',
-      'Content-Type': 'application/json'
-    }, options.headers);
+      'Content-Type': 'application/json',
+      ...options.headers
+    };
 
     // Log the request
     this.logger.debug('Local API Request:', {
       method,
       url,
-      headers: _objectSpread(_objectSpread({}, headers), {}, {
+      headers: {
+        ...headers,
         'Authorization': headers.Authorization ? '***REDACTED***' : 'Not set'
-      }),
+      },
       data
     });
     try {
@@ -1757,7 +1728,7 @@ class LocalAPIClient {
       data = await response.text();
     }
     if (!response.ok) {
-      const error = new Error(data.message || "API request failed with status ".concat(response.status));
+      const error = new Error(data.message || `API request failed with status ${response.status}`);
       error.status = response.status;
       error.details = data;
       throw error;
@@ -1788,17 +1759,13 @@ class LocalAPIClient {
 exports.LocalAPIClient = LocalAPIClient;
 const localAPIClient = exports.localAPIClient = new LocalAPIClient(console);
 
-},{"@babel/runtime/helpers/defineProperty":1,"@babel/runtime/helpers/interopRequireDefault":2}],12:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 "use strict";
 
-var _interopRequireDefault = require("@babel/runtime/helpers/interopRequireDefault");
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.localAPI = void 0;
-var _defineProperty2 = _interopRequireDefault(require("@babel/runtime/helpers/defineProperty"));
-function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
-function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { (0, _defineProperty2.default)(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
 /**
  * Local API Client
  * Handles all API calls to the local server (localhost:4000)
@@ -1825,21 +1792,23 @@ class LocalAPI {
   async request(method, endpoint) {
     let data = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : null;
     let options = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
-    const url = "".concat(this.baseUrl).concat(endpoint);
+    const url = `${this.baseUrl}${endpoint}`;
 
     // Prepare headers
-    const headers = _objectSpread({
+    const headers = {
       'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    }, options.headers);
+      'Accept': 'application/json',
+      ...options.headers
+    };
 
     // Log the request
     this.logger.debug('Local API Request:', {
       method,
       url,
-      headers: _objectSpread(_objectSpread({}, headers), {}, {
+      headers: {
+        ...headers,
         'Authorization': headers.Authorization ? '***REDACTED***' : 'Not set'
-      }),
+      },
       data
     });
     try {
@@ -1908,7 +1877,7 @@ class LocalAPI {
 // Export a singleton instance
 const localAPI = exports.localAPI = new LocalAPI(console);
 
-},{"@babel/runtime/helpers/defineProperty":1,"@babel/runtime/helpers/interopRequireDefault":2}],13:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -1997,9 +1966,9 @@ class Logger {
         // Always log to console for debugging
         const consoleLevel = level === 'log' ? 'info' : level;
         if (console[consoleLevel]) {
-          console[consoleLevel]("[".concat(level.toUpperCase(), "]"), message, data || '', context || '');
+          console[consoleLevel](`[${level.toUpperCase()}]`, message, data || '', context || '');
         } else {
-          console.log("[".concat(level.toUpperCase(), "]"), message, data || '', context || '');
+          console.log(`[${level.toUpperCase()}]`, message, data || '', context || '');
         }
 
         // If we're not in a browser environment, don't try to use FileLogger
@@ -2151,7 +2120,7 @@ class Logger {
     }
     try {
       const logElement = document.createElement('div');
-      logElement.className = "log-entry log-".concat(logEntry.level);
+      logElement.className = `log-entry log-${logEntry.level}`;
       const timeStr = new Date(logEntry.timestamp).toLocaleTimeString();
 
       // Create a more structured log entry
@@ -2159,7 +2128,7 @@ class Logger {
       timeElement.className = 'log-time';
       timeElement.textContent = timeStr;
       const levelElement = document.createElement('span');
-      levelElement.className = "log-level ".concat(logEntry.level);
+      levelElement.className = `log-level ${logEntry.level}`;
       levelElement.textContent = logEntry.level.toUpperCase();
       const messageElement = document.createElement('div');
       messageElement.className = 'log-message';
@@ -2185,7 +2154,7 @@ class Logger {
       if (logEntry.context) {
         const contextElement = document.createElement('pre');
         contextElement.className = 'log-context';
-        contextElement.textContent = "Context: ".concat(JSON.stringify(logEntry.context, null, 2));
+        contextElement.textContent = `Context: ${JSON.stringify(logEntry.context, null, 2)}`;
         logElement.appendChild(contextElement);
       }
 
@@ -2232,7 +2201,7 @@ class Logger {
   }
   async processOfflineLogs() {
     if (this.offlineLogs.length === 0) return;
-    this.log("Processing ".concat(this.offlineLogs.length, " queued logs..."), 'info');
+    this.log(`Processing ${this.offlineLogs.length} queued logs...`, 'info');
     for (const logEntry of this.offlineLogs) {
       try {
         await this.fileLogger.log(logEntry.level, logEntry.message, logEntry.data);
@@ -2263,7 +2232,7 @@ class Logger {
 
     // Log to console
     const logFn = console[level] || console.log;
-    logFn("[".concat(timestamp, "] [").concat(level.toUpperCase(), "] ").concat(message), data);
+    logFn(`[${timestamp}] [${level.toUpperCase()}] ${message}`, data);
 
     // Save to file logger if available
     if (this.fileLogger) {
@@ -2273,7 +2242,7 @@ class Logger {
         if (typeof logMethod === 'function') {
           await logMethod.call(this.fileLogger, message, data);
         } else {
-          console.warn("Log method '".concat(level, "' not available on fileLogger"));
+          console.warn(`Log method '${level}' not available on fileLogger`);
         }
       } catch (error) {
         console.error('Error saving log to file:', error);
@@ -2306,9 +2275,13 @@ class Logger {
   _updateLogUI(logEntry) {
     if (!this.logContainer) return;
     const logElement = document.createElement('div');
-    logElement.className = "log-entry log-".concat(logEntry.level);
+    logElement.className = `log-entry log-${logEntry.level}`;
     const timestamp = new Date(logEntry.timestamp).toLocaleTimeString();
-    logElement.innerHTML = "\n            <span class=\"log-timestamp\">[".concat(timestamp, "]</span>\n            <span class=\"log-level\">").concat(logEntry.level.toUpperCase(), "</span>\n            <span class=\"log-message\">").concat(logEntry.message, "</span>\n        ");
+    logElement.innerHTML = `
+            <span class="log-timestamp">[${timestamp}]</span>
+            <span class="log-level">${logEntry.level.toUpperCase()}</span>
+            <span class="log-message">${logEntry.message}</span>
+        `;
     if (logEntry.data && Object.keys(logEntry.data).length > 0) {
       const dataElement = document.createElement('pre');
       dataElement.className = 'log-data';
@@ -2362,21 +2335,19 @@ class Logger {
 }
 exports.Logger = Logger;
 
-},{"./file-logger.js":10}],14:[function(require,module,exports){
+},{"./file-logger.js":5}],9:[function(require,module,exports){
 "use strict";
 
-var _interopRequireDefault = require("@babel/runtime/helpers/interopRequireDefault");
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.PingOneClient = void 0;
-var _defineProperty2 = _interopRequireDefault(require("@babel/runtime/helpers/defineProperty"));
 var _localApi = require("./local-api.js");
-function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
-function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { (0, _defineProperty2.default)(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; } /**
+/**
  * PingOne API Client
  * Handles all API calls to the PingOne API through the local proxy
  */
+
 class PingOneClient {
   /**
    * Create a new PingOneClient instance
@@ -2447,30 +2418,24 @@ class PingOneClient {
    * @returns {Promise<string>} Access token
    */
   async getAccessToken() {
-    // Try to use cached token if available
+    // Check for cached token first
     const cachedToken = this.getCachedToken();
     if (cachedToken) {
       return cachedToken;
     }
 
-    // If no cached token or it's expired, get a new one
+    // If no cached token or it's expired, get a new one from the server
     try {
-      const response = await fetch("".concat(this.basePath, "/token"), {
+      const response = await fetch('/api/pingone/get-token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          clientId: this.getSettings().apiClientId,
-          clientSecret: this.getSettings().apiSecret,
-          environmentId: this.getSettings().environmentId,
-          region: this.getSettings().region
-        })
+        }
       });
       if (!response.ok) {
         const error = await response.text();
-        throw new Error("Failed to get access token: ".concat(response.status, " - ").concat(error));
+        throw new Error(`Failed to get access token: ${response.status} - ${error}`);
       }
       const data = await response.json();
 
@@ -2509,51 +2474,42 @@ class PingOneClient {
     let data = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : null;
     let options = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
     const settings = this.getSettings();
-    const url = "".concat(this.basePath).concat(endpoint);
+    const url = `${this.basePath}${endpoint}`;
 
-    // Skip token for token endpoint
-    const isTokenRequest = endpoint === '/token';
-
-    // Get access token if needed
-    let accessToken = null;
-    if (!isTokenRequest) {
-      accessToken = await this.getAccessToken();
-    }
+    // Get access token for all requests
+    const accessToken = await this.getAccessToken();
 
     // Prepare headers
-    const headers = _objectSpread({
+    const headers = {
       'Accept': 'application/json',
       'X-PingOne-Environment-Id': settings.environmentId,
-      'X-PingOne-Region': settings.region
-    }, options.headers);
+      'X-PingOne-Region': settings.region,
+      ...options.headers
+    };
 
-    // Add authorization header if we have a token
-    if (accessToken) {
-      headers['Authorization'] = "Bearer ".concat(accessToken);
-    }
+    // Add authorization header
+    headers['Authorization'] = `Bearer ${accessToken}`;
 
     // Set content type if not already set
     if (method !== 'GET' && method !== 'HEAD' && !headers['Content-Type']) {
-      if (endpoint.endsWith('/users') && method === 'POST') {
-        headers['Content-Type'] = 'application/vnd.pingidentity.user.import+json';
-      } else {
-        headers['Content-Type'] = 'application/json';
-      }
+      headers['Content-Type'] = 'application/json';
     }
 
     // Log the request
     this.logger.debug('PingOne API Request:', {
       method,
       url,
-      headers: _objectSpread(_objectSpread({}, headers), {}, {
+      headers: {
+        ...headers,
         'Authorization': headers.Authorization ? '***REDACTED***' : 'Not set'
-      }),
+      },
       data
     });
     try {
-      const response = await _localApi.localAPI.request(method, url, data, _objectSpread(_objectSpread({}, options), {}, {
+      const response = await _localApi.localAPI.request(method, url, data, {
+        ...options,
         headers
-      }));
+      });
 
       // Log successful response
       this.logger.debug('PingOne API Response:', {
@@ -2575,7 +2531,7 @@ class PingOneClient {
    */
   async getPopulations() {
     const settings = this.getSettings();
-    return this.request('GET', "/v1/environments/".concat(settings.environmentId, "/populations"));
+    return this.request('GET', `/environments/${settings.environmentId}/populations`);
   }
 
   /**
@@ -2586,7 +2542,7 @@ class PingOneClient {
     try {
       const settings = this.getSettings();
       // Try to get the populations endpoint as a way to test the connection
-      await this.request('GET', "/v1/environments/".concat(settings.environmentId, "/populations?limit=1"));
+      await this.request('GET', `/environments/${settings.environmentId}/populations?limit=1`);
       return true;
     } catch (error) {
       this.logger.error('PingOne connection test failed:', error);
@@ -2603,7 +2559,7 @@ class PingOneClient {
   async importUsers(users) {
     let options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
     const settings = this.getSettings();
-    const endpoint = "/v1/environments/".concat(settings.environmentId, "/users");
+    const endpoint = `/environments/${settings.environmentId}/users`;
     const {
       onProgress
     } = options;
@@ -2637,11 +2593,15 @@ class PingOneClient {
             population: {
               id: currentUser.populationId || settings.populationId
             },
-            password: {
-              value: currentUser.password || this.generateTemporaryPassword()
-            },
             enabled: currentUser.enabled !== false
           };
+
+          // Add password only if provided, otherwise let PingOne generate one
+          if (currentUser.password) {
+            userData.password = {
+              value: currentUser.password
+            };
+          }
 
           // Add any additional user properties
           if (currentUser.additionalProperties) {
@@ -2660,10 +2620,9 @@ class PingOneClient {
           this.logger.error('Error importing user:', error);
           failedCount++;
           if (options.continueOnError) {
-            var _error$response;
-            const isSkipped = ((_error$response = error.response) === null || _error$response === void 0 ? void 0 : _error$response.status) === 409; // Conflict - user already exists
+            const isSkipped = error.response?.status === 409; // Conflict - user already exists
             if (isSkipped) {
-              this.logger.warn("User ".concat(currentUser.email, " already exists, skipping"), 'warn');
+              this.logger.warn(`User ${currentUser.email} already exists, skipping`, 'warn');
               skippedCount++;
               // Call progress callback for skipped user
               if (onProgress) {
@@ -2696,7 +2655,7 @@ class PingOneClient {
       results.push(...batchResults);
 
       // Update skipped count from batch results
-      const batchSkipped = batchResults.filter(r => r === null || r === void 0 ? void 0 : r.skipped).length;
+      const batchSkipped = batchResults.filter(r => r?.skipped).length;
       skippedCount += batchSkipped;
       successCount -= batchSkipped; // Adjust success count if any were skipped
 
@@ -2741,18 +2700,14 @@ class PingOneClient {
 }
 exports.PingOneClient = PingOneClient;
 
-},{"./local-api.js":12,"@babel/runtime/helpers/defineProperty":1,"@babel/runtime/helpers/interopRequireDefault":2}],15:[function(require,module,exports){
+},{"./local-api.js":7}],10:[function(require,module,exports){
 "use strict";
 
-var _interopRequireDefault = require("@babel/runtime/helpers/interopRequireDefault");
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.settingsManager = exports.SettingsManager = void 0;
-var _defineProperty2 = _interopRequireDefault(require("@babel/runtime/helpers/defineProperty"));
 var _cryptoUtils = require("./crypto-utils.js");
-function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
-function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { (0, _defineProperty2.default)(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
 class SettingsManager {
   constructor(logger) {
     // Initialize settings and storage key
@@ -2784,7 +2739,7 @@ class SettingsManager {
             args[_key - 2] = arguments[_key];
           }
           if (typeof message === 'string') {
-            logFn("[".concat(level.toUpperCase(), "] ").concat(message), ...args);
+            logFn(`[${level.toUpperCase()}] ${message}`, ...args);
           } else {
             logFn(message, ...args);
           }
@@ -2848,12 +2803,23 @@ class SettingsManager {
    */
   async getDeviceId() {
     try {
+      // Try to get a stored device ID first
+      if (this.isLocalStorageAvailable()) {
+        const storedDeviceId = localStorage.getItem('pingone-device-id');
+        if (storedDeviceId) {
+          return storedDeviceId;
+        }
+      }
+
+      // Generate a new device ID based on stable browser characteristics
       const navigatorInfo = {
-        userAgent: navigator.userAgent,
         platform: navigator.platform,
         hardwareConcurrency: navigator.hardwareConcurrency,
         deviceMemory: navigator.deviceMemory,
-        maxTouchPoints: navigator.maxTouchPoints
+        maxTouchPoints: navigator.maxTouchPoints,
+        language: navigator.language,
+        languages: navigator.languages ? navigator.languages.slice(0, 3).join(',') : '',
+        userAgent: navigator.userAgent ? navigator.userAgent.substring(0, 100) : ''
       };
 
       // Create a hash of the navigator info
@@ -2861,7 +2827,13 @@ class SettingsManager {
       const data = encoder.encode(JSON.stringify(navigatorInfo));
       const hashBuffer = await crypto.subtle.digest('SHA-256', data);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
-      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      const deviceId = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+      // Store the device ID for future use
+      if (this.isLocalStorageAvailable()) {
+        localStorage.setItem('pingone-device-id', deviceId);
+      }
+      return deviceId;
     } catch (error) {
       this.logger.error('Failed to generate device ID:', error);
       // Fallback to a random string if crypto API fails
@@ -2959,7 +2931,7 @@ class SettingsManager {
               try {
                 parsedSettings.apiSecret = await this.decryptIfNeeded(parsedSettings.apiSecret);
               } catch (error) {
-                this.logger.error('Failed to decrypt API secret', error);
+                this.logger.warn('Failed to decrypt API secret - device ID may have changed');
                 parsedSettings.apiSecret = '';
               }
             }
@@ -2992,7 +2964,7 @@ class SettingsManager {
               try {
                 parsedSettings.apiSecret = await this.decryptIfNeeded(parsedSettings.apiSecret);
               } catch (error) {
-                this.logger.error('Failed to decrypt API secret from localStorage', error);
+                this.logger.warn('Failed to decrypt API secret from localStorage - device ID may have changed');
                 parsedSettings.apiSecret = '';
               }
             }
@@ -3051,13 +3023,15 @@ class SettingsManager {
       if (validate) {
         const validation = this.validateSettings(updatedSettings);
         if (!validation.isValid) {
-          this.logger.warn("Cannot save settings: Missing required fields - ".concat(validation.missingFields.join(', ')));
+          this.logger.warn(`Cannot save settings: Missing required fields - ${validation.missingFields.join(', ')}`);
           return false;
         }
       }
 
       // Create a copy of settings for saving (without connection fields)
-      const settingsToSave = _objectSpread({}, updatedSettings);
+      const settingsToSave = {
+        ...updatedSettings
+      };
 
       // Only encrypt API secret if it's not already encrypted and not empty
       if (settingsToSave.apiSecret && !settingsToSave.apiSecret.startsWith('enc:')) {
@@ -3080,7 +3054,7 @@ class SettingsManager {
         });
         if (!response.ok) {
           const error = await response.text();
-          throw new Error("Server responded with status ".concat(response.status, ": ").concat(error));
+          throw new Error(`Server responded with status ${response.status}: ${error}`);
         }
 
         // Update in-memory settings
@@ -3129,7 +3103,7 @@ class SettingsManager {
         await this.initializeEncryption();
       }
       const encrypted = await _cryptoUtils.CryptoUtils.encrypt(value, this.encryptionKey);
-      return "enc:".concat(encrypted);
+      return `enc:${encrypted}`;
     } catch (error) {
       this.logger.error('Encryption failed:', error);
       throw new Error('Failed to encrypt sensitive data');
@@ -3152,8 +3126,30 @@ class SettingsManager {
       const encryptedValue = value.substring(4); // Remove 'enc:' prefix
       return await _cryptoUtils.CryptoUtils.decrypt(encryptedValue, this.encryptionKey);
     } catch (error) {
-      this.logger.error('Decryption failed:', error);
-      throw new Error('Failed to decrypt sensitive data');
+      // Log the error but don't show it to the user unless it's a critical failure
+      if (error.name === 'OperationError') {
+        this.logger.warn('Decryption failed due to key mismatch - this is normal when device ID changes');
+        // Clear the encrypted value from localStorage to prevent future decryption attempts
+        if (this.isLocalStorageAvailable()) {
+          const savedSettings = localStorage.getItem(this.storageKey);
+          if (savedSettings) {
+            try {
+              const parsedSettings = JSON.parse(savedSettings);
+              if (parsedSettings.apiSecret && parsedSettings.apiSecret.startsWith('enc:')) {
+                delete parsedSettings.apiSecret;
+                localStorage.setItem(this.storageKey, JSON.stringify(parsedSettings));
+                this.logger.info('Cleared encrypted API secret from localStorage');
+              }
+            } catch (e) {
+              this.logger.warn('Failed to clear encrypted data from localStorage');
+            }
+          }
+        }
+      } else {
+        this.logger.error('Decryption failed:', error);
+      }
+      // Return empty string instead of throwing error to prevent app from crashing
+      return '';
     }
   }
 
@@ -3164,7 +3160,9 @@ class SettingsManager {
    * @returns {Object} Merged object
    */
   deepMerge(target, source) {
-    const output = _objectSpread({}, target);
+    const output = {
+      ...target
+    };
     if (this.isObject(target) && this.isObject(source)) {
       Object.keys(source).forEach(key => {
         if (this.isObject(source[key])) {
@@ -3206,11 +3204,14 @@ class SettingsManager {
       }
 
       // Merge new settings with existing ones
-      this.settings = _objectSpread(_objectSpread({}, this.settings), newSettings);
+      this.settings = {
+        ...this.settings,
+        ...newSettings
+      };
       this.logger.info('Settings updated in memory');
       return this.settings;
     } catch (error) {
-      this.logger.error("Error updating settings: ".concat(error.message));
+      this.logger.error(`Error updating settings: ${error.message}`);
       throw error;
     }
   }
@@ -3228,7 +3229,7 @@ class SettingsManager {
       this.logger.log('Settings cleared successfully', 'success');
       return true;
     } catch (error) {
-      this.logger.error("Error clearing settings: ".concat(error.message), 'error');
+      this.logger.error(`Error clearing settings: ${error.message}`, 'error');
       return false;
     }
   }
@@ -3238,7 +3239,9 @@ class SettingsManager {
    * @returns {Object} Current settings object
    */
   getSettings() {
-    return _objectSpread({}, this.settings); // Return a shallow copy to prevent direct modification
+    return {
+      ...this.settings
+    }; // Return a shallow copy to prevent direct modification
   }
 
   /**
@@ -3269,7 +3272,7 @@ class SettingsManager {
 exports.SettingsManager = SettingsManager;
 const settingsManager = exports.settingsManager = new SettingsManager();
 
-},{"./crypto-utils.js":8,"@babel/runtime/helpers/defineProperty":1,"@babel/runtime/helpers/interopRequireDefault":2}],16:[function(require,module,exports){
+},{"./crypto-utils.js":3}],11:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -3316,7 +3319,6 @@ class UIManager {
    * @throws {Error} If view is not found
    */
   async showView(viewName) {
-    var _this$connectionStatu, _this$connectionStatu2;
     // Hide all views and remove 'active'
     Object.entries(this.views).forEach(_ref => {
       let [name, element] = _ref;
@@ -3324,7 +3326,7 @@ class UIManager {
         element.style.display = 'none';
         element.classList.remove('active');
       }
-      const navItem = document.querySelector("[data-view=\"".concat(name, "\"]"));
+      const navItem = document.querySelector(`[data-view="${name}"]`);
       if (navItem) navItem.classList.remove('active');
     });
     // Show the selected view
@@ -3333,7 +3335,7 @@ class UIManager {
       viewElement.style.display = 'block';
       viewElement.classList.add('active');
       this.currentView = viewName;
-      const navItem = document.querySelector("[data-view=\"".concat(viewName, "\"]"));
+      const navItem = document.querySelector(`[data-view="${viewName}"]`);
       if (navItem) navItem.classList.add('active');
       // Special handling for logs/settings
       switch (viewName) {
@@ -3346,14 +3348,14 @@ class UIManager {
           if (window.app && typeof window.app.checkSettingsAndRestore === 'function') {
             window.app.checkSettingsAndRestore();
           }
-          const currentStatus = (_this$connectionStatu = this.connectionStatusElement) !== null && _this$connectionStatu !== void 0 && _this$connectionStatu.classList.contains('status-connected') ? 'connected' : 'disconnected';
-          const currentMessage = ((_this$connectionStatu2 = this.connectionStatusElement) === null || _this$connectionStatu2 === void 0 || (_this$connectionStatu2 = _this$connectionStatu2.querySelector('.status-message')) === null || _this$connectionStatu2 === void 0 ? void 0 : _this$connectionStatu2.textContent) || '';
+          const currentStatus = this.connectionStatusElement?.classList.contains('status-connected') ? 'connected' : 'disconnected';
+          const currentMessage = this.connectionStatusElement?.querySelector('.status-message')?.textContent || '';
           this.updateSettingsConnectionStatus(currentStatus, currentMessage);
           break;
       }
       return true;
     } else {
-      console.warn("View '".concat(viewName, "' not found"));
+      console.warn(`View '${viewName}' not found`);
       return false;
     }
   }
@@ -3367,8 +3369,8 @@ class UIManager {
     const normalizedViewName = viewName.toLowerCase();
     const viewElement = this.views[normalizedViewName];
     if (!viewElement) {
-      console.error("View '".concat(viewName, "' not found"));
-      throw new Error("View '".concat(viewName, "' not found"));
+      console.error(`View '${viewName}' not found`);
+      throw new Error(`View '${viewName}' not found`);
     }
 
     // Hide all views
@@ -3379,7 +3381,7 @@ class UIManager {
         element.classList.remove('active');
       }
       // Update nav items
-      const navItem = document.querySelector("[data-view=\"".concat(name, "\"]"));
+      const navItem = document.querySelector(`[data-view="${name}"]`);
       if (navItem) {
         navItem.classList.remove('active');
       }
@@ -3391,7 +3393,7 @@ class UIManager {
     this.currentView = normalizedViewName;
 
     // Update active state of nav item
-    const activeNavItem = document.querySelector("[data-view=\"".concat(normalizedViewName, "\"]"));
+    const activeNavItem = document.querySelector(`[data-view="${normalizedViewName}"]`);
     if (activeNavItem) {
       activeNavItem.classList.add('active');
     }
@@ -3399,7 +3401,7 @@ class UIManager {
     try {
       localStorage.setItem('currentView', normalizedViewName);
     } catch (e) {}
-    this.logger.debug("Switched to ".concat(viewName, " view"));
+    this.logger.debug(`Switched to ${viewName} view`);
     return true;
   }
 
@@ -3411,10 +3413,16 @@ class UIManager {
     const statusElement = document.getElementById('settings-status');
     if (!statusElement) return;
     if (hasRequiredSettings) {
-      statusElement.innerHTML = "\n                <i class=\"fas fa-check-circle\"></i>\n                <span>All required settings are configured</span>\n            ";
+      statusElement.innerHTML = `
+                <i class="fas fa-check-circle"></i>
+                <span>All required settings are configured</span>
+            `;
       statusElement.className = 'status-message status-success';
     } else {
-      statusElement.innerHTML = "\n                <i class=\"fas fa-exclamation-triangle\"></i>\n                <span>Missing required settings</span>\n            ";
+      statusElement.innerHTML = `
+                <i class="fas fa-exclamation-triangle"></i>
+                <span>Missing required settings</span>
+            `;
       statusElement.className = 'status-message status-warning';
     }
   }
@@ -3436,7 +3444,7 @@ class UIManager {
       }
       const normalizedStatus = status.toLowerCase();
       const normalizedMessage = message || this._getDefaultStatusMessage(normalizedStatus);
-      console.debug("Updating connection status to: ".concat(normalizedStatus, " - ").concat(normalizedMessage));
+      console.debug(`Updating connection status to: ${normalizedStatus} - ${normalizedMessage}`);
 
       // Update main connection status
       const mainUpdateSuccess = this._updateStatusElement('connection-status', normalizedStatus, normalizedMessage);
@@ -3493,7 +3501,7 @@ class UIManager {
       if (connectButton) {
         connectButton.disabled = status === 'connected';
         connectButton.textContent = status === 'connected' ? 'Connected' : 'Connect';
-        connectButton.className = "btn ".concat(status === 'connected' ? 'btn-success' : 'btn-primary');
+        connectButton.className = `btn ${status === 'connected' ? 'btn-success' : 'btn-primary'}`;
       }
 
       // Update import button state
@@ -3506,8 +3514,8 @@ class UIManager {
       // Update status indicator in navigation
       const statusIndicator = document.getElementById('nav-connection-status');
       if (statusIndicator) {
-        statusIndicator.className = "nav-status-indicator status-".concat(status);
-        statusIndicator.title = "".concat(status.charAt(0).toUpperCase() + status.slice(1), ": ").concat(this._getDefaultStatusMessage(status));
+        statusIndicator.className = `nav-status-indicator status-${status}`;
+        statusIndicator.title = `${status.charAt(0).toUpperCase() + status.slice(1)}: ${this._getDefaultStatusMessage(status)}`;
       }
 
       // Show/hide connection error message
@@ -3539,7 +3547,7 @@ class UIManager {
     }
     const element = document.getElementById(elementId);
     if (!element) {
-      console.warn("Element with ID '".concat(elementId, "' not found"));
+      console.warn(`Element with ID '${elementId}' not found`);
       return false;
     }
     try {
@@ -3550,14 +3558,14 @@ class UIManager {
       element.className = element.className.split(' ').filter(cls => !cls.startsWith('status-')).join(' ');
 
       // Add the new status class
-      element.classList.add("status-".concat(status));
+      element.classList.add(`status-${status}`);
 
       // Add ARIA attributes for accessibility
       element.setAttribute('aria-live', 'polite');
       element.setAttribute('aria-atomic', 'true');
       return true;
     } catch (error) {
-      console.error("Error updating element '".concat(elementId, "':"), error);
+      console.error(`Error updating element '${elementId}':`, error);
       return false;
     }
   }
@@ -3570,7 +3578,7 @@ class UIManager {
    */
   _logStatusChange(status, message) {
     const timestamp = new Date().toISOString();
-    console.debug("[".concat(timestamp, "] Connection status changed to: ").concat(status, " - ").concat(message));
+    console.debug(`[${timestamp}] Connection status changed to: ${status} - ${message}`);
 
     // You could also log this to a server endpoint for auditing
     // this._logToServer('connection-status', { status, message, timestamp });
@@ -3584,14 +3592,14 @@ class UIManager {
    * @param {string} message - The message that was being set
    */
   _handleStatusUpdateError(error, status, message) {
-    const errorMessage = "Failed to update status to '".concat(status, "': ").concat(error.message);
+    const errorMessage = `Failed to update status to '${status}': ${error.message}`;
     console.error(errorMessage, error);
 
     // Try to show a user-visible error if possible
     try {
       const errorElement = document.getElementById('connection-error');
       if (errorElement) {
-        errorElement.textContent = "Error: ".concat(errorMessage, ". ").concat(message || '');
+        errorElement.textContent = `Error: ${errorMessage}. ${message || ''}`;
         errorElement.style.display = 'block';
       }
     } catch (uiError) {
@@ -3657,7 +3665,7 @@ class UIManager {
         if (console[level]) {
           console[level](message, data);
         } else {
-          console.log("[".concat(level.toUpperCase(), "]"), message, data);
+          console.log(`[${level.toUpperCase()}]`, message, data);
         }
       } catch (logError) {
         console.error('Error in safeLog:', logError);
@@ -3684,16 +3692,15 @@ class UIManager {
     logEntries.innerHTML = '';
     logEntries.appendChild(loadingElement);
     try {
-      var _responseData$logs;
       // Fetch logs from the UI logs endpoint
-      safeLog('Fetching logs from /api/logs...', 'debug');
-      const response = await fetch('/api/logs?limit=200');
+      safeLog('Fetching logs from /api/logs/ui...', 'debug');
+      const response = await fetch('/api/logs/ui?limit=200');
       if (!response.ok) {
-        throw new Error("HTTP error! status: ".concat(response.status));
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
       const responseData = await response.json();
       safeLog('Received logs from server', 'debug', {
-        count: (_responseData$logs = responseData.logs) === null || _responseData$logs === void 0 ? void 0 : _responseData$logs.length
+        count: responseData.logs?.length
       });
 
       // Clear any existing logs in the UI
@@ -3707,32 +3714,57 @@ class UIManager {
           return;
         }
 
-        // Process logs in reverse chronological order (newest first)
+        // Process logs in chronological order (oldest first, newest last)
+        // Reverse the array since server returns newest first, but we want oldest first
         const logsToProcess = [...responseData.logs].reverse();
         logsToProcess.forEach((log, index) => {
           try {
             if (log && typeof log === 'object') {
               const logElement = document.createElement('div');
               const logLevel = (log.level || 'info').toLowerCase();
-              logElement.className = "log-entry log-".concat(logLevel);
+              logElement.className = `log-entry log-${logLevel}`;
+              logElement.style.cursor = 'pointer';
               const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
               const level = log.level ? log.level.toUpperCase() : 'INFO';
               const message = log.message || 'No message';
-              logElement.innerHTML = "\n                                <span class=\"log-timestamp\">[".concat(timestamp, "]</span>\n                                <span class=\"log-level\">").concat(level, "</span>\n                                <span class=\"log-message\">").concat(message, "</span>\n                            ");
+              logElement.innerHTML = `
+                                <span class="log-timestamp">[${timestamp}]</span>
+                                <span class="log-level">${level}</span>
+                                <span class="log-message">${message}</span>
+                            `;
 
-              // Add data if present
+              // Add data if present (collapsed by default)
+              let detailsElement = null;
               if (log.data && Object.keys(log.data).length > 0) {
-                const dataElement = document.createElement('pre');
-                dataElement.className = 'log-data';
-                dataElement.textContent = JSON.stringify(log.data, null, 2);
-                logElement.appendChild(dataElement);
+                detailsElement = document.createElement('pre');
+                detailsElement.className = 'log-details';
+                detailsElement.style.display = 'none';
+                detailsElement.textContent = JSON.stringify(log, null, 2);
+                logElement.appendChild(detailsElement);
+              } else {
+                // Always allow expansion for full log object
+                detailsElement = document.createElement('pre');
+                detailsElement.className = 'log-details';
+                detailsElement.style.display = 'none';
+                detailsElement.textContent = JSON.stringify(log, null, 2);
+                logElement.appendChild(detailsElement);
               }
+
+              // Toggle expand/collapse on click
+              logElement.addEventListener('click', function (e) {
+                // Only toggle if not clicking a link or button inside
+                if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
+                const expanded = logElement.classList.toggle('expanded');
+                if (detailsElement) {
+                  detailsElement.style.display = expanded ? 'block' : 'none';
+                }
+              });
               logEntries.appendChild(logElement);
             } else {
-              safeLog("Skipping invalid log entry at index ".concat(index), 'warn', log);
+              safeLog(`Skipping invalid log entry at index ${index}`, 'warn', log);
             }
           } catch (logError) {
-            safeLog("Error processing log entry at index ".concat(index, ": ").concat(logError.message), 'error', {
+            safeLog(`Error processing log entry at index ${index}: ${logError.message}`, 'error', {
               error: logError
             });
           }
@@ -3748,7 +3780,7 @@ class UIManager {
         logEntries.appendChild(noLogsElement);
       }
     } catch (error) {
-      safeLog("Error fetching logs: ".concat(error.message), 'error', {
+      safeLog(`Error fetching logs: ${error.message}`, 'error', {
         error: {
           name: error.name,
           message: error.message,
@@ -3759,7 +3791,7 @@ class UIManager {
       // Show error message in the UI
       const errorElement = document.createElement('div');
       errorElement.className = 'log-entry error';
-      errorElement.textContent = "Error loading logs: ".concat(error.message);
+      errorElement.textContent = `Error loading logs: ${error.message}`;
       logEntries.innerHTML = '';
       logEntries.appendChild(errorElement);
     } finally {
@@ -3824,17 +3856,17 @@ class UIManager {
     const progressCount = document.getElementById('import-progress-count');
     if (progressBar) {
       const percent = total > 0 ? Math.min(100, Math.round(current / total * 100)) : 0;
-      progressBar.style.width = "".concat(percent, "%");
+      progressBar.style.width = `${percent}%`;
       progressBar.setAttribute('aria-valuenow', percent);
     }
     if (progressPercent) {
-      progressPercent.textContent = "".concat(total > 0 ? Math.min(100, Math.round(current / total * 100)) : 0, "%");
+      progressPercent.textContent = `${total > 0 ? Math.min(100, Math.round(current / total * 100)) : 0}%`;
     }
     if (progressText) {
       progressText.textContent = message || '';
     }
     if (progressCount) {
-      progressCount.textContent = "".concat(current, " of ").concat(total, " users");
+      progressCount.textContent = `${current} of ${total} users`;
     }
 
     // Update success, failed, and skipped counts if provided
@@ -3908,7 +3940,7 @@ class UIManager {
    */
   showNotification(message) {
     let type = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'info';
-    console.log("[".concat(type, "] ").concat(message));
+    console.log(`[${type}] ${message}`);
 
     // Get or create notification container
     let notificationArea = document.getElementById('notification-area');
@@ -3919,8 +3951,13 @@ class UIManager {
 
     // Create notification element
     const notification = document.createElement('div');
-    notification.className = "notification notification-".concat(type);
-    notification.innerHTML = "\n            <div class=\"notification-content\">\n                <span class=\"notification-message\">".concat(message, "</span>\n                <button class=\"notification-close\">&times;</button>\n            </div>\n        ");
+    notification.className = `notification notification-${type}`;
+    notification.innerHTML = `
+            <div class="notification-content">
+                <span class="notification-message">${message}</span>
+                <button class="notification-close">&times;</button>
+            </div>
+        `;
 
     // Add close button handler
     const closeButton = notification.querySelector('.notification-close');
@@ -4006,6 +4043,27 @@ class UIManager {
       });
     }
 
+    // Set up Clear Logs button
+    const clearLogsBtn = document.getElementById('clear-logs');
+    if (clearLogsBtn) {
+      clearLogsBtn.addEventListener('click', async e => {
+        e.preventDefault();
+        try {
+          const response = await fetch('/api/logs/ui', {
+            method: 'DELETE'
+          });
+          const data = await response.json();
+          if (data.success) {
+            this.showNotification('Logs cleared', 'success');
+            await this.loadAndDisplayLogs();
+          } else {
+            this.showNotification('Failed to clear logs: ' + (data.error || 'Unknown error'), 'error');
+          }
+        } catch (error) {
+          this.showNotification('Error clearing logs: ' + error.message, 'error');
+        }
+      });
+    }
     // Make sure the current view is visible
     const currentView = this.getLastView();
     this.showView(currentView);
@@ -4108,14 +4166,16 @@ class UIManager {
       logEntriesContainer.innerHTML = '';
     }
     try {
-      const response = await fetch('/api/logs?limit=200');
+      const response = await fetch('/api/logs/ui?limit=200');
       const data = await response.json();
       if (data.success && Array.isArray(data.logs)) {
         // Hide loading indicator
         loadingElement.style.display = 'none';
 
-        // Process and display logs
-        data.logs.forEach(log => {
+        // Process and display logs in chronological order (oldest first, newest last)
+        // Reverse the array since server returns newest first, but we want oldest first
+        const logsToProcess = [...data.logs].reverse();
+        logsToProcess.forEach(log => {
           if (!log) {
             console.warn('Skipping null log entry');
             return;
@@ -4123,14 +4183,14 @@ class UIManager {
 
           // Create log entry element
           const logEntry = document.createElement('div');
-          logEntry.className = "log-entry log-".concat(log.level || 'info');
+          logEntry.className = `log-entry log-${log.level || 'info'}`;
 
           // Format the log message
           const timestamp = log.timestamp ? new Date(log.timestamp).toISOString() : new Date().toISOString();
           const level = (log.level || 'info').toUpperCase();
           const message = log.message || '';
           const meta = log.meta ? ' ' + JSON.stringify(log.meta) : '';
-          logEntry.textContent = "[".concat(timestamp, "] ").concat(level, ": ").concat(message).concat(meta);
+          logEntry.textContent = `[${timestamp}] ${level}: ${message}${meta}`;
 
           // Append to container
           logEntriesContainer.appendChild(logEntry);
@@ -4145,7 +4205,7 @@ class UIManager {
         logEntriesContainer.scrollTop = logEntriesContainer.scrollHeight;
       } else {
         const errorMsg = data.error || 'Failed to load logs';
-        logEntriesContainer.innerHTML = "<div class=\"error\">".concat(errorMsg, "</div>");
+        logEntriesContainer.innerHTML = `<div class="error">${errorMsg}</div>`;
         console.error('Failed to load logs:', errorMsg);
         if (this.logger && typeof this.logger.error === 'function') {
           this.logger.error('Failed to load logs:', errorMsg);
@@ -4153,7 +4213,7 @@ class UIManager {
       }
     } catch (error) {
       const errorMsg = error.message || 'Error loading logs';
-      logEntriesContainer.innerHTML = "<div class=\"error\">".concat(errorMsg, "</div>");
+      logEntriesContainer.innerHTML = `<div class="error">${errorMsg}</div>`;
       console.error('Error loading logs:', error);
       if (this.logger && typeof this.logger.error === 'function') {
         this.logger.error('Error loading logs:', error);
@@ -4176,7 +4236,7 @@ class UIManager {
   addForm(formId, action, onSuccess, onError) {
     const form = document.getElementById(formId);
     if (!form) {
-      console.error("Form with ID '".concat(formId, "' not found"));
+      console.error(`Form with ID '${formId}' not found`);
       return;
     }
     form.addEventListener('submit', async event => {
@@ -4222,7 +4282,7 @@ class UIManager {
     if (element) {
       element.textContent = content;
     } else {
-      console.error("Element with ID ".concat(elementId, " not found"));
+      console.error(`Element with ID ${elementId} not found`);
     }
   }
 }
@@ -4230,7 +4290,7 @@ class UIManager {
 // No need for module.exports with ES modules
 exports.UIManager = UIManager;
 
-},{}],17:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -4240,13 +4300,13 @@ exports.VersionManager = void 0;
 class VersionManager {
   constructor() {
     this.version = '1.1.2'; // Update this with each new version
-    console.log("Version Manager initialized with version ".concat(this.version));
+    console.log(`Version Manager initialized with version ${this.version}`);
   }
   getVersion() {
     return this.version;
   }
   getFormattedVersion() {
-    return "v".concat(this.version);
+    return `v${this.version}`;
   }
   updateTitle() {
     // Update the main title
@@ -4254,11 +4314,11 @@ class VersionManager {
     if (title) {
       // Remove any existing version number
       const baseTitle = title.textContent.replace(/\s*\(v\d+\.\d+\.\d+\)\s*$/, '').trim();
-      title.textContent = "".concat(baseTitle, " (").concat(this.getFormattedVersion(), ")");
+      title.textContent = `${baseTitle} (${this.getFormattedVersion()})`;
     }
 
     // Update the document title
-    document.title = "PingOne User Import ".concat(this.getFormattedVersion());
+    document.title = `PingOne User Import ${this.getFormattedVersion()}`;
 
     // Update the import button text
     this.updateImportButton();
@@ -4270,7 +4330,7 @@ class VersionManager {
     const importButton = document.getElementById('start-import-btn');
     if (importButton) {
       const baseText = importButton.textContent.replace(/\s*\(v\d+\.\d+\.\d+\)\s*$/, '').trim();
-      importButton.innerHTML = "<i class=\"pi pi-upload\"></i> ".concat(baseText, " (").concat(this.getFormattedVersion(), ")");
+      importButton.innerHTML = `<i class="pi pi-upload"></i> ${baseText} (${this.getFormattedVersion()})`;
     }
   }
   addVersionBadge() {
@@ -4300,4 +4360,4 @@ class VersionManager {
 // ES Module export
 exports.VersionManager = VersionManager;
 
-},{}]},{},[6]);
+},{}]},{},[1]);

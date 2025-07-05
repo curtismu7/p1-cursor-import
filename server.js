@@ -74,6 +74,32 @@ app.post('/api/pingone/test-connection', async (req, res) => {
     }
 });
 
+// Add token endpoint for frontend (must be before pingone proxy)
+app.post('/api/pingone/get-token', async (req, res) => {
+    try {
+        const tokenManager = req.app.get('tokenManager');
+        if (!tokenManager) {
+            return res.status(500).json({ 
+                error: 'Token manager not available',
+                message: 'Server token manager is not initialized'
+            });
+        }
+
+        const token = await tokenManager.getAccessToken();
+        res.json({ 
+            access_token: token,
+            token_type: 'Bearer',
+            expires_in: 3600 // Default expiry time
+        });
+    } catch (error) {
+        logger.error('Error getting token for frontend:', error);
+        res.status(500).json({ 
+            error: 'Failed to get token',
+            message: error.message
+        });
+    }
+});
+
 app.use('/api/pingone', pingoneProxyRouter);
 
 /**
@@ -183,7 +209,7 @@ const logger = winston.createLogger({
                 winston.format.colorize(),
                 winston.format.printf(({ timestamp, level, message, ...meta }) => {
                     const metaString = Object.keys(meta).length ? `\n${JSON.stringify(meta, null, 2)}` : '';
-                    return `[${timestamp}] ${level}: ${message}${metaString}`;
+                    return `[${timestamp}] ${level}: ${message}${metaString}\n${'*'.repeat(80)}`;
                 })
             ),
             handleExceptions: true,
@@ -215,7 +241,10 @@ if (process.env.NODE_ENV !== 'test') {
             winston.format.timestamp({
                 format: 'YYYY-MM-DD HH:mm:ss.SSS'
             }),
-            winston.format.json()
+            winston.format.printf(({ timestamp, level, message, ...meta }) => {
+                const metaString = Object.keys(meta).length ? `\n${JSON.stringify(meta, null, 2)}` : '';
+                return `[${timestamp}] ${level}: ${message}${metaString}\n${'*'.repeat(80)}`;
+            })
         )
     }));
     
@@ -226,7 +255,16 @@ if (process.env.NODE_ENV !== 'test') {
         maxsize: 20 * 1024 * 1024, // 20MB
         maxFiles: 5,
         tailable: true,
-        zippedArchive: true
+        zippedArchive: true,
+        format: winston.format.combine(
+            winston.format.timestamp({
+                format: 'YYYY-MM-DD HH:mm:ss.SSS'
+            }),
+            winston.format.printf(({ timestamp, level, message, ...meta }) => {
+                const metaString = Object.keys(meta).length ? `\n${JSON.stringify(meta, null, 2)}` : '';
+                return `[${timestamp}] ${level}: ${message}${metaString}\n${'*'.repeat(80)}`;
+            })
+        )
     }));
     
     // Client logs (from browser)
@@ -236,7 +274,10 @@ if (process.env.NODE_ENV !== 'test') {
             winston.format.timestamp({
                 format: 'YYYY-MM-DD HH:mm:ss.SSS'
             }),
-            winston.format.json()
+            winston.format.printf(({ timestamp, level, message, ...meta }) => {
+                const metaString = Object.keys(meta).length ? `\n${JSON.stringify(meta, null, 2)}` : '';
+                return `[${timestamp}] ${level}: ${message}${metaString}\n${'*'.repeat(80)}`;
+            })
         ),
         defaultMeta: { 
             service: 'pingone-import-client',
@@ -255,34 +296,6 @@ if (process.env.NODE_ENV !== 'test') {
     
     // Add client logger to the main logger
     logger.client = clientLogger;
-    
-    // Combined logs (all levels)
-    logger.add(new winston.transports.File({
-        filename: path.join(__dirname, 'logs/combined.log'),
-        maxsize: 5242880, // 5MB
-        maxFiles: 5,
-        tailable: true
-    }));
-    
-    // Client-side logs
-    logger.add(new winston.transports.File({
-        filename: path.join(__dirname, 'logs/client.log'),
-        level: 'info',
-        maxsize: 10485760, // 10MB
-        maxFiles: 5,
-        tailable: true,
-        format: winston.format.combine(
-            winston.format.timestamp({
-                format: 'YYYY-MM-DD HH:mm:ss'
-            }),
-            winston.format.printf(({ timestamp, level, message, ...meta }) => {
-                const logEntry = `${timestamp} [${level.toUpperCase()}] ${message} ${
-                    Object.keys(meta).length ? JSON.stringify(meta, null, 2) : ''
-                }`;
-                return `\n${'-'.repeat(80)}\n${logEntry}`;
-            })
-        )
-    }));
 }
 
 // Log to console in development
@@ -887,7 +900,7 @@ app.get('*', (req, res) => {
 });
 
 // Error handling middleware
-app.use((err, req, res, next) => {
+app.use(async (err, req, res, next) => {
     // Log the error
     logger.error('Unhandled error:', {
         error: err.message,
@@ -899,6 +912,33 @@ app.use((err, req, res, next) => {
         userAgent: req.get('user-agent'),
         body: req.body
     });
+    
+    // Post error to UI for display
+    try {
+        const uiResponse = await fetch(`http://localhost:${PORT}/api/logs/error`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                message: `Server error: ${err.message}`,
+                details: {
+                    error: err.message,
+                    code: err.code,
+                    url: req.originalUrl,
+                    method: req.method,
+                    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+                },
+                source: 'server'
+            })
+        });
+        
+        if (!uiResponse.ok) {
+            console.error('Failed to post error to UI:', uiResponse.statusText);
+        }
+    } catch (uiError) {
+        console.error('Error posting to UI logs:', uiError.message);
+    }
     
     // Determine status code
     const statusCode = err.statusCode || err.status || 500;
@@ -940,12 +980,37 @@ app.use((req, res) => {
 });
 
 // Handle unhandled promise rejections
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', async (reason, promise) => {
     logger.error('Unhandled Rejection at:', { 
         promise, 
         reason: reason instanceof Error ? reason.message : reason,
         stack: reason instanceof Error ? reason.stack : undefined
     });
+    
+    // Post error to UI for display
+    try {
+        const uiResponse = await fetch(`http://localhost:${PORT}/api/logs/error`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                message: `Unhandled promise rejection: ${reason instanceof Error ? reason.message : reason}`,
+                details: {
+                    reason: reason instanceof Error ? reason.message : reason,
+                    stack: reason instanceof Error ? reason.stack : undefined,
+                    promise: promise.toString()
+                },
+                source: 'server'
+            })
+        });
+        
+        if (!uiResponse.ok) {
+            console.error('Failed to post error to UI:', uiResponse.statusText);
+        }
+    } catch (uiError) {
+        console.error('Error posting to UI logs:', uiError.message);
+    }
     
     // For development, log the full error
     if (process.env.NODE_ENV !== 'production') {
@@ -954,12 +1019,37 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // Handle uncaught exceptions
-process.on('uncaughtException', (error) => {
+process.on('uncaughtException', async (error) => {
     logger.error('Uncaught Exception:', {
         error: error.message,
         stack: error.stack,
         name: error.name
     });
+    
+    // Post error to UI for display
+    try {
+        const uiResponse = await fetch(`http://localhost:${PORT}/api/logs/error`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                message: `Uncaught exception: ${error.message}`,
+                details: {
+                    error: error.message,
+                    stack: error.stack,
+                    name: error.name
+                },
+                source: 'server'
+            })
+        });
+        
+        if (!uiResponse.ok) {
+            console.error('Failed to post error to UI:', uiResponse.statusText);
+        }
+    } catch (uiError) {
+        console.error('Error posting to UI logs:', uiError.message);
+    }
     
     // For development, log the full error
     if (process.env.NODE_ENV !== 'production') {
@@ -1241,7 +1331,30 @@ const startServer = async () => {
         // Log memory usage initially
         logMemoryUsage();
         // Log memory usage every 5 seconds
-        const memoryInterval = setInterval(logMemoryUsage, 5000);
+        const memoryInterval = setInterval(() => {
+            const used = process.memoryUsage();
+            const memoryUsage = {
+                rss: (used.rss / 1024 / 1024).toFixed(2),
+                heapTotal: (used.heapTotal / 1024 / 1024).toFixed(2),
+                heapUsed: (used.heapUsed / 1024 / 1024).toFixed(2),
+                external: (used.external / 1024 / 1024).toFixed(2)
+            };
+            
+            console.log('🧠 Memory usage (MB):', memoryUsage);
+            
+            // Post warning if memory usage is high
+            const heapUsedMB = parseFloat(memoryUsage.heapUsed);
+            const heapTotalMB = parseFloat(memoryUsage.heapTotal);
+            const memoryPercentage = (heapUsedMB / heapTotalMB) * 100;
+            
+            if (memoryPercentage > 80) {
+                postWarningToUI('High memory usage detected', {
+                    memoryUsage: memoryUsage,
+                    percentage: memoryPercentage.toFixed(1),
+                    threshold: 80
+                }, 'memory-monitor');
+            }
+        }, 5000);
         
         // Set a timeout for the server to start listening
         const LISTEN_TIMEOUT = 30000; // 30 seconds
@@ -1261,6 +1374,14 @@ const startServer = async () => {
                 isResolved,
                 serverListening: server?.listening
             });
+            
+            // Post warning to UI for display
+            postWarningToUI('Server listen timeout', {
+                timeout: LISTEN_TIMEOUT / 1000,
+                port: PORT,
+                timeElapsed: `${(Date.now() - startTime) / 1000}s`,
+                serverListening: server?.listening
+            }, 'server-listen');
             
             // Log active handles that might be keeping the process alive
             if (process._getActiveHandles) {
@@ -1371,6 +1492,14 @@ const startServer = async () => {
                 ...error.details
             });
             
+            // Post warning to UI for display
+            postWarningToUI('Server startup timeout', {
+                timeout: SERVER_STARTUP_TIMEOUT / 1000,
+                timeElapsed: `${(Date.now() - startTime) / 1000}s`,
+                serverListening: server?.listening,
+                port: PORT
+            }, 'server-startup');
+            
             // Log active handles that might be keeping the process alive
             if (process._getActiveHandles) {
                 const handles = process._getActiveHandles();
@@ -1412,6 +1541,13 @@ const startServer = async () => {
             // Log the error
             console.error(`❌ ${error.message}`);
             
+            // Post warning to UI for display
+            postWarningToUI('HTTP server startup timeout', {
+                timeElapsed: `${(Date.now() - startTime) / 1000}s`,
+                port: PORT,
+                serverListening: server?.listening
+            }, 'http-startup');
+            
             // Clean up any server instance that might have been created
             if (server) {
                 server.close(() => {
@@ -1446,7 +1582,7 @@ const startServer = async () => {
                 // Wait for PingOne initialization to complete (with timeout)
                 try {
                     await Promise.race([
-                        pingOneInit,
+                        tokenManager.getAccessToken(), // Assuming tokenManager.getAccessToken is the actual initialization
                         new Promise((_, rej) => setTimeout(() => rej(new Error('PingOne initialization timeout')), 5000))
                     ]);
                     console.log('✅ PingOne API connection verified');
@@ -1505,6 +1641,14 @@ const startServer = async () => {
                     port: error.port
                 });
                 
+                // Post error to UI for display
+                postErrorToUI(errorMessage, {
+                    code: error.code,
+                    syscall: error.syscall,
+                    address: error.address,
+                    port: error.port
+                }, 'server-error');
+                
                 // Don't exit in development to allow for auto-restart
                 if (process.env.NODE_ENV === 'production') {
                     process.exit(1);
@@ -1517,6 +1661,12 @@ const startServer = async () => {
             // Update server state
             serverState.isInitializing = false;
             serverState.lastError = error;
+            
+            // Post error to UI for display
+            postErrorToUI(`Failed to start HTTP server: ${error.message}`, {
+                code: error.code,
+                stack: process.env.NODE_ENV !== 'production' ? error.stack : undefined
+            }, 'server-startup');
             
             // Clean up
             cleanup();
@@ -1535,6 +1685,14 @@ const startServer = async () => {
         // Handle server startup errors
         server.once('error', (error) => {
             console.error('❌ Server error during startup:', error.message);
+            
+            // Post error to UI for display
+            postErrorToUI(`Server error during startup: ${error.message}`, {
+                code: error.code,
+                syscall: error.syscall,
+                address: error.address,
+                port: error.port
+            }, 'server-startup');
             
             // Clean up
             cleanup();
@@ -1601,6 +1759,14 @@ const startServer = async () => {
                     stack: process.env.NODE_ENV !== 'production' ? error.stack : undefined
                 });
                 
+                // Post error to UI for display
+                postErrorToUI(`Server startup failed: ${error.message}`, {
+                    code: error.code,
+                    syscall: error.syscall,
+                    address: error.address,
+                    port: error.port
+                }, 'server-startup');
+                
                 console.error('\n' + '='.repeat(80));
                 console.error(errorMessage);
                 console.error('='.repeat(80) + '\n');
@@ -1623,6 +1789,19 @@ const startServer = async () => {
             console.error('⚠️  Unhandled Rejection at:', promise, 'reason:', reason);
             logger.error('Unhandled Rejection at:', { promise, reason });
             
+            // Post warning to UI for display
+            postWarningToUI('Unhandled promise rejection', {
+                reason: reason instanceof Error ? reason.message : reason.toString(),
+                promise: promise.toString(),
+                stack: reason instanceof Error ? reason.stack : undefined
+            }, 'unhandled-rejection');
+            
+            // Post error to UI for display
+            postErrorToUI(`Unhandled Rejection: ${reason}`, {
+                promise: promise.toString(),
+                reason: reason.toString()
+            }, 'unhandled-rejection');
+            
             // In production, you might want to restart the server or take other actions
             if (process.env.NODE_ENV === 'production') {
                 // Consider implementing a more robust error recovery strategy here
@@ -1639,6 +1818,19 @@ const startServer = async () => {
                 code: error.code
             });
             
+            // Post warning to UI for display
+            postWarningToUI('Uncaught exception', {
+                message: error.message,
+                code: error.code,
+                stack: error.stack
+            }, 'uncaught-exception');
+            
+            // Post error to UI for display
+            postErrorToUI(`Uncaught Exception: ${error.message}`, {
+                stack: error.stack,
+                code: error.code
+            }, 'uncaught-exception');
+            
             // In production, you might want to restart the server or take other actions
             if (process.env.NODE_ENV === 'production') {
                 // Consider implementing a more robust error recovery strategy here
@@ -1651,10 +1843,65 @@ const startServer = async () => {
         server.setTimeout(5000, () => {
             const error = new Error('Server startup timed out');
             console.error('Server startup timed out');
+            
+            // Post warning to UI for display
+            postWarningToUI('Server startup timed out', {
+                timeout: 5000,
+                message: 'Server startup process exceeded timeout limit'
+            }, 'server-startup');
+            
             reject(error);
         });
     });
 };
+
+// Function to post errors to UI logs for display on screen
+const postErrorToUI = async (message, details = {}, source = 'server') => {
+    try {
+        const response = await fetch(`http://localhost:${PORT}/api/logs/error`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                message,
+                details,
+                source
+            })
+        });
+        
+        if (!response.ok) {
+            console.error('Failed to post error to UI:', response.statusText);
+        }
+    } catch (error) {
+        console.error('Error posting to UI logs:', error.message);
+    }
+};
+
+// Function to post warnings to UI logs for display on screen
+const postWarningToUI = async (message, details = {}, source = 'server') => {
+    try {
+        const response = await fetch(`http://localhost:${PORT}/api/logs/warning`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                message,
+                details,
+                source
+            })
+        });
+        
+        if (!response.ok) {
+            console.error('Failed to post warning to UI:', response.statusText);
+        }
+    } catch (error) {
+        console.error('Error posting to UI logs:', error.message);
+    }
+};
+
+
 
 // List all registered routes before starting the server
 if (process.env.NODE_ENV !== 'production') {

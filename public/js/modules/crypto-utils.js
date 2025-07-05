@@ -79,8 +79,8 @@ class CryptoUtils {
             
             return new TextDecoder().decode(decrypted);
         } catch (error) {
-            console.error('Decryption failed:', error);
-            throw new Error('Failed to decrypt data. The encryption key may be incorrect.');
+            // Don't log the error here - let the calling code handle it
+            throw error;
         }
     }
 }

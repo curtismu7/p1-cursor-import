@@ -43,6 +43,12 @@ router.get("/", async (req, res) => {
     try {
         const settings = await readSettings();
         
+        // Check if apiSecret is encrypted and clear it if it might cause decryption issues
+        if (settings.apiSecret && settings.apiSecret.startsWith('enc:')) {
+            // For now, we'll return the encrypted value and let the frontend handle decryption
+            // The frontend will clear it if decryption fails
+        }
+        
         // Log the settings being returned (without sensitive data)
         const logSettings = { ...settings };
         if (logSettings.apiSecret) {

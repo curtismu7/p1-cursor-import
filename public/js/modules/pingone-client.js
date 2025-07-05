@@ -80,26 +80,20 @@ export class PingOneClient {
      * @returns {Promise<string>} Access token
      */
     async getAccessToken() {
-        // Try to use cached token if available
+        // Check for cached token first
         const cachedToken = this.getCachedToken();
         if (cachedToken) {
             return cachedToken;
         }
         
-        // If no cached token or it's expired, get a new one
+        // If no cached token or it's expired, get a new one from the server
         try {
-            const response = await fetch(`${this.basePath}/token`, {
+            const response = await fetch('/api/pingone/get-token', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
-                },
-                body: JSON.stringify({
-                    clientId: this.getSettings().apiClientId,
-                    clientSecret: this.getSettings().apiSecret,
-                    environmentId: this.getSettings().environmentId,
-                    region: this.getSettings().region
-                })
+                }
             });
             
             if (!response.ok) {
@@ -146,14 +140,8 @@ export class PingOneClient {
         const settings = this.getSettings();
         const url = `${this.basePath}${endpoint}`;
         
-        // Skip token for token endpoint
-        const isTokenRequest = endpoint === '/token';
-        
-        // Get access token if needed
-        let accessToken = null;
-        if (!isTokenRequest) {
-            accessToken = await this.getAccessToken();
-        }
+        // Get access token for all requests
+        const accessToken = await this.getAccessToken();
         
         // Prepare headers
         const headers = {
@@ -163,20 +151,13 @@ export class PingOneClient {
             ...options.headers
         };
         
-        // Add authorization header if we have a token
-        if (accessToken) {
-            headers['Authorization'] = `Bearer ${accessToken}`;
-        }
+        // Add authorization header
+        headers['Authorization'] = `Bearer ${accessToken}`;
 
         // Set content type if not already set
         if (method !== 'GET' && method !== 'HEAD' && !headers['Content-Type']) {
-            if (endpoint.endsWith('/users') && method === 'POST') {
-                headers['Content-Type'] = 'application/vnd.pingidentity.user.import+json';
-            } else {
-                headers['Content-Type'] = 'application/json';
-            }
+            headers['Content-Type'] = 'application/json';
         }
-
 
         // Log the request
         this.logger.debug('PingOne API Request:', {
@@ -215,7 +196,7 @@ export class PingOneClient {
      */
     async getPopulations() {
         const settings = this.getSettings();
-        return this.request('GET', `/v1/environments/${settings.environmentId}/populations`);
+        return this.request('GET', `/environments/${settings.environmentId}/populations`);
     }
 
     /**
@@ -226,7 +207,7 @@ export class PingOneClient {
         try {
             const settings = this.getSettings();
             // Try to get the populations endpoint as a way to test the connection
-            await this.request('GET', `/v1/environments/${settings.environmentId}/populations?limit=1`);
+            await this.request('GET', `/environments/${settings.environmentId}/populations?limit=1`);
             return true;
         } catch (error) {
             this.logger.error('PingOne connection test failed:', error);
@@ -242,7 +223,7 @@ export class PingOneClient {
      */
     async importUsers(users, options = {}) {
         const settings = this.getSettings();
-        const endpoint = `/v1/environments/${settings.environmentId}/users`;
+        const endpoint = `/environments/${settings.environmentId}/users`;
         const { onProgress } = options;
         const results = [];
         const totalUsers = users.length;
@@ -276,11 +257,15 @@ export class PingOneClient {
                         population: {
                             id: currentUser.populationId || settings.populationId
                         },
-                        password: {
-                            value: currentUser.password || this.generateTemporaryPassword()
-                        },
                         enabled: currentUser.enabled !== false
                     };
+
+                    // Add password only if provided, otherwise let PingOne generate one
+                    if (currentUser.password) {
+                        userData.password = {
+                            value: currentUser.password
+                        };
+                    }
 
                     // Add any additional user properties
                     if (currentUser.additionalProperties) {
