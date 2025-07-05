@@ -203,7 +203,7 @@ const logger = winston.createLogger({
         pid: process.pid
     },
     transports: [
-        // Console transport for all levels in development
+        // Console transport for info+ only
         new winston.transports.Console({
             format: winston.format.combine(
                 winston.format.colorize(),
@@ -214,11 +214,98 @@ const logger = winston.createLogger({
             ),
             handleExceptions: true,
             handleRejections: true,
-            level: process.env.NODE_ENV === 'production' ? 'info' : 'debug'
+            level: 'info'
         })
     ],
     exitOnError: false
 });
+
+// Add file transports only if not in test environment
+if (process.env.NODE_ENV !== 'test') {
+    // Error logs (errors only)
+    logger.add(new winston.transports.File({ 
+        filename: path.join(__dirname, 'logs/error.log'),
+        level: 'error',
+        maxsize: 10 * 1024 * 1024, // 10MB
+        maxFiles: 5,
+        tailable: true,
+        zippedArchive: true,
+        handleExceptions: true,
+        handleRejections: true,
+        format: winston.format.combine(
+            winston.format.timestamp({
+                format: 'YYYY-MM-DD HH:mm:ss.SSS'
+            }),
+            winston.format.printf(({ timestamp, level, message, ...meta }) => {
+                const metaString = Object.keys(meta).length ? `\n${JSON.stringify(meta, null, 2)}` : '';
+                return `[${timestamp}] ${level}: ${message}${metaString}\n${'*'.repeat(80)}`;
+            })
+        )
+    }));
+    // Combined logs (all levels, most verbose)
+    logger.add(new winston.transports.File({
+        filename: path.join(__dirname, 'logs/combined.log'),
+        level: 'debug',
+        maxsize: 20 * 1024 * 1024, // 20MB
+        maxFiles: 5,
+        tailable: true,
+        zippedArchive: true,
+        format: winston.format.combine(
+            winston.format.timestamp({
+                format: 'YYYY-MM-DD HH:mm:ss.SSS'
+            }),
+            winston.format.printf(({ timestamp, level, message, ...meta }) => {
+                const metaString = Object.keys(meta).length ? `\n${JSON.stringify(meta, null, 2)}` : '';
+                return `[${timestamp}] ${level}: ${message}${metaString}\n${'*'.repeat(80)}`;
+            })
+        )
+    }));
+    // Server logs (info+ only, matches console)
+    logger.add(new winston.transports.File({
+        filename: path.join(__dirname, 'logs/server.log'),
+        level: 'info',
+        maxsize: 10 * 1024 * 1024, // 10MB
+        maxFiles: 5,
+        tailable: true,
+        zippedArchive: true,
+        format: winston.format.combine(
+            winston.format.timestamp({
+                format: 'YYYY-MM-DD HH:mm:ss.SSS'
+            }),
+            winston.format.printf(({ timestamp, level, message, ...meta }) => {
+                const metaString = Object.keys(meta).length ? `\n${JSON.stringify(meta, null, 2)}` : '';
+                return `[${timestamp}] ${level}: ${message}${metaString}\n${'*'.repeat(80)}`;
+            })
+        )
+    }));
+    // Client logs (from browser)
+    const clientLogger = winston.createLogger({
+        level: 'info',
+        format: winston.format.combine(
+            winston.format.timestamp({
+                format: 'YYYY-MM-DD HH:mm:ss.SSS'
+            }),
+            winston.format.printf(({ timestamp, level, message, ...meta }) => {
+                const metaString = Object.keys(meta).length ? `\n${JSON.stringify(meta, null, 2)}` : '';
+                return `[${timestamp}] ${level}: ${message}${metaString}\n${'*'.repeat(80)}`;
+            })
+        ),
+        defaultMeta: { 
+            service: 'pingone-import-client',
+            env: process.env.NODE_ENV || 'development'
+        },
+        transports: [
+            new winston.transports.File({
+                filename: path.join(__dirname, 'logs/client.log'),
+                maxsize: 10 * 1024 * 1024, // 10MB
+                maxFiles: 5,
+                tailable: true,
+                zippedArchive: true
+            })
+        ]
+    });
+    logger.client = clientLogger;
+}
 
 // Initialize TokenManager and attach to app
 const tokenManager = new TokenManager(logger);
