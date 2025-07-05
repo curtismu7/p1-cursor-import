@@ -12,7 +12,7 @@ const router = Router();
 
 // Enable CORS for all routes
 router.use(cors({
-    origin: 'http://localhost:3001',
+    origin: 'http://localhost:4000',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-PingOne-Environment-Id', 'X-PingOne-Region'],
     credentials: true
@@ -20,7 +20,7 @@ router.use(cors({
 
 // Handle preflight requests
 router.options('*', (req, res) => {
-    res.header('Access-Control-Allow-Origin', 'http://localhost:3001');
+    res.header('Access-Control-Allow-Origin', 'http://localhost:4000');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-PingOne-Environment-Id, X-PingOne-Region');
     res.header('Access-Control-Allow-Credentials', 'true');
@@ -168,45 +168,24 @@ const proxyRequest = async (req, res) => {
             'X-Correlation-ID': req.get('X-Correlation-ID') || uuidv4()
         };
         
-        // Add Authorization header if we have credentials
-        if (req.settings.apiClientId && req.settings.apiSecret) {
-            console.log('Using API credentials for authentication');
-            
-            // For PingOne API, we need to get an access token first
-            const tokenUrl = `https://auth.pingone.com/${req.settings.environmentId}/as/token`;
-            const auth = Buffer.from(`${req.settings.apiClientId}:${req.settings.apiSecret}`).toString('base64');
-            
-            try {
-                console.log('Requesting access token...');
-                const tokenResponse = await fetch(tokenUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'Authorization': `Basic ${auth}`
-                    },
-                    body: 'grant_type=client_credentials'
-                });
-                
-                if (!tokenResponse.ok) {
-                    const errorData = await tokenResponse.text();
-                    console.error('Failed to get access token:', errorData);
-                    throw new Error('Failed to authenticate with PingOne API');
-                }
-                
-                const tokenData = await tokenResponse.json();
-                console.log('Successfully obtained access token');
-                
-                // Use the access token for the API request
-                headers['Authorization'] = `Bearer ${tokenData.access_token}`;
-                console.log('Authorization header set with Bearer token');
-                
-            } catch (error) {
-                console.error('Error obtaining access token:', error);
-                throw error;
+        // Use the server's token manager for authentication
+        try {
+            console.log('Getting access token from server token manager...');
+            const tokenManager = req.app.get('tokenManager');
+            if (!tokenManager) {
+                throw new Error('Token manager not available');
             }
-        } else {
-            console.warn('No API credentials provided');
-            return res.status(401).json({ error: 'API credentials are required' });
+            
+            const token = await tokenManager.getAccessToken();
+            console.log('Successfully obtained access token from token manager');
+            
+            // Use the access token for the API request
+            headers['Authorization'] = `Bearer ${token}`;
+            console.log('Authorization header set with Bearer token');
+            
+        } catch (error) {
+            console.error('Error obtaining access token from token manager:', error);
+            throw new Error(`API request failed with status 403: ${error.message}`);
         }
         
         console.log('Request headers:', JSON.stringify(headers, null, 2));
@@ -340,7 +319,7 @@ router.use(express.text({ type: ['application/json', 'application/vnd.pingidenti
 
 // Apply CORS headers to all responses
 router.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', 'http://localhost:3001');
+    res.header('Access-Control-Allow-Origin', 'http://localhost:4000');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-PingOne-Environment-Id, X-PingOne-Region');
     res.header('Access-Control-Allow-Credentials', 'true');

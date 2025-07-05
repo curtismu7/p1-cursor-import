@@ -429,23 +429,25 @@ const initializeLoggingSystem = async () => {
 
 // Test PingOne connection endpoint
 app.post('/api/pingone/test-connection', async (req, res) => {
-    const { apiClientId, apiSecret, environmentId, region } = req.body;
+    // Use environment variables instead of request body
+    const apiClientId = process.env.PINGONE_CLIENT_ID;
+    const apiSecret = process.env.PINGONE_CLIENT_SECRET;
+    const environmentId = process.env.PINGONE_ENVIRONMENT_ID;
+    const region = process.env.PINGONE_REGION || 'NorthAmerica';
     
     if (!apiClientId || !apiSecret || !environmentId) {
         return res.status(400).json({
             success: false,
-            message: 'Missing required fields: apiClientId, apiSecret, and environmentId are required'
+            message: 'Missing required environment variables: PINGONE_CLIENT_ID, PINGONE_CLIENT_SECRET, and PINGONE_ENVIRONMENT_ID are required'
         });
     }
     
     try {
-        // Test the connection by getting an access token
-        const tokenManager = new TokenManager(console, {
-            apiClientId,
-            apiSecret,
-            environmentId,
-            region: region || 'NorthAmerica'
-        });
+        // Test the connection by getting an access token using the server's token manager
+        const tokenManager = req.app.get('tokenManager');
+        if (!tokenManager) {
+            throw new Error('Token manager not available');
+        }
         
         const token = await tokenManager.getAccessToken();
         
@@ -807,9 +809,7 @@ app.get('/api/logs', (req, res) => {
 });
 
 // API Routes
-app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+// Health endpoint is defined later in the file with comprehensive server status
 
 // PingOne API proxy endpoints
 app.get('/api/pingone/*', async (req, res) => {

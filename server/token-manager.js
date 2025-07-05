@@ -49,7 +49,8 @@ class TokenManager {
             throw new Error('PingOne API credentials are not properly configured');
         }
 
-        const authUrl = `https://auth.pingone.${this.getRegionDomain(region)}/${environmentId}/as/token`;
+        // Always use the global auth endpoint for token requests
+        const authUrl = `https://auth.pingone.com/${environmentId}/as/token`;
         
         console.log('Authentication URL:', authUrl);
         console.log('Client ID:', clientId ? '***' + clientId.slice(-4) : 'Not set');
