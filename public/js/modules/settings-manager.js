@@ -454,42 +454,7 @@ class SettingsManager {
         }
     }
     
-    /**
-     * Save settings to persistent storage
-     * @param {Object} settings - Settings to save
-     * @returns {Promise<boolean>} True if settings were saved successfully
-     */
-    async saveSettings(settings) {
-        try {
-            if (!settings || typeof settings !== 'object') {
-                throw new Error('Invalid settings object');
-            }
-            
-            // Update in-memory settings
-            this.settings = {
-                ...this.settings,
-                ...settings
-            };
-            
-            // Save to localStorage if available
-            if (this.isLocalStorageAvailable()) {
-                const settingsToSave = { ...this.settings };
-                
-                // Don't save the encryption key to storage
-                if (settingsToSave.encryptionKey) {
-                    delete settingsToSave.encryptionKey;
-                }
-                
-                localStorage.setItem(this.storageKey, JSON.stringify(settingsToSave));
-            }
-            
-            this.logger.info('Settings saved successfully');
-            return true;
-        } catch (error) {
-            this.logger.error(`Error saving settings: ${error.message}`);
-            throw error;
-        }
-    }
+
     
     /**
      * Clear all settings and reset to defaults

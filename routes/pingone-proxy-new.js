@@ -12,7 +12,7 @@ const router = Router();
 
 // Enable CORS for all routes
 router.use(cors({
-    origin: 'http://localhost:3001',
+    origin: 'http://localhost:4000',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-PingOne-Environment-Id', 'X-PingOne-Region'],
     credentials: true
@@ -20,7 +20,7 @@ router.use(cors({
 
 // Handle preflight requests
 router.options('*', (req, res) => {
-    res.header('Access-Control-Allow-Origin', 'http://localhost:3001');
+    res.header('Access-Control-Allow-Origin', 'http://localhost:4000');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-PingOne-Environment-Id, X-PingOne-Region');
     res.header('Access-Control-Allow-Credentials', 'true');
@@ -178,7 +178,7 @@ const proxyRequest = async (req, res) => {
             : await response.text();
         
         // Set CORS headers
-        res.header('Access-Control-Allow-Origin', 'http://localhost:3001');
+        res.header('Access-Control-Allow-Origin', 'http://localhost:4000');
         res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
         res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-PingOne-Environment-Id, X-PingOne-Region');
         res.header('Access-Control-Allow-Credentials', 'true');

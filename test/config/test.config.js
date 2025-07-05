@@ -4,7 +4,7 @@ export default {
   
   // Server configuration
   server: {
-    port: process.env.TEST_PORT || 3001,
+    port: process.env.TEST_PORT || 4000,
     host: 'localhost',
     apiPrefix: '/api',
   },

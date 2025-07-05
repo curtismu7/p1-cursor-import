@@ -235,14 +235,111 @@ router.get('/disk', async (req, res) => {
 });
 
 // Backward compatibility endpoints
-router.post('/', (req, res) => {
+router.post('/', express.json(), async (req, res) => {
     console.warn('Deprecated: Using legacy log endpoint. Please update to /api/logs/ui or /api/logs/disk');
-    return router.handle({ ...req, url: '/api/logs/disk', method: 'POST' }, res);
+    // Duplicate disk endpoint logic for backward compatibility
+    try {
+        const { level = 'info', message, data = {} } = req.body;
+        
+        if (!message) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Message is required' 
+            });
+        }
+
+        const timestamp = new Date().toISOString();
+        const logEntry = {
+            id: uuidv4(),
+            timestamp,
+            level,
+            message,
+            data,
+            ip: req.ip,
+            userAgent: req.get('user-agent')
+        };
+
+        // Write to log file
+        await fs.appendFile(
+            CLIENT_LOGS_FILE, 
+            JSON.stringify(logEntry) + '\n',
+            'utf8'
+        );
+
+        res.json({ 
+            success: true, 
+            message: 'Disk log entry created',
+            id: logEntry.id
+        });
+
+    } catch (error) {
+        console.error('Error processing disk log entry:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to process disk log entry',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
 });
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
     console.warn('Deprecated: Using legacy log endpoint. Please update to /api/logs/ui or /api/logs/disk');
-    return router.handle({ ...req, url: '/api/logs/disk', method: 'GET' }, res);
+    // Duplicate disk endpoint logic for backward compatibility
+    try {
+        const { limit = 100, level } = req.query;
+        const limitNum = Math.min(parseInt(limit, 10) || 100, 1000);
+        
+        try {
+            const data = await fs.readFile(CLIENT_LOGS_FILE, 'utf8');
+            let logs = data
+                .split('\n')
+                .filter(line => line.trim())
+                .map(line => {
+                    try {
+                        return JSON.parse(line);
+                    } catch (e) {
+                        console.warn('Failed to parse log entry:', line);
+                        return null;
+                    }
+                })
+                .filter(log => log !== null);
+            
+            // Filter by level if specified
+            if (level) {
+                logs = logs.filter(log => log.level === level);
+            }
+            
+            // Apply limit and reverse to get most recent first
+            const result = logs.slice(-limitNum).reverse();
+            
+            res.json({
+                success: true,
+                count: result.length,
+                total: logs.length,
+                logs: result
+            });
+            
+        } catch (error) {
+            if (error.code === 'ENOENT') {
+                // Log file doesn't exist yet, return empty array
+                return res.json({
+                    success: true,
+                    count: 0,
+                    total: 0,
+                    logs: []
+                });
+            }
+            throw error;
+        }
+        
+    } catch (error) {
+        console.error('Error retrieving disk logs:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to retrieve disk logs',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
 });
 
 export default router;

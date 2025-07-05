@@ -52,7 +52,7 @@ A modern web application for importing users into PingOne using the PingOne Admi
      PINGONE_REGION=NorthAmerica  # Or your region (e.g., Europe, AsiaPacific)
      
      # Server Configuration
-     PORT=3001
+     PORT=4000
      NODE_ENV=development
      
      # Logging
@@ -66,7 +66,7 @@ A modern web application for importing users into PingOne using the PingOne Admi
    npm run dev
    ```
 
-5. Open your browser to [http://localhost:3001](http://localhost:3001)
+5. Open your browser to [http://localhost:4000](http://localhost:4000)
    Then edit the `.env` file and add your PingOne API credentials.
 
 4. Start the development server:

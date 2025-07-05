@@ -47,7 +47,7 @@ const PORT = process.env.PORT || 3001;
 
 // CORS configuration for all routes
 const corsOptions = {
-    origin: ['http://localhost:3001', 'http://127.0.0.1:3001'],
+    origin: ['http://localhost:4000', 'http://127.0.0.1:4000'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-PingOne-*', 'Accept'],
     credentials: true,

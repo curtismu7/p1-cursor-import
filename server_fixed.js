@@ -58,7 +58,7 @@ const tokenManager = new TokenManager(console);
 app.set('tokenManager', tokenManager);
 
 // Configure CORS
-const allowedOrigins = ['http://localhost', 'http://localhost:3001'];
+const allowedOrigins = ['http://localhost', 'http://localhost:4000'];
 app.use(cors({
     origin: function (origin, callback) {
         // Allow requests with no origin (like mobile apps or curl requests)

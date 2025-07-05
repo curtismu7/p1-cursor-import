@@ -426,8 +426,8 @@ export class UIManager {
         
         try {
             // Fetch logs from the UI logs endpoint
-            safeLog('Fetching logs from /api/logs/ui...', 'debug');
-            const response = await fetch('/api/logs/ui?limit=200');
+            safeLog('Fetching logs from /api/logs...', 'debug');
+            const response = await fetch('/api/logs?limit=200');
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -870,7 +870,7 @@ export class UIManager {
         }
         
         try {
-            const response = await fetch('/api/logs/ui?limit=200');
+            const response = await fetch('/api/logs?limit=200');
             const data = await response.json();
             
             if (data.success && Array.isArray(data.logs)) {

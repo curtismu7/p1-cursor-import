@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 
 // Configuration
 const CONFIG = {
-  baseUrl: 'http://127.0.0.1:3001', // Use IP instead of localhost
+  baseUrl: 'http://127.0.0.1:4000', // Use IP instead of localhost
   logEndpoint: '/api/logs',
   logsEndpoint: '/api/logs',
   testIterations: 3, // Reduced for testing

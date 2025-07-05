@@ -1,6 +1,6 @@
 /**
  * Local API Client
- * Handles all API calls to the local server (localhost:3001)
+ * Handles all API calls to the local server (localhost:4000)
  */
 
 class LocalAPI {

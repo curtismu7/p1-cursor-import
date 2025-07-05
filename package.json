@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node --experimental-modules --experimental-json-modules server.js",
     "dev": "nodemon --experimental-modules --experimental-json-modules server.js",
-    "build:bundle": "browserify public/js/app.js -t [ babelify --configFile ./.babelrc --presets [ @babel/preset-env ] --plugins [ @babel/plugin-transform-runtime ] ] -o public/js/bundle.js",
+    "build:bundle": "browserify public/js/app.js -t [ babelify --configFile ./babel.config.json --presets [ @babel/preset-env ] --plugins [ @babel/plugin-transform-runtime ] ] -o public/js/bundle.js",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest --detectOpenHandles --forceExit --config=jest.simple.config.js",
     "test:unit": "cross-env NODE_ENV=test jest test/**/*.test.js --config=jest.config.mjs",
     "test:integration": "cross-env NODE_ENV=test jest test/integration/**/*.test.js --config=jest.config.mjs",

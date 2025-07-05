@@ -72,8 +72,8 @@ class App {
                 await initAPIFactory(this.logger, this.settingsManager);
                 
                 // Now that factory is initialized, get the clients
-                this.pingOneClient = this.factory.getPingOneClient();
-                this.localClient = this.factory.getLocalClient();
+                this.pingOneClient = apiFactory.getPingOneClient();
+                this.localClient = apiFactory.getLocalClient();
                 this.logger.fileLogger.info('API clients initialized successfully');
             } catch (error) {
                 const errorMsg = `Failed to initialize API: ${error.message}`;
@@ -325,11 +325,11 @@ class App {
             
             const response = await this.localClient.get('/api/health');
             
-            if (!response || !response.data) {
+            if (!response || !response.server) {
                 throw new Error('Invalid response from server');
             }
             
-            const { server } = response.data;
+            const { server } = response;
             
             if (!server) {
                 throw new Error('Server status not available');
@@ -401,7 +401,7 @@ class App {
                 settings.lastConnectionTest = new Date().toISOString();
                 
                 // Save updated settings
-                await this.saveSettings(settings);
+                await this.settingsManager.saveSettings(settings);
                 
                 // Update UI status
                 this.uiManager.updateConnectionStatus('connected', 'Connected to PingOne');
@@ -421,7 +421,7 @@ class App {
             settings.lastConnectionTest = new Date().toISOString();
             
             // Save updated settings
-            await this.saveSettings(settings);
+            await this.settingsManager.saveSettings(settings);
             
             // Update UI status
             this.uiManager.updateConnectionStatus('error', errorMessage);
