@@ -1,6 +1,6 @@
 {
   "name": "pingone-import",
-  "version": "1.1.2",
+  "version": "3.0.0",
   "description": "A modern web application for importing users into PingOne using the PingOne Admin API.",
   "main": "server.js",
   "type": "module",
