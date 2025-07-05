@@ -4175,22 +4175,150 @@ class UIManager {
         // Process and display logs in chronological order (oldest first, newest last)
         // Reverse the array since server returns newest first, but we want oldest first
         const logsToProcess = [...data.logs].reverse();
-        logsToProcess.forEach(log => {
+        logsToProcess.forEach((log, index) => {
           if (!log) {
             console.warn('Skipping null log entry');
             return;
           }
 
-          // Create log entry element
+          // Create expandable log entry element
           const logEntry = document.createElement('div');
           logEntry.className = `log-entry log-${log.level || 'info'}`;
+          logEntry.setAttribute('data-log-index', index);
+
+          // Create the main log content (always visible)
+          const logContent = document.createElement('div');
+          logContent.className = 'log-content';
 
           // Format the log message
           const timestamp = log.timestamp ? new Date(log.timestamp).toISOString() : new Date().toISOString();
           const level = (log.level || 'info').toUpperCase();
           const message = log.message || '';
-          const meta = log.meta ? ' ' + JSON.stringify(log.meta) : '';
-          logEntry.textContent = `[${timestamp}] ${level}: ${message}${meta}`;
+
+          // Create timestamp element
+          const timestampElement = document.createElement('span');
+          timestampElement.className = 'log-timestamp';
+          timestampElement.textContent = `[${timestamp}]`;
+
+          // Create level element
+          const levelElement = document.createElement('span');
+          levelElement.className = `log-level ${log.level || 'info'}`;
+          levelElement.textContent = level;
+
+          // Create message element
+          const messageElement = document.createElement('span');
+          messageElement.className = 'log-message';
+          messageElement.textContent = message;
+
+          // Create expand/collapse indicator
+          const expandIcon = document.createElement('span');
+          expandIcon.className = 'log-expand-icon';
+          expandIcon.innerHTML = '<i class="fas fa-chevron-right"></i>';
+
+          // Add click handler for expand/collapse
+          logContent.addEventListener('click', () => {
+            const detailsElement = logEntry.querySelector('.log-details');
+            const icon = logContent.querySelector('.log-expand-icon i');
+            if (detailsElement) {
+              if (detailsElement.style.display === 'none' || !detailsElement.style.display) {
+                detailsElement.style.display = 'block';
+                logEntry.classList.add('expanded');
+                icon.className = 'fas fa-chevron-down';
+              } else {
+                detailsElement.style.display = 'none';
+                logEntry.classList.remove('expanded');
+                icon.className = 'fas fa-chevron-right';
+              }
+            }
+          });
+
+          // Add cursor pointer to indicate clickable
+          logContent.style.cursor = 'pointer';
+
+          // Assemble the main log content
+          logContent.appendChild(timestampElement);
+          logContent.appendChild(levelElement);
+          logContent.appendChild(messageElement);
+          logContent.appendChild(expandIcon);
+          logEntry.appendChild(logContent);
+
+          // Create expandable details section
+          const detailsElement = document.createElement('div');
+          detailsElement.className = 'log-details';
+          detailsElement.style.display = 'none';
+
+          // Add detailed information
+          const detailsContent = document.createElement('div');
+          detailsContent.className = 'log-details-content';
+
+          // Create details sections
+          const detailsSections = [];
+
+          // Add meta information if available
+          if (log.meta && Object.keys(log.meta).length > 0) {
+            const metaSection = document.createElement('div');
+            metaSection.className = 'log-detail-section';
+            metaSection.innerHTML = `
+                            <h4>Additional Information</h4>
+                            <pre class="log-detail-json">${JSON.stringify(log.meta, null, 2)}</pre>
+                        `;
+            detailsSections.push(metaSection);
+          }
+
+          // Add error details if available
+          if (log.error) {
+            const errorSection = document.createElement('div');
+            errorSection.className = 'log-detail-section';
+            errorSection.innerHTML = `
+                            <h4>Error Details</h4>
+                            <pre class="log-detail-error">${JSON.stringify(log.error, null, 2)}</pre>
+                        `;
+            detailsSections.push(errorSection);
+          }
+
+          // Add stack trace if available
+          if (log.stack) {
+            const stackSection = document.createElement('div');
+            stackSection.className = 'log-detail-section';
+            stackSection.innerHTML = `
+                            <h4>Stack Trace</h4>
+                            <pre class="log-detail-stack">${log.stack}</pre>
+                        `;
+            detailsSections.push(stackSection);
+          }
+
+          // Add request/response details if available
+          if (log.request || log.response) {
+            const requestSection = document.createElement('div');
+            requestSection.className = 'log-detail-section';
+            let requestContent = '<h4>Request/Response Details</h4>';
+            if (log.request) {
+              requestContent += `<h5>Request</h5><pre class="log-detail-json">${JSON.stringify(log.request, null, 2)}</pre>`;
+            }
+            if (log.response) {
+              requestContent += `<h5>Response</h5><pre class="log-detail-json">${JSON.stringify(log.response, null, 2)}</pre>`;
+            }
+            requestSection.innerHTML = requestContent;
+            detailsSections.push(requestSection);
+          }
+
+          // Add raw log data if no other details are available
+          if (detailsSections.length === 0) {
+            const rawSection = document.createElement('div');
+            rawSection.className = 'log-detail-section';
+            rawSection.innerHTML = `
+                            <h4>Raw Log Data</h4>
+                            <pre class="log-detail-json">${JSON.stringify(log, null, 2)}</pre>
+                        `;
+            detailsSections.push(rawSection);
+          }
+
+          // Add all sections to details content
+          detailsSections.forEach(section => {
+            detailsContent.appendChild(section);
+          });
+          detailsElement.appendChild(detailsContent);
+          logEntry.appendChild(detailsElement);
 
           // Append to container
           logEntriesContainer.appendChild(logEntry);

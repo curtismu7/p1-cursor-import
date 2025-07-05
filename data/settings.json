@@ -1,15 +1,7 @@
 {
-  "apiClientId": "95dc946f-5e0a-4a8b-a8ba-b587b244e005",
-  "apiSecret": "enc:RWUyWUJFbXFyQlJkRUx1TkRBaDVTUEw2VDAxX01+UjlvN1FNWUh5amNXWHd6SHZoaGx2ZHB0WlJINkE2XzJnLQ==",
-  "environmentId": "d02d2305-f445-406d-82ee-7cdbf6eeabfd",
-  "populationId": "367bc5a0-7c0f-4ae3-95b6-2f045e9c48e3",
+  "environmentId": "test-env-123",
+  "apiClientId": "test-client-456",
+  "apiSecret": "test-secret",
   "region": "NorthAmerica",
-  "connectionStatus": "connected",
-  "connectionMessage": "Connected",
-  "lastConnectionTest": "2025-07-05T22:56:42.630Z",
-  "autoSave": true,
-  "lastUsedDirectory": "",
-  "theme": "light",
-  "pageSize": 50,
-  "showNotifications": true
+  "populationId": "test-pop-789"
 }

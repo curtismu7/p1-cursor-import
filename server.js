@@ -1839,8 +1839,10 @@ const startServer = async () => {
             }
         });
         
-        // Set a timeout for server startup
-        server.setTimeout(5000, () => {
+        // Set a timeout for server startup (using proper timeout mechanism)
+        const startupTimeout = setTimeout(() => {
+            if (isResolved) return;
+            
             const error = new Error('Server startup timed out');
             console.error('Server startup timed out');
             
@@ -1851,6 +1853,11 @@ const startServer = async () => {
             }, 'server-startup');
             
             reject(error);
+        }, 5000);
+        
+        // Clear the startup timeout when server starts successfully
+        server.on('listening', () => {
+            clearTimeout(startupTimeout);
         });
     });
 };

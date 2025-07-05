@@ -781,56 +781,213 @@ label {
 
 /* Log Entry Styles */
 .log-entry {
-    padding: 0.75rem 1rem;
-    margin: 0.25rem 0;
-    border-radius: var(--border-radius);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-    font-size: 0.85rem;
-    line-height: 1.5;
-    word-break: break-word;
-    border-left: 3px solid #e2e8f0;
-    background-color: white;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-    transition: var(--transition);
+    padding: 8px 12px;
+    margin-bottom: 4px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    border-left: 3px solid transparent;
+    transition: all 0.2s ease;
 }
 
-.log-header {
+.log-content {
     display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    margin-bottom: 0.25rem;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
-.log-time {
-    color: #718096;
-    font-size: 0.8em;
-    white-space: nowrap;
-    padding-top: 0.1rem;
+.log-timestamp {
+    color: #666;
+    font-size: 11px;
+    min-width: 140px;
+}
+
+.log-level {
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+    min-width: 50px;
+    text-align: center;
 }
 
 .log-message {
     flex: 1;
-    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    color: #333;
 }
 
-.log-data,
-.log-context {
-    margin: 0.5rem 0 0 0;
-    padding: 0.5rem;
+.log-expand-icon {
+    color: #999;
+    font-size: 10px;
+    transition: transform 0.2s ease;
+}
+
+.log-entry:hover {
     background-color: rgba(0, 0, 0, 0.02);
+}
+
+.log-entry.expanded .log-expand-icon {
+    transform: rotate(90deg);
+}
+
+.log-details {
+    margin-top: 8px;
+    padding: 12px;
+    background-color: #f8f9fa;
     border-radius: 4px;
-    font-size: 0.8em;
+    border-left: 3px solid #dee2e6;
+    font-size: 11px;
+    line-height: 1.3;
+}
+
+.log-details-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.log-detail-section {
+    border-bottom: 1px solid #e9ecef;
+    padding-bottom: 8px;
+}
+
+.log-detail-section:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.log-detail-section h4 {
+    margin: 0 0 6px 0;
+    font-size: 12px;
+    font-weight: bold;
+    color: #495057;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.log-detail-section h5 {
+    margin: 8px 0 4px 0;
+    font-size: 11px;
+    font-weight: bold;
+    color: #6c757d;
+}
+
+.log-detail-json {
+    background-color: #f1f3f4;
+    padding: 8px;
+    border-radius: 3px;
+    border: 1px solid #e9ecef;
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    line-height: 1.4;
+    overflow-x: auto;
     white-space: pre-wrap;
     word-break: break-word;
-    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-    max-height: 200px;
-    overflow-y: auto;
+    margin: 0;
 }
 
-.log-context {
-    margin-top: 0.25rem;
-    border-left: 2px solid #e2e8f0;
-    padding-left: 0.75rem;
+.log-detail-error {
+    background-color: #f8d7da;
+    color: #721c24;
+    padding: 8px;
+    border-radius: 3px;
+    border: 1px solid #f5c6cb;
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    line-height: 1.4;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+}
+
+.log-detail-stack {
+    background-color: #fff3cd;
+    color: #856404;
+    padding: 8px;
+    border-radius: 3px;
+    border: 1px solid #ffeaa7;
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    line-height: 1.4;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+}
+
+/* Log level colors */
+.log-level.debug { background-color: #bee3f8; color: #2b6cb0; }
+.log-level.info { background-color: #c6f6d5; color: #2f855a; }
+.log-level.warn { background-color: #feebc8; color: #b7791f; }
+.log-level.error { background-color: #fed7d7; color: #c53030; }
+.log-level.success { background-color: #c6f6d5; color: #2f855a; }
+
+/* Log entry type colors */
+.log-entry.info {
+    background-color: #f0f8ff;
+    border-left-color: #007bff;
+}
+
+.log-entry.success {
+    background-color: #f0fff4;
+    border-left-color: #28a745;
+}
+
+.log-entry.error {
+    background-color: #fff5f5;
+    border-left-color: #dc3545;
+}
+
+.log-entry.warning {
+    background-color: #fffbf0;
+    border-left-color: #ffc107;
+}
+
+.log-entry.debug {
+    background-color: #f7fafc;
+    border-left-color: #6c757d;
+}
+
+/* Expanded state styling */
+.log-entry.expanded {
+    background-color: #f8f9fa;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.log-entry.expanded .log-details {
+    border-left-color: #007bff;
+}
+
+/* Responsive design for log entries */
+@media (max-width: 768px) {
+    .log-content {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+    
+    .log-timestamp {
+        min-width: auto;
+    }
+    
+    .log-level {
+        min-width: auto;
+    }
+    
+    .log-details {
+        padding: 8px;
+    }
+    
+    .log-detail-json,
+    .log-detail-error,
+    .log-detail-stack {
+        font-size: 9px;
+        padding: 6px;
+    }
 }
 
 .log-entry:hover {

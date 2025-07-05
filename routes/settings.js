@@ -2,9 +2,46 @@ import express from 'express';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { promises as fs } from 'fs';
+import winston from 'winston';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// Create a logger instance for this module
+const logger = winston.createLogger({
+    format: winston.format.combine(
+        winston.format.timestamp({
+            format: 'YYYY-MM-DD HH:mm:ss.SSS'
+        }),
+        winston.format.printf(({ timestamp, level, message, ...meta }) => {
+            const metaString = Object.keys(meta).length ? `\n${JSON.stringify(meta, null, 2)}` : '';
+            return `[${timestamp}] ${level}: ${message}${metaString}\n${'*'.repeat(80)}`;
+        })
+    ),
+    defaultMeta: { 
+        service: 'settings',
+        env: process.env.NODE_ENV || 'development'
+    },
+    transports: [
+        new winston.transports.Console({
+            format: winston.format.combine(
+                winston.format.colorize(),
+                winston.format.printf(({ timestamp, level, message, ...meta }) => {
+                    const metaString = Object.keys(meta).length ? `\n${JSON.stringify(meta, null, 2)}` : '';
+                    return `[${timestamp}] ${level}: ${message}${metaString}\n${'*'.repeat(80)}`;
+                })
+            )
+        }),
+        new winston.transports.File({
+            filename: 'logs/combined.log',
+            level: 'info'
+        }),
+        new winston.transports.File({
+            filename: 'logs/error.log',
+            level: 'error'
+        })
+    ]
+});
 
 const router = express.Router();
 
@@ -54,7 +91,12 @@ router.get("/", async (req, res) => {
         if (logSettings.apiSecret) {
             logSettings.apiSecret = '***';
         }
-        console.log('Returning settings:', JSON.stringify(logSettings, null, 2));
+        logger.info('Settings requested and returned', {
+            environmentId: logSettings.environmentId ? '***' + logSettings.environmentId.slice(-4) : 'not set',
+            region: logSettings.region,
+            apiClientId: logSettings.apiClientId ? '***' + logSettings.apiClientId.slice(-4) : 'not set',
+            populationId: logSettings.populationId ? '***' + logSettings.populationId.slice(-4) : 'not set'
+        });
         
         // Return all settings including apiSecret (it's already encrypted)
         res.json({
@@ -62,7 +104,7 @@ router.get("/", async (req, res) => {
             data: settings
         });
     } catch (error) {
-        console.error("Error reading settings:", error);
+        logger.error("Error reading settings", { error: error.message });
         res.status(500).json({
             success: false,
             error: "Failed to load settings"
@@ -81,7 +123,9 @@ router.post("/", express.json(), async (req, res) => {
                 .replace(/^[`'"]+/, '')  // Remove leading quotes/backticks
                 .replace(/[`'"]+$/, ''); // Remove trailing quotes/backticks
             
-            console.log('Saving environment ID:', newSettings.environmentId);
+            logger.info('Processing environment ID for save', { 
+                environmentId: newSettings.environmentId ? '***' + newSettings.environmentId.slice(-4) : 'not set' 
+            });
         }
         
         // Validate required fields
@@ -114,7 +158,7 @@ router.post("/", express.json(), async (req, res) => {
             }
         } catch (error) {
             // If we can't read existing settings, continue with the new settings as-is
-            console.warn("Could not read existing settings:", error.message);
+            logger.warn("Could not read existing settings", { error: error.message });
         }
 
         // Ensure directory exists
@@ -123,6 +167,15 @@ router.post("/", express.json(), async (req, res) => {
         
         // Save settings
         await fs.writeFile(SETTINGS_PATH, JSON.stringify(newSettings, null, 2), "utf8");
+        
+        // Log successful settings save
+        logger.info('Settings saved successfully', {
+            environmentId: newSettings.environmentId ? '***' + newSettings.environmentId.slice(-4) : 'not set',
+            region: newSettings.region,
+            apiClientId: newSettings.apiClientId ? '***' + newSettings.apiClientId.slice(-4) : 'not set',
+            populationId: newSettings.populationId ? '***' + newSettings.populationId.slice(-4) : 'not set',
+            hasApiSecret: !!newSettings.apiSecret
+        });
         
         // Don't send the API secret back in the response
         const { apiSecret, ...responseSettings } = newSettings;
@@ -133,7 +186,7 @@ router.post("/", express.json(), async (req, res) => {
             data: responseSettings
         });
     } catch (error) {
-        console.error("Error saving settings:", error);
+        logger.error("Error saving settings", { error: error.message });
         res.status(500).json({
             success: false,
             error: "Failed to save settings",
