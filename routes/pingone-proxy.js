@@ -335,36 +335,101 @@ const proxyRequest = async (req, res) => {
                     errorData = { message: 'Failed to parse error response' };
                 }
                 
-                // Post error to UI for display
-                try {
-                    const uiResponse = await fetch(`http://localhost:${process.env.PORT || 4000}/api/logs/error`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            message: `PingOne API request failed with status ${response.status}: ${errorData.message || 'Unknown error'}`,
-                            details: {
-                                status: response.status,
-                                statusText: response.statusText,
-                                error: errorData,
-                                endpoint: req.path,
-                                method: req.method,
-                                url: targetUrl.toString()
-                            },
-                            source: 'pingone-api'
-                        })
-                    });
-                    
-                    if (!uiResponse.ok) {
-                        logger.error('Failed to post error to UI:', uiResponse.statusText);
-                    }
-                } catch (uiError) {
-                    logger.error('Error posting to UI logs:', uiError.message);
-                }
+                // Check if this is a uniqueness violation (user already exists)
+                const isUniquenessViolation = response.status === 400 && 
+                    errorData.code === 'INVALID_DATA' && 
+                    errorData.details && 
+                    errorData.details.some(detail => detail.code === 'UNIQUENESS_VIOLATION' && detail.target === 'username');
                 
-                // Log the error to console as well
-                logger.error(`PingOne API request failed: ${response.status} ${response.statusText}`, errorData);
+                if (isUniquenessViolation) {
+                    // Extract username from request body for friendly message
+                    let username = 'unknown';
+                    try {
+                        if (req.body && req.body.username) {
+                            username = req.body.username;
+                        }
+                    } catch (e) {
+                        // Ignore parsing errors
+                    }
+                    
+                    const friendlyMessage = `User '${username}' already exists in PingOne. Skipping this user.`;
+                    
+                    // Post warning to UI for display
+                    try {
+                        const uiResponse = await fetch(`http://localhost:${process.env.PORT || 4000}/api/logs/warning`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                message: friendlyMessage,
+                                details: {
+                                    status: response.status,
+                                    statusText: response.statusText,
+                                    error: errorData,
+                                    endpoint: req.path,
+                                    method: req.method,
+                                    url: targetUrl.toString(),
+                                    username: username
+                                },
+                                source: 'pingone-api'
+                            })
+                        });
+                        
+                        if (!uiResponse.ok) {
+                            logger.warn('Failed to post warning to UI:', uiResponse.statusText);
+                        }
+                    } catch (uiError) {
+                        logger.warn('Error posting to UI logs:', uiError.message);
+                    }
+                    
+                    // Log the warning to console as well
+                    logger.warn(friendlyMessage, errorData);
+                    
+                    // Return a success response with warning message
+                    res.status(200).json({
+                        success: true,
+                        warning: true,
+                        message: friendlyMessage,
+                        details: {
+                            username: username,
+                            reason: 'User already exists',
+                            originalError: errorData
+                        }
+                    });
+                    return;
+                } else {
+                    // Post error to UI for display (for non-uniqueness violations)
+                    try {
+                        const uiResponse = await fetch(`http://localhost:${process.env.PORT || 4000}/api/logs/error`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                message: `PingOne API request failed with status ${response.status}: ${errorData.message || 'Unknown error'}`,
+                                details: {
+                                    status: response.status,
+                                    statusText: response.statusText,
+                                    error: errorData,
+                                    endpoint: req.path,
+                                    method: req.method,
+                                    url: targetUrl.toString()
+                                },
+                                source: 'pingone-api'
+                            })
+                        });
+                        
+                        if (!uiResponse.ok) {
+                            logger.error('Failed to post error to UI:', uiResponse.statusText);
+                        }
+                    } catch (uiError) {
+                        logger.error('Error posting to UI logs:', uiError.message);
+                    }
+                    
+                    // Log the error to console as well
+                    logger.error(`PingOne API request failed: ${response.status} ${response.statusText}`, errorData);
+                }
             }
             
             // Get the content type

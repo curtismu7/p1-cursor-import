@@ -110,7 +110,7 @@
             <!-- Settings View -->
             <div id="settings-view" class="view">
                 <h1>Settings</h1>
-                <form id="settings-form" onsubmit="if (window.app) { event.preventDefault(); const form = event.target; const formData = new FormData(form); const settings = { environmentId: formData.get('environment-id'), apiClientId: formData.get('api-client-id'), apiSecret: formData.get('api-secret'), populationId: formData.get('population-id'), region: formData.get('region') }; console.log('Submitting settings:', settings); window.app.handleSaveSettings(settings); } return false;">
+                <form id="settings-form">
                     <div class="form-group">
                         <label for="environment-id">Environment ID</label>
                         <input type="text" id="environment-id" name="environment-id" class="form-control" required>
