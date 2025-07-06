@@ -28,6 +28,10 @@ class App {
             this.isImporting = false;
             this.currentImportAbortController = null;
             
+            // Track delete state
+            this.isDeletingCsv = false;
+            this.deleteCsvUsers = [];
+            
             // Initialize API clients as null - they'll be set in initializeAsync()
             this.pingOneClient = null;
             this.localClient = null;
@@ -158,6 +162,18 @@ class App {
     }
     
     setupEventListeners() {
+        // General navigation event listeners for all nav items
+        document.querySelectorAll('.nav-item').forEach(navItem => {
+            navItem.addEventListener('click', (e) => {
+                e.preventDefault();
+                const view = navItem.getAttribute('data-view');
+                if (view) {
+                    console.log('Nav item clicked:', view);
+                    this.showView(view);
+                }
+            });
+        });
+        
         // Listen for file selection events
         window.addEventListener('fileSelected', (event) => {
             this.handleFileSelect(event.detail);
@@ -245,6 +261,133 @@ class App {
         window.addEventListener('cancelImport', () => {
             this.cancelImport();
         });
+
+        // Add tab switching for delete-csv
+        const deleteCsvNav = document.querySelector('.nav-item[data-view="delete-csv"]');
+        if (deleteCsvNav) {
+            deleteCsvNav.addEventListener('click', () => {
+                this.showView('delete-csv');
+            });
+        }
+        // File input for delete-csv
+        const deleteCsvFileInput = document.getElementById('delete-csv-file');
+        if (deleteCsvFileInput) {
+            deleteCsvFileInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                try {
+                    this.showDeleteCsvFileInfo(file);
+                    const allUsers = await this.parseCsvFile(file, 'delete-csv-preview-container');
+                    
+                    // Filter users to only include those with username or email
+                    const validUsers = allUsers.filter(user => {
+                        const hasUsername = user.username && user.username.trim() !== '';
+                        const hasEmail = user.email && user.email.trim() !== '';
+                        return hasUsername || hasEmail;
+                    });
+                    
+                    this.deleteCsvUsers = validUsers;
+                    
+                    // Check if we have valid users and valid settings
+                    const hasValidUsers = validUsers && validUsers.length > 0;
+                    const hasValidSettings = await this.checkSettings();
+                    
+                    // Enable button only if we have both valid users and valid settings
+                    const enableButton = hasValidUsers && hasValidSettings;
+                    document.getElementById('start-delete-csv-btn').disabled = !enableButton;
+                    
+                    if (hasValidUsers) {
+                        const skippedCount = allUsers.length - validUsers.length;
+                        let message = `Successfully processed ${validUsers.length} users for deletion`;
+                        if (skippedCount > 0) {
+                            message += ` (${skippedCount} users skipped - missing username or email)`;
+                        }
+                        this.uiManager.showNotification(message, 'success');
+                    } else {
+                        this.uiManager.showNotification('No valid users found in CSV file. Users must have username or email.', 'warning');
+                    }
+                } catch (error) {
+                    console.error('Error processing delete CSV file:', error);
+                    this.uiManager.showNotification(`Error processing file: ${error.message}`, 'error');
+                    document.getElementById('start-delete-csv-btn').disabled = true;
+                }
+            });
+        }
+        // Start delete-csv action
+        const startDeleteCsvBtn = document.getElementById('start-delete-csv-btn');
+        if (startDeleteCsvBtn) {
+            startDeleteCsvBtn.addEventListener('click', () => this.startDeleteCsv());
+        }
+        // Cancel delete-csv action
+        const cancelDeleteCsvBtn = document.getElementById('cancel-delete-csv-btn');
+        if (cancelDeleteCsvBtn) {
+            cancelDeleteCsvBtn.addEventListener('click', () => this.cancelDeleteCsv());
+        }
+        // Home tab navigation
+        const homeNav = document.querySelector('.nav-item[data-view="home"]');
+        if (homeNav) {
+            homeNav.addEventListener('click', () => {
+                this.showView('home');
+            });
+        }
+        // Feature card navigation
+        document.querySelectorAll('.feature-card').forEach(card => {
+            card.addEventListener('click', () => {
+                const view = card.getAttribute('data-view');
+                if (view) this.showView(view);
+            });
+        });
+        // Disclaimer acceptance
+        const disclaimerBtn = document.getElementById('accept-disclaimer');
+        if (disclaimerBtn) {
+            disclaimerBtn.addEventListener('click', () => {
+                localStorage.setItem('disclaimerAccepted', 'true');
+                const disclaimerBox = document.getElementById('disclaimer');
+                if (disclaimerBox) disclaimerBox.style.display = 'none';
+            });
+        }
+        // On load, show disclaimer if not accepted
+        if (localStorage.getItem('disclaimerAccepted') === 'true') {
+            const disclaimerBox = document.getElementById('disclaimer');
+            if (disclaimerBox) disclaimerBox.style.display = 'none';
+        }
+    }
+
+    showView(view) {
+        console.log('showView called with:', view);
+        
+        // Hide all views
+        const allViews = document.querySelectorAll('.view');
+        console.log('Found views:', allViews.length);
+        allViews.forEach(v => {
+            v.classList.remove('active');
+            console.log('Removed active from:', v.id);
+        });
+        
+        // Remove active from all nav items
+        const allNavItems = document.querySelectorAll('.nav-item');
+        allNavItems.forEach(n => n.classList.remove('active'));
+        
+        // Show the target view
+        const viewDiv = document.getElementById(`${view}-view`);
+        console.log('Target view element:', viewDiv);
+        if (viewDiv) {
+            viewDiv.classList.add('active');
+            console.log('Added active to:', viewDiv.id);
+        } else {
+            console.error('View element not found:', `${view}-view`);
+        }
+        
+        // Activate the nav item
+        const navItem = document.querySelector(`.nav-item[data-view="${view}"]`);
+        console.log('Target nav item:', navItem);
+        if (navItem) {
+            navItem.classList.add('active');
+            console.log('Added active to nav item:', navItem);
+        } else {
+            console.error('Nav item not found for view:', view);
+        }
     }
     
     async handleSaveSettings(settings) {
@@ -434,8 +577,11 @@ class App {
     }
     
     async startImport() {
+        console.log('startImport called, isImporting:', this.isImporting);
+        
         if (this.isImporting) {
             this.logger.fileLogger.warn('Import already in progress');
+            this.uiManager.showNotification('Import already in progress', 'warning');
             return;
         }
         
@@ -445,6 +591,8 @@ class App {
         try {
             this.isImporting = true;
             this.currentImportAbortController = new AbortController();
+            
+            console.log('Import state set to true');
             
             // Get users from file handler
             const file = this.fileHandler.getCurrentFile();
@@ -525,6 +673,8 @@ class App {
             return result;
             
         } catch (error) {
+            console.error('Import error caught:', error);
+            
             if (error.name === 'AbortError') {
                 this.logger.fileLogger.info('Import canceled by user');
                 this.uiManager.updateImportProgress(0, 1, 'Import canceled', { success: 0, failed: 0, skipped: 0 });
@@ -535,9 +685,11 @@ class App {
             }
             throw error;
         } finally {
+            console.log('Import finally block - resetting state');
             this.isImporting = false;
             this.currentImportAbortController = null;
             this.uiManager.setImporting(false);
+            console.log('Import state reset to false');
         }
     }
     
@@ -546,6 +698,106 @@ class App {
             this.currentImportAbortController.abort();
             this.logger.fileLogger.info('Canceling import');
         }
+        // Force reset import state
+        this.resetImportState();
+    }
+
+    resetImportState() {
+        console.log('Force resetting import state');
+        this.isImporting = false;
+        this.currentImportAbortController = null;
+        this.uiManager.setImporting(false);
+        this.uiManager.resetImportState();
+    }
+
+    async startDeleteCsv() {
+        if (this.isDeletingCsv) return;
+        this.isDeletingCsv = true;
+        this.uiManager.setDeletingCsv(true);
+        this.uiManager.showDeleteCsvStatus(this.deleteCsvUsers.length);
+        try {
+            const results = await this.pingOneClient.deleteUsersFromCsv(this.deleteCsvUsers, {
+                onProgress: (progress) => {
+                    this.uiManager.updateDeleteCsvProgress(
+                        progress.current,
+                        progress.total,
+                        `Deleting user ${progress.current} of ${progress.total}...`,
+                        progress
+                    );
+                }
+            });
+            this.uiManager.updateDeleteCsvProgress(
+                results.total,
+                results.total,
+                `Delete completed. Deleted: ${results.success}, Failed: ${results.failed}, Skipped: ${results.skipped}`,
+                results
+            );
+        } catch (error) {
+            this.uiManager.updateDeleteCsvProgress(0, 0, `Delete failed: ${error.message}`);
+        } finally {
+            this.isDeletingCsv = false;
+            this.uiManager.setDeletingCsv(false);
+        }
+    }
+
+    cancelDeleteCsv() {
+        this.isDeletingCsv = false;
+        this.uiManager.setDeletingCsv(false);
+        this.uiManager.updateDeleteCsvProgress(0, 0, 'Delete cancelled');
+    }
+
+    showDeleteCsvFileInfo(file) {
+        const infoDiv = document.getElementById('delete-csv-file-info');
+        infoDiv.textContent = `${file.name} (${file.size} bytes)`;
+    }
+
+    async parseCsvFile(file, previewContainerId) {
+        const text = await file.text();
+        const lines = text.trim().split('\n');
+        const headers = lines[0].split(',').map(h => h.trim());
+        const users = [];
+        const previewDiv = document.getElementById(previewContainerId);
+        previewDiv.innerHTML = '';
+        const table = document.createElement('table');
+        table.className = 'table table-sm table-bordered';
+        const thead = document.createElement('thead');
+        const tr = document.createElement('tr');
+        headers.forEach(h => {
+            const th = document.createElement('th');
+            th.textContent = h;
+            tr.appendChild(th);
+        });
+        thead.appendChild(tr);
+        table.appendChild(thead);
+        const tbody = document.createElement('tbody');
+        for (let i = 1; i < lines.length; i++) {
+            const values = lines[i].split(',').map(v => v.trim());
+            if (values.length !== headers.length) continue;
+            const user = {};
+            const row = document.createElement('tr');
+            headers.forEach((h, idx) => {
+                user[h] = values[idx] || '';
+                const td = document.createElement('td');
+                td.textContent = values[idx] || '';
+                row.appendChild(td);
+            });
+            users.push(user);
+            tbody.appendChild(row);
+        }
+        table.appendChild(tbody);
+        previewDiv.appendChild(table);
+        return users;
+    }
+
+    updateDeleteCsvProgress(current, total, message, counts = {}) {
+        const percent = total ? Math.round((current / total) * 100) : 0;
+        document.getElementById('delete-csv-progress').style.width = percent + '%';
+        document.getElementById('delete-csv-progress-percent').textContent = percent + '%';
+        document.getElementById('delete-csv-progress-text').textContent = message;
+        document.getElementById('delete-csv-progress-count').textContent = `${current} of ${total} users`;
+        document.getElementById('delete-csv-success-count').textContent = counts.success || 0;
+        document.getElementById('delete-csv-failed-count').textContent = counts.failed || 0;
+        document.getElementById('delete-csv-skipped-count').textContent = counts.skipped || 0;
     }
     
     async handleFileSelect(file) {

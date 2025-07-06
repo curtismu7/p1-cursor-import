@@ -19,13 +19,21 @@
                 <img src="https://raw.githubusercontent.com/curtismu7/CDN/fd81b602d8c3635a8ca40aab169c83b86eae2dc0/Ping%20Identity_idEzgMTpXK_1.svg" alt="Ping Identity" class="logo">
             </div>
             <ul class="nav-links">
+                <li class="nav-item active" data-view="home">
+                    <i class="fas fa-home"></i>
+                    <span>Home</span>
+                </li>
+                <li class="nav-item" data-view="import">
+                    <i class="fas fa-upload"></i>
+                    <span>Import</span>
+                </li>
+                <li class="nav-item" data-view="delete-csv">
+                    <i class="fas fa-trash"></i>
+                    <span>Delete</span>
+                </li>
                 <li class="nav-item" data-view="settings">
                     <i class="fas fa-cog"></i>
                     <span>Settings</span>
-                </li>
-                <li class="nav-item active" data-view="import">
-                    <i class="fas fa-upload"></i>
-                    <span>Import</span>
                 </li>
                 <li class="nav-item" data-view="logs">
                     <i class="fas fa-list"></i>
@@ -36,12 +44,61 @@
 
         <!-- Main Content -->
         <main class="main-content">
+            <!-- Universal Disclaimer Banner -->
+            <div id="universal-disclaimer" class="universal-disclaimer-banner">
+                <div class="disclaimer-content">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span><strong>DISCLAIMER:</strong> This tool is unsupported and provided as-is. Ping Identity is not liable for any harm or data loss. Please backup your PingOne account and test in non-production environments only.</span>
+                </div>
+            </div>
+            
             <!-- Connection Status -->
             <div id="connection-status" class="connection-status" style="display: none;"></div>
             <!-- Notification Area -->
             <div id="notification-area" class="notification-area"></div>
+            <!-- Home View -->
+            <div id="home-view" class="view active">
+                <div class="home-header">
+                    <h1>PingOne User Import Tool</h1>
+                    <div id="disclaimer" class="disclaimer-box">
+                        <h3>⚠️ IMPORTANT DISCLAIMER</h3>
+                        <p><strong>This tool is unsupported and provided as-is. Use at your own risk. No warranty or support is provided by Ping Identity.</strong></p>
+                        <p>By using this tool, you acknowledge that:</p>
+                        <ul>
+                            <li>This is an unofficial, unsupported utility</li>
+                            <li>No guarantees are provided regarding data integrity or operation</li>
+                            <li>You are responsible for backing up your data before use</li>
+                            <li>Ping Identity is not liable for any damages or data loss</li>
+                        </ul>
+                        <button id="accept-disclaimer" class="btn btn-danger">I Understand and Accept the Risks</button>
+                    </div>
+                </div>
+                <div class="feature-cards">
+                    <div class="feature-card" data-view="import">
+                        <i class="fas fa-upload fa-2x"></i>
+                        <h3>Import Users</h3>
+                        <p>Bulk import users from CSV into PingOne.</p>
+                    </div>
+                    <div class="feature-card" data-view="delete-csv">
+                        <i class="fas fa-trash fa-2x"></i>
+                        <h3>Delete Users</h3>
+                        <p>Bulk delete users from CSV in PingOne.</p>
+                    </div>
+                    <div class="feature-card" data-view="settings">
+                        <i class="fas fa-cog fa-2x"></i>
+                        <h3>Settings</h3>
+                        <p>Configure your PingOne environment and API credentials.</p>
+                    </div>
+                    <div class="feature-card" data-view="logs">
+                        <i class="fas fa-list fa-2x"></i>
+                        <h3>Logs</h3>
+                        <p>View import and delete logs.</p>
+                    </div>
+                </div>
+            </div>
+
             <!-- Import View -->
-            <div id="import-view" class="view active">
+            <div id="import-view" class="view">
                 <div class="import-header">
                     <h1>Import Users</h1>
                     <div class="import-actions">
@@ -167,6 +224,67 @@
                 </div>
                 <div id="log-entries" class="log-entries">
                     <!-- Log entries will be displayed here -->
+                </div>
+            </div>
+
+            <!-- Delete CSV View -->
+            <div id="delete-csv-view" class="view">
+                <div class="import-header">
+                    <h1>Delete Users (CSV Safe)</h1>
+                    <div class="import-actions">
+                        <div class="import-buttons">
+                            <button id="start-delete-csv-btn" class="btn btn-danger" disabled>
+                                <i class="fas fa-trash"></i> Delete Users (CSV Safe)
+                            </button>
+                            <button id="cancel-delete-csv-btn" class="btn btn-secondary" style="display: none;">
+                                <i class="fas fa-times"></i> Cancel Delete
+                            </button>
+                        </div>
+                        <div id="delete-csv-file-info" class="file-info"></div>
+                    </div>
+                </div>
+                <div class="import-content">
+                    <div class="file-upload-container">
+                        <input type="file" id="delete-csv-file" accept=".csv" class="file-input">
+                        <label for="delete-csv-file" class="file-label">
+                            <i class="fas fa-upload"></i>
+                            <span>Choose CSV File</span>
+                        </label>
+                        <div id="delete-csv-status" class="import-status" style="display: none;">
+                            <h3>Delete Progress (CSV Safe)</h3>
+                            <div class="progress-container">
+                                <div id="delete-csv-progress" class="progress-bar bg-danger" role="progressbar" style="width: 0%"
+                                     aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                    <span id="delete-csv-progress-percent">0%</span>
+                                </div>
+                            </div>
+                            <div id="delete-csv-stats" class="import-stats">
+                                <div class="stat-item">
+                                    <span class="stat-label">Status:</span>
+                                    <span id="delete-csv-progress-text" class="stat-value">Ready</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Progress:</span>
+                                    <span id="delete-csv-progress-count" class="stat-value">0 of 0 users</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Succeeded:</span>
+                                    <span id="delete-csv-success-count" class="stat-value success">0</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Failed:</span>
+                                    <span id="delete-csv-failed-count" class="stat-value error">0</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Skipped:</span>
+                                    <span id="delete-csv-skipped-count" class="stat-value warning">0</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="delete-csv-preview-container" class="preview-container">
+                        <!-- CSV preview will be displayed here -->
+                    </div>
                 </div>
             </div>
         </main>

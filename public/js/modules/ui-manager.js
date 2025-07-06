@@ -6,7 +6,8 @@ export class UIManager {
         this.views = {
             'import': document.getElementById('import-view'),
             'settings': document.getElementById('settings-view'),
-            'logs': document.getElementById('logs-view')
+            'logs': document.getElementById('logs-view'),
+            'delete-csv': document.getElementById('delete-csv-view')
         };
         // Navigation elements
         this.navItems = document.querySelectorAll('.nav-item');
@@ -1246,6 +1247,90 @@ export class UIManager {
         if (warningArea) {
             warningArea.style.display = 'none';
         }
+    }
+
+    setDeletingCsv(isDeleting) {
+        const deleteButton = document.getElementById('start-delete-csv-btn');
+        const cancelButton = document.getElementById('cancel-delete-csv-btn');
+        if (deleteButton) {
+            deleteButton.disabled = isDeleting;
+            deleteButton.textContent = isDeleting ? 'Deleting...' : 'Delete Users (CSV Safe)';
+        }
+        if (cancelButton) {
+            cancelButton.style.display = isDeleting ? 'inline-block' : 'none';
+        }
+    }
+
+    showDeleteCsvStatus(totalUsers) {
+        const deleteStatus = document.getElementById('delete-csv-status');
+        if (deleteStatus) {
+            deleteStatus.style.display = 'block';
+        }
+        this.updateDeleteCsvProgress(0, totalUsers, 'Starting delete operation...', {
+            success: 0,
+            failed: 0,
+            skipped: 0
+        });
+    }
+
+    updateDeleteCsvProgress(current, total, message, counts = {}) {
+        const progressBar = document.getElementById('delete-csv-progress');
+        const progressPercent = document.getElementById('delete-csv-progress-percent');
+        const progressText = document.getElementById('delete-csv-progress-text');
+        const progressCount = document.getElementById('delete-csv-progress-count');
+        if (progressBar) {
+            const percent = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
+            progressBar.style.width = `${percent}%`;
+            progressBar.setAttribute('aria-valuenow', percent);
+        }
+        if (progressPercent) {
+            progressPercent.textContent = `${total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0}%`;
+        }
+        if (progressText) {
+            progressText.textContent = message || '';
+        }
+        if (progressCount) {
+            progressCount.textContent = `${current} of ${total} users`;
+        }
+        if (counts.success !== undefined) {
+            const successCount = document.getElementById('delete-csv-success-count');
+            if (successCount) successCount.textContent = counts.success;
+        }
+        if (counts.failed !== undefined) {
+            const failedCount = document.getElementById('delete-csv-failed-count');
+            if (failedCount) failedCount.textContent = counts.failed;
+        }
+        if (counts.skipped !== undefined) {
+            const skippedCount = document.getElementById('delete-csv-skipped-count');
+            if (skippedCount) skippedCount.textContent = counts.skipped;
+        }
+    }
+
+    resetDeleteCsvState() {
+        const deleteStatus = document.getElementById('delete-csv-status');
+        if (deleteStatus) {
+            deleteStatus.style.display = 'none';
+        }
+    }
+
+    resetDeleteCsvProgress() {
+        const progressBar = document.getElementById('delete-csv-progress');
+        if (progressBar) {
+            progressBar.style.width = '0%';
+            progressBar.setAttribute('aria-valuenow', 0);
+        }
+        const progressPercent = document.getElementById('delete-csv-progress-percent');
+        if (progressPercent) progressPercent.textContent = '0%';
+        const progressText = document.getElementById('delete-csv-progress-text');
+        if (progressText) progressText.textContent = 'Ready';
+        const progressCount = document.getElementById('delete-csv-progress-count');
+        if (progressCount) progressCount.textContent = '0 of 0 users';
+        const successCount = document.getElementById('delete-csv-success-count');
+        if (successCount) successCount.textContent = '0';
+        const failedCount = document.getElementById('delete-csv-failed-count');
+        if (failedCount) failedCount.textContent = '0';
+        const skippedCount = document.getElementById('delete-csv-skipped-count');
+        if (skippedCount) skippedCount.textContent = '0';
     }
 }
 

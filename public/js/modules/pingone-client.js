@@ -386,4 +386,158 @@ export class PingOneClient {
         // Shuffle the password to make it more random
         return password.split('').sort(() => Math.random() - 0.5).join('');
     }
+
+    /**
+     * Delete users from PingOne based on CSV input (safe duplicate of deleteUsers)
+     * @param {Array<Object>} users - Array of user objects to delete (must have username or email)
+     * @param {Object} options - Delete options
+     * @returns {Promise<Object>} Delete results
+     */
+    async deleteUsersFromCsv(users, options = {}) {
+        const settings = this.getSettings();
+        if (!settings || !settings.environmentId) {
+            throw new Error('PingOne settings not configured');
+        }
+        const results = {
+            total: users.length,
+            success: 0,
+            failed: 0,
+            skipped: 0,
+            results: []
+        };
+        
+        // Log start of delete operation
+        this.logger.info(`Starting delete operation for ${users.length} users`);
+        
+        // Get delete logger if available (for additional logging)
+        const deleteLogger = window.app ? window.app.deleteLogger : null;
+        if (deleteLogger) {
+            deleteLogger.info(`[CSV] Starting delete operation for ${users.length} users`);
+        }
+        
+        const batchSize = options.batchSize || 5;
+        const onProgress = options.onProgress || (() => {});
+        
+        for (let i = 0; i < users.length; i += batchSize) {
+            const batch = users.slice(i, i + batchSize);
+            const batchPromises = batch.map(async (user, batchIndex) => {
+                const userIndex = i + batchIndex;
+                const currentUser = user;
+                
+                try {
+                    // Log progress before processing each user
+                    this.logger.debug(`Processing delete for user ${userIndex + 1}/${users.length}: ${currentUser.username || currentUser.email}`);
+                    
+                    // Call progress callback before processing each user
+                    if (onProgress) {
+                        onProgress(userIndex, users.length, currentUser);
+                    }
+                    
+                    // Find user by username or email
+                    this.logger.debug(`Searching for user: ${currentUser.username || currentUser.email}`);
+                    const userToDelete = await this.findUserByUsernameOrEmail(currentUser.username || currentUser.email);
+                    
+                    if (!userToDelete) {
+                        this.logger.warn(`User not found: ${currentUser.username || currentUser.email}`, 'warn');
+                        if (deleteLogger) {
+                            deleteLogger.warn(`[CSV] User not found: ${currentUser.username || currentUser.email}`);
+                        }
+                        results.skipped++;
+                        results.results.push({
+                            user: currentUser.username || currentUser.email,
+                            status: 'skipped',
+                            reason: 'User not found'
+                        });
+                        
+                        // Call progress callback for skipped user
+                        if (onProgress) {
+                            onProgress(userIndex + 1, users.length, currentUser, {
+                                success: results.success,
+                                failed: results.failed,
+                                skipped: results.skipped
+                            });
+                        }
+                        return;
+                    }
+                    
+                    // Log successful user lookup
+                    this.logger.debug(`Found user to delete: ${currentUser.username || currentUser.email} (ID: ${userToDelete.id})`);
+                    
+                    // Delete the user using the correct API call
+                    const endpoint = `/environments/${settings.environmentId}/users/${userToDelete.id}`;
+                    this.logger.debug(`Sending DELETE request to: ${endpoint}`);
+                    
+                    await this.request('DELETE', endpoint);
+                    
+                    // Log successful deletion
+                    this.logger.info(`Successfully deleted user: ${currentUser.username || currentUser.email}`);
+                    if (deleteLogger) {
+                        deleteLogger.success(`[CSV] Successfully deleted user: ${currentUser.username || currentUser.email}`);
+                    }
+                    
+                    results.success++;
+                    results.results.push({
+                        user: currentUser.username || currentUser.email,
+                        status: 'deleted',
+                        userId: userToDelete.id
+                    });
+                    
+                    // Call progress callback for successful deletion
+                    if (onProgress) {
+                        onProgress(userIndex + 1, users.length, currentUser, {
+                            success: results.success,
+                            failed: results.failed,
+                            skipped: results.skipped
+                        });
+                    }
+                    
+                } catch (error) {
+                    this.logger.error(`Error deleting user: ${currentUser.username || currentUser.email}`, error);
+                    if (deleteLogger) {
+                        deleteLogger.error(`[CSV] Error deleting user: ${currentUser.username || currentUser.email}`, { error: error.message });
+                    }
+                    
+                    results.failed++;
+                    results.results.push({
+                        user: currentUser.username || currentUser.email,
+                        status: 'failed',
+                        error: error.message
+                    });
+                    
+                    // Call progress callback for failed deletion
+                    if (onProgress) {
+                        onProgress(userIndex + 1, users.length, currentUser, {
+                            success: results.success,
+                            failed: results.failed,
+                            skipped: results.skipped
+                        });
+                    }
+                }
+            });
+            
+            // Wait for the current batch to complete
+            const batchResults = await Promise.all(batchPromises);
+            
+            // Log batch completion
+            this.logger.debug(`Completed batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(users.length / batchSize)}`);
+            
+            // Call progress callback after batch completes
+            if (onProgress) {
+                const processedCount = Math.min(i + batch.length, users.length);
+                onProgress(processedCount, users.length, null, {
+                    success: results.success,
+                    failed: results.failed,
+                    skipped: results.skipped
+                });
+            }
+        }
+        
+        // Log final results
+        this.logger.info(`Delete operation completed. Success: ${results.success}, Failed: ${results.failed}, Skipped: ${results.skipped}`);
+        if (deleteLogger) {
+            deleteLogger.info(`[CSV] Delete operation completed. Success: ${results.success}, Failed: ${results.failed}, Skipped: ${results.skipped}`);
+        }
+        
+        return results;
+    }
 }
