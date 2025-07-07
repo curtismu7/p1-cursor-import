@@ -1299,29 +1299,13 @@ class App {
     }
 
     showDeleteCsvFileInfo(file) {
-        const fileInfo = document.getElementById('delete-csv-file-info');
-        if (fileInfo) {
-            fileInfo.innerHTML = `
-                <div class="file-details">
-                    <strong>Selected File:</strong> ${file.name}<br>
-                    <strong>Size:</strong> ${(file.size / 1024).toFixed(2)} KB<br>
-                    <strong>Type:</strong> ${file.type || 'text/csv'}
-                </div>
-            `;
-        }
+        // Use the enhanced file info display from file handler
+        this.fileHandler.updateFileInfoForElement(file, 'delete-csv-file-info');
     }
 
     showModifyCsvFileInfo(file) {
-        const fileInfo = document.getElementById('modify-file-info');
-        if (fileInfo) {
-            fileInfo.innerHTML = `
-                <div class="file-details">
-                    <strong>Selected File:</strong> ${file.name}<br>
-                    <strong>Size:</strong> ${(file.size / 1024).toFixed(2)} KB<br>
-                    <strong>Type:</strong> ${file.type || 'text/csv'}
-                </div>
-            `;
-        }
+        // Use the enhanced file info display from file handler
+        this.fileHandler.updateFileInfoForElement(file, 'modify-file-info');
     }
 
     async parseCsvFile(file, previewContainerId) {

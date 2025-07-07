@@ -1341,16 +1341,12 @@ class App {
     this.uiManager.updateDeleteCsvProgress(0, 0, 'Delete cancelled');
   }
   showDeleteCsvFileInfo(file) {
-    const fileInfo = document.getElementById('delete-csv-file-info');
-    if (fileInfo) {
-      fileInfo.innerHTML = "\n                <div class=\"file-details\">\n                    <strong>Selected File:</strong> ".concat(file.name, "<br>\n                    <strong>Size:</strong> ").concat((file.size / 1024).toFixed(2), " KB<br>\n                    <strong>Type:</strong> ").concat(file.type || 'text/csv', "\n                </div>\n            ");
-    }
+    // Use the enhanced file info display from file handler
+    this.fileHandler.updateFileInfoForElement(file, 'delete-csv-file-info');
   }
   showModifyCsvFileInfo(file) {
-    const fileInfo = document.getElementById('modify-file-info');
-    if (fileInfo) {
-      fileInfo.innerHTML = "\n                <div class=\"file-details\">\n                    <strong>Selected File:</strong> ".concat(file.name, "<br>\n                    <strong>Size:</strong> ").concat((file.size / 1024).toFixed(2), " KB<br>\n                    <strong>Type:</strong> ").concat(file.type || 'text/csv', "\n                </div>\n            ");
-    }
+    // Use the enhanced file info display from file handler
+    this.fileHandler.updateFileInfoForElement(file, 'modify-file-info');
   }
   async parseCsvFile(file, previewContainerId) {
     const text = await file.text();
@@ -4230,11 +4226,46 @@ class FileHandler {
   // UI Updates
   // ======================
 
-  updateFileInfo(file) {
-    if (!this.fileInfo) return;
+  /**
+   * Update file info for any file info container element
+   * @param {File} file - The file object
+   * @param {string} containerId - The ID of the container element to update
+   */
+  updateFileInfoForElement(file, containerId) {
+    const container = document.getElementById(containerId);
+    if (!container || !file) return;
     const fileSize = this.formatFileSize(file.size);
     const lastModified = new Date(file.lastModified).toLocaleString();
-    this.fileInfo.innerHTML = "\n            <strong>".concat(file.name, "</strong><br>\n            <small>Size: ").concat(fileSize, " | Modified: ").concat(lastModified, "</small>\n        ");
+    const fileType = file.type || this.getFileExtension(file.name);
+    const fileExtension = this.getFileExtension(file.name);
+
+    // Get file path information (if available)
+    let filePath = 'Unknown';
+    if (file.webkitRelativePath) {
+      filePath = file.webkitRelativePath;
+    } else if (file.name) {
+      // Try to extract directory from file name if it contains path separators
+      const pathParts = file.name.split(/[\/\\]/);
+      if (pathParts.length > 1) {
+        filePath = pathParts.slice(0, -1).join('/');
+      } else {
+        filePath = 'Current Directory';
+      }
+    }
+
+    // Calculate additional file properties
+    const isCSV = fileExtension === 'csv';
+    const isText = fileExtension === 'txt';
+    const isValidType = isCSV || isText || fileType === 'text/csv' || fileType === 'text/plain';
+    const fileSizeInKB = Math.round(file.size / 1024);
+    const fileSizeInMB = Math.round(file.size / 1024 / 1024 * 100) / 100;
+
+    // Create comprehensive file info display
+    const fileInfoHTML = "\n            <div class=\"file-info-details\" style=\"background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 15px; margin: 10px 0;\">\n                <div class=\"file-info-header\" style=\"margin-bottom: 10px;\">\n                    <h5 style=\"margin: 0; color: #495057;\">\n                        <i class=\"fas fa-file-csv\"></i> File Information\n                    </h5>\n                </div>\n                \n                <div class=\"file-info-grid\" style=\"display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9em;\">\n                    <div class=\"file-info-item\">\n                        <strong style=\"color: #495057;\">\uD83D\uDCC1 Filename:</strong><br>\n                        <span style=\"color: #6c757d; word-break: break-all;\">".concat(file.name, "</span>\n                    </div>\n                    \n                    <div class=\"file-info-item\">\n                        <strong style=\"color: #495057;\">\uD83D\uDCCA File Size:</strong><br>\n                        <span style=\"color: #6c757d;\">").concat(fileSize, " (").concat(fileSizeInKB, " KB, ").concat(fileSizeInMB, " MB)</span>\n                    </div>\n                    \n                    <div class=\"file-info-item\">\n                        <strong style=\"color: #495057;\">\uD83D\uDCC2 Directory:</strong><br>\n                        <span style=\"color: #6c757d;\">").concat(filePath, "</span>\n                    </div>\n                    \n                    <div class=\"file-info-item\">\n                        <strong style=\"color: #495057;\">\uD83D\uDCC5 Last Modified:</strong><br>\n                        <span style=\"color: #6c757d;\">").concat(lastModified, "</span>\n                    </div>\n                    \n                    <div class=\"file-info-item\">\n                        <strong style=\"color: #495057;\">\uD83D\uDD24 File Type:</strong><br>\n                        <span style=\"color: #6c757d;\">").concat(fileType || 'Unknown', "</span>\n                    </div>\n                    \n                    <div class=\"file-info-item\">\n                        <strong style=\"color: #495057;\">\uD83D\uDCC4 Extension:</strong><br>\n                        <span style=\"color: ").concat(isValidType ? '#28a745' : '#dc3545', "; font-weight: bold;\">\n                            ").concat(fileExtension ? '.' + fileExtension : 'None', "\n                        </span>\n                    </div>\n                </div>\n                \n                <div class=\"file-info-status\" style=\"margin-top: 10px; padding: 8px; border-radius: 3px; background: ").concat(isValidType ? '#d4edda' : '#f8d7da', "; border: 1px solid ").concat(isValidType ? '#c3e6cb' : '#f5c6cb', ";\">\n                    <i class=\"fas ").concat(isValidType ? 'fa-check-circle' : 'fa-exclamation-triangle', "\" style=\"color: ").concat(isValidType ? '#155724' : '#721c24', ";\"></i>\n                    <span style=\"color: ").concat(isValidType ? '#155724' : '#721c24', "; font-weight: bold;\">\n                        ").concat(isValidType ? 'File type is supported' : 'Warning: File type may not be optimal', "\n                    </span>\n                </div>\n                \n                ").concat(file.size > 5 * 1024 * 1024 ? "\n                <div class=\"file-info-warning\" style=\"margin-top: 10px; padding: 8px; border-radius: 3px; background: #fff3cd; border: 1px solid #ffeaa7;\">\n                    <i class=\"fas fa-exclamation-triangle\" style=\"color: #856404;\"></i>\n                    <span style=\"color: #856404; font-weight: bold;\">Large file detected - processing may take longer</span>\n                </div>\n                " : '', "\n            </div>\n        ");
+    container.innerHTML = fileInfoHTML;
+  }
+  updateFileInfo(file) {
+    this.updateFileInfoForElement(file, 'file-info');
   }
   showPreview(rows) {
     if (!this.previewContainer) return;

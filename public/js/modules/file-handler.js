@@ -682,16 +682,105 @@ class FileHandler {
     // UI Updates
     // ======================
     
-    updateFileInfo(file) {
-        if (!this.fileInfo) return;
+    /**
+     * Update file info for any file info container element
+     * @param {File} file - The file object
+     * @param {string} containerId - The ID of the container element to update
+     */
+    updateFileInfoForElement(file, containerId) {
+        const container = document.getElementById(containerId);
+        if (!container || !file) return;
         
         const fileSize = this.formatFileSize(file.size);
         const lastModified = new Date(file.lastModified).toLocaleString();
+        const fileType = file.type || this.getFileExtension(file.name);
+        const fileExtension = this.getFileExtension(file.name);
         
-        this.fileInfo.innerHTML = `
-            <strong>${file.name}</strong><br>
-            <small>Size: ${fileSize} | Modified: ${lastModified}</small>
+        // Get file path information (if available)
+        let filePath = 'Unknown';
+        if (file.webkitRelativePath) {
+            filePath = file.webkitRelativePath;
+        } else if (file.name) {
+            // Try to extract directory from file name if it contains path separators
+            const pathParts = file.name.split(/[\/\\]/);
+            if (pathParts.length > 1) {
+                filePath = pathParts.slice(0, -1).join('/');
+            } else {
+                filePath = 'Current Directory';
+            }
+        }
+        
+        // Calculate additional file properties
+        const isCSV = fileExtension === 'csv';
+        const isText = fileExtension === 'txt';
+        const isValidType = isCSV || isText || fileType === 'text/csv' || fileType === 'text/plain';
+        const fileSizeInKB = Math.round(file.size / 1024);
+        const fileSizeInMB = Math.round((file.size / 1024 / 1024) * 100) / 100;
+        
+        // Create comprehensive file info display
+        const fileInfoHTML = `
+            <div class="file-info-details" style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 15px; margin: 10px 0;">
+                <div class="file-info-header" style="margin-bottom: 10px;">
+                    <h5 style="margin: 0; color: #495057;">
+                        <i class="fas fa-file-csv"></i> File Information
+                    </h5>
+                </div>
+                
+                <div class="file-info-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9em;">
+                    <div class="file-info-item">
+                        <strong style="color: #495057;">📁 Filename:</strong><br>
+                        <span style="color: #6c757d; word-break: break-all;">${file.name}</span>
+                    </div>
+                    
+                    <div class="file-info-item">
+                        <strong style="color: #495057;">📊 File Size:</strong><br>
+                        <span style="color: #6c757d;">${fileSize} (${fileSizeInKB} KB, ${fileSizeInMB} MB)</span>
+                    </div>
+                    
+                    <div class="file-info-item">
+                        <strong style="color: #495057;">📂 Directory:</strong><br>
+                        <span style="color: #6c757d;">${filePath}</span>
+                    </div>
+                    
+                    <div class="file-info-item">
+                        <strong style="color: #495057;">📅 Last Modified:</strong><br>
+                        <span style="color: #6c757d;">${lastModified}</span>
+                    </div>
+                    
+                    <div class="file-info-item">
+                        <strong style="color: #495057;">🔤 File Type:</strong><br>
+                        <span style="color: #6c757d;">${fileType || 'Unknown'}</span>
+                    </div>
+                    
+                    <div class="file-info-item">
+                        <strong style="color: #495057;">📄 Extension:</strong><br>
+                        <span style="color: ${isValidType ? '#28a745' : '#dc3545'}; font-weight: bold;">
+                            ${fileExtension ? '.' + fileExtension : 'None'}
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="file-info-status" style="margin-top: 10px; padding: 8px; border-radius: 3px; background: ${isValidType ? '#d4edda' : '#f8d7da'}; border: 1px solid ${isValidType ? '#c3e6cb' : '#f5c6cb'};">
+                    <i class="fas ${isValidType ? 'fa-check-circle' : 'fa-exclamation-triangle'}" style="color: ${isValidType ? '#155724' : '#721c24'};"></i>
+                    <span style="color: ${isValidType ? '#155724' : '#721c24'}; font-weight: bold;">
+                        ${isValidType ? 'File type is supported' : 'Warning: File type may not be optimal'}
+                    </span>
+                </div>
+                
+                ${file.size > 5 * 1024 * 1024 ? `
+                <div class="file-info-warning" style="margin-top: 10px; padding: 8px; border-radius: 3px; background: #fff3cd; border: 1px solid #ffeaa7;">
+                    <i class="fas fa-exclamation-triangle" style="color: #856404;"></i>
+                    <span style="color: #856404; font-weight: bold;">Large file detected - processing may take longer</span>
+                </div>
+                ` : ''}
+            </div>
         `;
+        
+        container.innerHTML = fileInfoHTML;
+    }
+
+    updateFileInfo(file) {
+        this.updateFileInfoForElement(file, 'file-info');
     }
     
     showPreview(rows) {
