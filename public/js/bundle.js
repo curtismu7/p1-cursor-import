@@ -8705,8 +8705,9 @@ class UIManager {
     // Show modal overlay
     const overlay = document.getElementById('import-progress-modal-overlay');
     if (overlay) overlay.style.display = 'flex';
-    // Blur background
-    document.querySelector('.app-container')?.classList.add('blurred');
+    // Remove blur - no longer needed
+    // document.querySelector('.app-container')?.classList.add('blurred');
+
     const importStatus = document.getElementById('import-status');
     if (importStatus) {
       importStatus.style.display = 'block';
@@ -8745,6 +8746,10 @@ class UIManager {
     // Remove blur
     document.querySelector('.app-container')?.classList.remove('blurred');
   }
+
+  /**
+   * Reset/Clear the Import Progress area for a new import
+   */
   resetImportProgress() {
     // Progress bar
     const progressBar = document.getElementById('import-progress');
@@ -8765,22 +8770,23 @@ class UIManager {
 
     // Stats
     const successCount = document.getElementById('import-success-count');
-    if (successCount) successCount.textContent = '0';
     const failedCount = document.getElementById('import-failed-count');
-    if (failedCount) failedCount.textContent = '0';
     const skippedCount = document.getElementById('import-skipped-count');
+    if (successCount) successCount.textContent = '0';
+    if (failedCount) failedCount.textContent = '0';
     if (skippedCount) skippedCount.textContent = '0';
-    // Hide population warning
-    this.hidePopulationWarning && this.hidePopulationWarning();
 
-    // Only clear progress log if we're not currently importing
-    // This prevents clearing the log during active imports
-    if (!this.isImporting) {
-      this.clearProgressLog();
-    }
+    // Hide modal overlay
+    const overlay = document.getElementById('import-progress-modal-overlay');
+    if (overlay) overlay.style.display = 'none';
+    // Remove blur - no longer needed
+    // document.querySelector('.app-container')?.classList.remove('blurred');
+
+    // Reset icon
     this.setImportProgressIcon('idle');
-    // Hide modal and remove blur
-    this.hideImportProgressModal();
+
+    // Clear progress log
+    this.clearProgressLog();
   }
 
   /**
