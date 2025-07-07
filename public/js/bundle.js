@@ -5943,12 +5943,14 @@ class PingOneClient {
     });
 
     // Process users in batches with improved error handling
-    const batchSize = 5; // Adjust based on API rate limits
+    const batchSize = 10; // Increased from 5 to 10 for better throughput
 
     for (let i = 0; i < totalUsers; i += batchSize) {
       // Process current batch
       const batch = users.slice(i, i + batchSize);
-      const batchPromises = batch.map(async (user, batchIndex) => {
+
+      // Process users sequentially within each batch to avoid overwhelming the API
+      for (let batchIndex = 0; batchIndex < batch.length; batchIndex++) {
         const currentIndex = i + batchIndex;
         const currentUser = users[currentIndex];
         try {
@@ -6106,11 +6108,17 @@ class PingOneClient {
           }
           throw error;
         }
-      });
 
-      // Wait for the current batch to complete
-      const batchResults = await Promise.all(batchPromises);
-      results.push(...batchResults);
+        // Add small delay between individual user operations to prevent rate limiting
+        if (batchIndex < batch.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100)); // 100ms delay between users
+        }
+      }
+
+      // Add delay between batches to avoid rate limiting
+      if (i + batchSize < totalUsers) {
+        await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay between batches
+      }
 
       // Call progress callback after batch completes
       if (onProgress) {

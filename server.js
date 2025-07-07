@@ -65,10 +65,10 @@ function createRateLimiter(maxRequests = 50) {
 // Get rate limit from environment or use default
 const getRateLimit = () => {
     const envRateLimit = parseInt(process.env.RATE_LIMIT);
-    if (envRateLimit && envRateLimit >= 1 && envRateLimit <= 100) {
+    if (envRateLimit && envRateLimit >= 1 && envRateLimit <= 200) {
         return envRateLimit;
     }
-    return 90; // Default rate limit (increased to 90 for bulk operations)
+    return 150; // Increased default rate limit for bulk operations
 };
 
 // Create rate limiter with current settings

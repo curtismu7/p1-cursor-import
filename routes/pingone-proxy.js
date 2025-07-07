@@ -49,7 +49,7 @@ const logger = winston.createLogger({
 // PingOne API specific rate limiter (more permissive for better user experience)
 const pingoneApiLimiter = rateLimit({
     windowMs: 1000, // 1 second
-    max: 90, // limit to 90 requests per second for PingOne API calls (increased to match API requirement)
+    max: 150, // Increased from 90 to 150 requests per second for PingOne API calls
     message: {
         error: 'PingOne API rate limit exceeded',
         message: 'Too many PingOne API requests. Please wait before trying again.',
@@ -72,14 +72,14 @@ const pingoneApiLimiter = rateLimit({
     // Burst handling for PingOne API
     skipSuccessfulRequests: false,
     skipFailedRequests: false,
-    // Allow burst of up to 360 requests in first 1000ms for export/import operations (4x the base limit)
-    burstLimit: 360,
+    // Allow burst of up to 600 requests in first 1000ms for export/import operations (4x the base limit)
+    burstLimit: 600,
     burstWindowMs: 1000,
     // Queue configuration for PingOne API calls
     queue: {
         enabled: true,
-        maxQueueSize: 400, // Queue up to 400 requests (increased from 150)
-        maxQueueTime: 45000, // Wait up to 45 seconds in queue (increased from 20)
+        maxQueueSize: 600, // Increased from 400 to 600
+        maxQueueTime: 60000, // Increased from 45 to 60 seconds
         retryAfter: 2 // Wait 2 seconds before retry
     }
 });
