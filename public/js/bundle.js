@@ -8706,32 +8706,23 @@ class UIManager {
     if (importStatus) {
       importStatus.style.display = 'block';
     }
-
-    // Set importing flag
     this.isImporting = true;
-
-    // Update last run status
     this.updateLastRunStatus('import', 'User Import', 'In Progress', `Importing ${totalUsers} users`, {
       total: totalUsers,
       success: 0,
       failed: 0,
       skipped: 0
     });
-
-    // Reset all counters
     this.updateImportProgress(0, totalUsers, 'Starting import...', {
       success: 0,
       failed: 0,
       skipped: 0
     }, populationName);
-
-    // Add initial progress log entry
     this.addProgressLogEntry(`Starting import of ${totalUsers} users`, 'info', {
       total: totalUsers
     });
-
-    // Set up progress log handlers
     this.setupProgressLogHandlers();
+    this.setImportProgressIcon('importing');
   }
 
   /**
@@ -8778,12 +8769,15 @@ class UIManager {
     let logType = 'info';
     if (status.includes('completed') || status.includes('success')) {
       logType = 'success';
+      this.setImportProgressIcon('complete');
     } else if (status.includes('failed') || status.includes('error')) {
       logType = 'error';
+      this.setImportProgressIcon('error');
     } else if (status.includes('skipped')) {
       logType = 'warning';
     } else if (status.includes('Importing')) {
       logType = 'progress';
+      this.setImportProgressIcon('importing');
     }
     this.addProgressLogEntry(status, logType, results);
 
@@ -8850,6 +8844,7 @@ class UIManager {
     if (!this.isImporting) {
       this.clearProgressLog();
     }
+    this.setImportProgressIcon('idle');
   }
 
   /**
@@ -9806,6 +9801,30 @@ class UIManager {
     if (importButtonBottom) {
       importButtonBottom.textContent = text;
     }
+  }
+
+  /**
+   * Set the import progress icon based on status
+   * @param {string} status - 'importing', 'complete', 'error', or 'idle'
+   */
+  setImportProgressIcon(status) {
+    const iconContainer = document.getElementById('import-progress-icon');
+    if (!iconContainer) return;
+    let iconHtml = '';
+    switch (status) {
+      case 'importing':
+        iconHtml = '<i class="fas fa-spinner fa-spin" title="Importing..."></i>';
+        break;
+      case 'complete':
+        iconHtml = '<i class="fas fa-check-circle text-success" title="Import Complete"></i>';
+        break;
+      case 'error':
+        iconHtml = '<i class="fas fa-exclamation-circle text-danger" title="Import Failed"></i>';
+        break;
+      default:
+        iconHtml = '<i class="fas fa-arrow-rotate-right" title="Idle"></i>';
+    }
+    iconContainer.innerHTML = iconHtml;
   }
 }
 
