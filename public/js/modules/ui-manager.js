@@ -2310,6 +2310,56 @@ export class UIManager {
         // Add progress log entry
         this.addProgressLogEntry(status, 'info', results);
     }
+
+    /**
+     * Show population delete status
+     */
+    showPopulationDeleteStatus() {
+        const statusElement = document.getElementById('population-delete-status');
+        if (statusElement) {
+            statusElement.style.display = 'block';
+        }
+    }
+
+    /**
+     * Hide population delete status
+     */
+    hidePopulationDeleteStatus() {
+        const statusElement = document.getElementById('population-delete-status');
+        if (statusElement) {
+            statusElement.style.display = 'none';
+        }
+    }
+
+    /**
+     * Update population delete progress
+     * @param {number} current - Current progress
+     * @param {number} total - Total items
+     * @param {string} message - Status message
+     * @param {Object} counts - Results object
+     */
+    updatePopulationDeleteProgress(current, total, message, counts = {}) {
+        const progressBar = document.getElementById('population-delete-progress');
+        const progressPercent = document.getElementById('population-delete-progress-percent');
+        const progressText = document.getElementById('population-delete-progress-text');
+        const progressCount = document.getElementById('population-delete-progress-count');
+        const successCount = document.getElementById('population-delete-success-count');
+        const failedCount = document.getElementById('population-delete-failed-count');
+        const skippedCount = document.getElementById('population-delete-skipped-count');
+
+        if (progressBar) {
+            const percent = total > 0 ? (current / total) * 100 : 0;
+            progressBar.style.width = `${percent}%`;
+            progressBar.setAttribute('aria-valuenow', percent);
+        }
+
+        if (progressPercent) progressPercent.textContent = `${Math.round((current / total) * 100)}%`;
+        if (progressText) progressText.textContent = message;
+        if (progressCount) progressCount.textContent = `${current} of ${total} users`;
+        if (successCount) successCount.textContent = counts.success || 0;
+        if (failedCount) failedCount.textContent = counts.failed || 0;
+        if (skippedCount) skippedCount.textContent = counts.skipped || 0;
+    }
 }
 
 // No need for module.exports with ES modules
