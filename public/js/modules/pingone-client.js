@@ -446,8 +446,12 @@ export class PingOneClient {
                         userPopulationId = currentUser.populationId;
                         this.logger.info(`Using CSV population ID for user ${currentUser.email || currentUser.username}: ${userPopulationId}`);
                     } else if (fallbackPopulationId) {
-                        // Use fallback population ID
-                        this.logger.info(`Using fallback population ID for user ${currentUser.email || currentUser.username}: ${fallbackPopulationId}`);
+                        // Use selected or fallback population ID
+                        if (selectedPopulationId && fallbackPopulationId === selectedPopulationId) {
+                            this.logger.info(`Using selected population ID for user ${currentUser.email || currentUser.username}: ${fallbackPopulationId}`);
+                        } else {
+                            this.logger.info(`Using fallback population ID for user ${currentUser.email || currentUser.username}: ${fallbackPopulationId}`);
+                        }
                     } else {
                         throw new Error('No population ID available for user');
                     }
