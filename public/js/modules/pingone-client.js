@@ -855,6 +855,26 @@ export class PingOneClient {
         return results;
     }
 
+    /**
+     * Delete a single user by ID
+     * @param {string} userId - User ID to delete
+     * @returns {Promise<void>}
+     */
+    async deleteUser(userId) {
+        if (!userId) {
+            throw new Error('User ID is required for deletion');
+        }
+
+        try {
+            this.logger.info(`[DELETE] Deleting user with ID: ${userId}`);
+            await this.request('DELETE', `/environments/${this.getSettings().environmentId}/users/${userId}`);
+            this.logger.info(`[DELETE] Successfully deleted user: ${userId}`);
+        } catch (error) {
+            this.logger.error(`[DELETE] Failed to delete user ${userId}: ${error.message}`);
+            throw error;
+        }
+    }
+
     async modifyUsersFromCsv(users, options = {}) {
         const { onProgress, batchSize = 10, delayBetweenBatches = 1000, createIfNotExists = false, updateUserStatus = false, defaultPopulationId = '', defaultEnabled = true, generatePasswords = true } = options;
         const results = {
