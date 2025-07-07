@@ -98,8 +98,16 @@ class FileHandler {
     }
     
     /**
-     * Handle file selection
-     * @param {Event} event - File input change event
+     * Handle a File object directly (not an event)
+     * @param {File} file
+     */
+    async handleFileObject(file) {
+        await this._handleFileInternal(file);
+    }
+
+    /**
+     * Handle file selection from an input event
+     * @param {Event} event
      */
     async handleFileSelect(event) {
         const file = event.target.files[0];
@@ -107,19 +115,45 @@ class FileHandler {
             this.logger.warn('No file selected');
             return;
         }
+        await this._handleFileInternal(file, event);
+    }
 
-        // Validate file type
-        const allowedExtensions = ['.csv', '.txt', ''];
-        const fileNameLower = file.name.toLowerCase();
-        const hasAllowedExtension = allowedExtensions.some(ext => fileNameLower.endsWith(ext));
+    /**
+     * Shared internal file handling logic
+     * @param {File} file
+     * @param {Event} [event]
+     * @private
+     */
+    async _handleFileInternal(file, event) {
+        // Debug: Log the file object structure
+        this.logger.debug('File object received:', {
+            hasFile: !!file,
+            fileType: typeof file,
+            hasName: !!file.name,
+            hasSize: !!file.size,
+            fileName: file.name,
+            fileSize: file.size
+        });
+
+        // Validate file has required properties
+        if (!file.name) {
+            this.logger.error('File object missing name property', { file });
+            this.uiManager.showNotification('Invalid file object: missing file name', 'error');
+            return;
+        }
+
+        // Permissive file type validation: only block known bad extensions
         const knownBadExtensions = ['.exe', '.js', '.png', '.jpg', '.jpeg', '.gif', '.pdf', '.zip', '.tar', '.gz'];
+        const fileNameLower = file.name.toLowerCase();
         const hasBadExtension = knownBadExtensions.some(ext => fileNameLower.endsWith(ext));
         if (hasBadExtension) {
             this.logger.error('Invalid file type. Please select a CSV or text file.');
             this.uiManager.showNotification('Please select a CSV or text file.', 'error');
             return;
         }
-        // If not allowed, warn but try to process
+        // Warn if not .csv/.txt, but allow
+        const allowedExtensions = ['.csv', '.txt', ''];
+        const hasAllowedExtension = allowedExtensions.some(ext => fileNameLower.endsWith(ext));
         if (!hasAllowedExtension) {
             this.logger.warn('File does not have a standard CSV or text extension, attempting to process anyway.', { fileName: file.name });
         }
@@ -210,7 +244,9 @@ class FileHandler {
             this.uiManager.showNotification(errorMessage, 'error');
             
             // Clear file input
-            event.target.value = '';
+            if (event && event.target && event.target.value) {
+                event.target.value = '';
+            }
         }
     }
     
@@ -229,30 +265,16 @@ class FileHandler {
             throw new Error('File is empty');
         }
         
-        // Check file type
+        // Only block known bad extensions, allow all others
         const fileName = file.name || '';
         const fileExt = this.getFileExtension(fileName).toLowerCase();
-        const fileType = file.type || '';
-        
-        this.logger.log(`File info - Name: ${fileName}, Extension: ${fileExt}, Type: ${fileType}`, 'debug');
-        
-        // Check if file has a valid extension or is a text file
-        const isValidExtension = fileExt && ['csv', 'txt'].includes(fileExt);
-        const isTextFile = fileType.match(/text\/.*/) || fileType === '';
-        const isOctetStream = fileType === 'application/octet-stream';
-
-        // Accept if extension is csv/txt, or if type is text/*, or if type is octet-stream (common for CSVs)
-        if (!isValidExtension && !isTextFile && !isOctetStream) {
-            // If both extension and type are blank, try to parse as CSV anyway
-            if (!fileExt && !fileType) {
-                this.logger.warn('File has no extension and no type, attempting to parse as CSV');
-            } else {
-                const errorMsg = `Unsupported file type: ${fileExt || fileType || 'unknown'}. Please upload a CSV or text file.`;
-                this.logger.error(errorMsg, { fileName, fileExt, fileType });
-                throw new Error(errorMsg);
-            }
+        const knownBadExts = ['exe', 'js', 'png', 'jpg', 'jpeg', 'gif', 'pdf', 'zip', 'tar', 'gz'];
+        if (fileExt && knownBadExts.includes(fileExt)) {
+            const errorMsg = `Unsupported file type: ${fileExt}. Please upload a CSV or text file.`;
+            this.logger.error(errorMsg, { fileName, fileExt });
+            throw new Error(errorMsg);
         }
-        
+        // Accept all other extensions and blank/unknown types
         // Check file size (max 10MB)
         const maxSize = 10 * 1024 * 1024; // 10MB
         if (file.size > maxSize) {
@@ -391,7 +413,7 @@ class FileHandler {
                     
                     // Parse header row
                     const headers = this.parseCSVRow(lines[0]);
-                    const requiredHeaders = ['firstName', 'lastName', 'email'];
+                    const requiredHeaders = ['username'];
                     const missingHeaders = requiredHeaders.filter(header => 
                         !headers.some(h => h.toLowerCase() === header.toLowerCase())
                     );

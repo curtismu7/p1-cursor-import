@@ -645,7 +645,10 @@ class App {
         }
 
         // File upload event listeners
-        document.getElementById('csv-file').addEventListener('change', this.handleFileSelect);
+        document.getElementById('csv-file').addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) this.handleFileSelect(file);
+        });
         document.getElementById('delete-csv-file').addEventListener('change', this.handleDeleteCsvFileSelect);
         document.getElementById('modify-csv-file').addEventListener('change', this.handleModifyCsvFileSelect);
 
@@ -1541,43 +1544,15 @@ class App {
         try {
             this.logger.fileLogger.debug('File selected', { fileName: file.name, fileSize: file.size });
             
-            // Show loading state
-            this.uiManager.showLoading(true, 'Processing file...');
+            // Use the file handler's handleFileObject method
+            await this.fileHandler.handleFileObject(file);
             
-            // Process the file using the file handler
-            const result = await this.fileHandler.processCSV(file);
-            
-            if (result && result.success) {
-                const userCount = result.userCount || 0;
-                this.logger.fileLogger.info('File processed successfully', { 
-                    rows: userCount,
-                    headers: result.headers 
-                });
-                
-                // Show success message
-                this.uiManager.showNotification(`✅ Successfully processed ${userCount} users`, 'success');
-                
-                // Enable import button if we have users and settings are valid
-                const isValid = await this.checkSettings();
-                
-                if (isValid) {
-                    this.uiManager.showNotification('Ready to import users', 'info');
-                }
-                
-                return result;
-            } else {
-                const errorMsg = result?.error || 'Failed to process file';
-                throw new Error(errorMsg);
-            }
         } catch (error) {
             const errorMsg = error.message || 'An unknown error occurred while processing the file';
             this.logger.fileLogger.error('Error processing file', { error: errorMsg });
             this.uiManager.showNotification(errorMsg, 'error');
             console.error('File processing error:', error);
             throw error; // Re-throw to allow caller to handle if needed
-        } finally {
-            // Always hide loading state
-            this.uiManager.showLoading(false);
         }
     }
     
