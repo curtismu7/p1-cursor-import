@@ -423,6 +423,42 @@ class App {
             });
         }
 
+        // Cancel delete CSV progress button
+        const cancelDeleteCsvProgressBtn = document.getElementById('cancel-delete-csv-progress');
+        if (cancelDeleteCsvProgressBtn) {
+            cancelDeleteCsvProgressBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.cancelDeleteCsv();
+            });
+        }
+
+        // Cancel import progress button
+        const cancelImportProgressBtn = document.getElementById('cancel-import-progress');
+        if (cancelImportProgressBtn) {
+            cancelImportProgressBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.cancelImport();
+            });
+        }
+
+        // Cancel export progress button
+        const cancelExportProgressBtn = document.getElementById('cancel-export-progress');
+        if (cancelExportProgressBtn) {
+            cancelExportProgressBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.cancelExport();
+            });
+        }
+
+        // Cancel modify progress button
+        const cancelModifyProgressBtn = document.getElementById('cancel-modify-progress');
+        if (cancelModifyProgressBtn) {
+            cancelModifyProgressBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.cancelModifyCsv();
+            });
+        }
+
         const closePopulationDeleteStatusBtn = document.getElementById('close-population-delete-status');
         if (closePopulationDeleteStatusBtn) {
             closePopulationDeleteStatusBtn.addEventListener('click', (e) => {
