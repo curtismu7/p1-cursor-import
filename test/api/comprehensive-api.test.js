@@ -56,7 +56,7 @@ jest.mock('../server.js', () => {
       },
       info: {
         nodeEnv: 'test',
-        appVersion: '4.3.0',
+        appVersion: '4.3.1',
         hostname: 'test-host'
       },
       message: 'One or more critical services are not healthy'
