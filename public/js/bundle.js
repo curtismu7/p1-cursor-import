@@ -1332,7 +1332,7 @@ class App {
   }
   async startDeleteCsv() {
     if (this.isDeletingCsv) return;
-    const confirmed = await this.confirmDeleteAction('<strong>⚠️ WARNING:</strong> This will permanently delete the selected users from PingOne. This action cannot be undone.<br><br>Type <b>DELETE</b> to confirm.');
+    const confirmed = await this.confirmDeleteAction('<strong>⚠️ WARNING:</strong> This will permanently delete the selected users from PingOne. This action cannot be undone.<br><br>Are you absolutely sure you want to continue?');
     if (!confirmed) return;
     this.isDeletingCsv = true;
     this.uiManager.setDeletingCsv(true);
@@ -2822,7 +2822,7 @@ class App {
     const populationId = populationSelect.value;
     const populationName = populationSelect.options[populationSelect.selectedIndex].text;
     // Use modal instead of confirm
-    const confirmed = await this.confirmDeleteAction(`<strong>⚠️ WARNING:</strong> This will permanently delete <b>ALL</b> users in the population <b>"${populationName}"</b>. This action cannot be undone.<br><br>Type <b>DELETE</b> to confirm.`);
+    const confirmed = await this.confirmDeleteAction(`<strong>⚠️ WARNING:</strong> This will permanently delete <b>ALL</b> users in the population <b>"${populationName}"</b>. This action cannot be undone.<br><br>Are you absolutely sure you want to continue?`);
     if (!confirmed) return;
     this.isDeletingPopulation = true;
     this.updatePopulationDeleteButtonState();
@@ -3053,7 +3053,7 @@ class App {
       return;
     }
     // Confirm again before proceeding
-    const confirmed = await this.confirmDeleteAction(`<strong>⚠️ FINAL WARNING:</strong> This will permanently delete <b>ALL</b> users in your PingOne environment (${users.length} users). This action cannot be undone.<br><br>Type <b>DELETE</b> to confirm.`);
+    const confirmed = await this.confirmDeleteAction(`<strong>⚠️ FINAL WARNING:</strong> This will permanently delete <b>ALL</b> users in your PingOne environment (${users.length} users). This action cannot be undone.<br><br>Are you absolutely sure you want to continue?`);
     if (!confirmed) return;
     // Show progress UI
     this.uiManager.showLoading(true, 'Deleting all users in environment...');
