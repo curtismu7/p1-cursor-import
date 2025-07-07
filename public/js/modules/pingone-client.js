@@ -417,12 +417,13 @@ export class PingOneClient {
                     if (validationError) {
                         this.logger.warn(`User validation failed for ${currentUser.email || currentUser.username}: ${validationError}`, 'warn');
                         skippedCount++;
-                        return {
+                        results.push({
                             success: false,
                             user: currentUser,
                             error: validationError,
                             skipped: true
-                        };
+                        });
+                        continue; // Continue to next user
                     }
                     
                     // Determine population ID for this user
@@ -484,16 +485,18 @@ export class PingOneClient {
                                         skipped: skippedCount
                                     });
                                 }
-                                return {
+                                results.push({
                                     success: false,
                                     user: currentUser,
                                     error: 'User already exists',
                                     skipped: true
-                                };
+                                });
+                                break; // Break out of retry loop and continue to next user
                             }
                             
                             successCount++;
-                            return { success: true, user: currentUser, result };
+                            results.push({ success: true, user: currentUser, result });
+                            break; // Break out of retry loop on success
                             
                         } catch (error) {
                             lastError = error;
@@ -512,16 +515,23 @@ export class PingOneClient {
                     }
                     
                     // If we get here, all attempts failed
+                    if (!result || (result && result.warning === true && /already exists/i.test(result.message))) {
+                        // User was skipped, already handled above
+                        continue;
+                    }
+                    
+                    // If we get here, all attempts failed
                     this.logger.error(`All ${retryAttempts} attempts failed for user ${currentUser.email || currentUser.username}: ${lastError.message}`, 'error');
                     failedCount++;
                     
                     if (options.continueOnError) {
-                        return { 
+                        results.push({ 
                             success: false, 
                             user: currentUser, 
                             error: lastError.message,
                             skipped: false
-                        };
+                        });
+                        continue; // Continue to next user instead of throwing
                     }
                     throw lastError;
                     
@@ -543,19 +553,21 @@ export class PingOneClient {
                                     skipped: skippedCount
                                 });
                             }
-                            return { 
+                            results.push({ 
                                 success: false, 
                                 user: currentUser, 
                                 error: 'User already exists',
                                 skipped: true
-                            };
+                            });
+                            continue; // Continue to next user
                         }
-                        return { 
+                        results.push({ 
                             success: false, 
                             user: currentUser, 
                             error: error.message,
                             skipped: false
-                        };
+                        });
+                        continue; // Continue to next user
                     }
                     throw error;
                 }
