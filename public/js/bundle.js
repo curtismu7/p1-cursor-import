@@ -8704,6 +8704,11 @@ class UIManager {
    */
   showImportStatus(totalUsers) {
     let populationName = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '';
+    // Show modal overlay
+    const overlay = document.getElementById('import-progress-modal-overlay');
+    if (overlay) overlay.style.display = 'flex';
+    // Blur background
+    document.querySelector('.app-container')?.classList.add('blurred');
     const importStatus = document.getElementById('import-status');
     if (importStatus) {
       importStatus.style.display = 'block';
@@ -8725,94 +8730,23 @@ class UIManager {
     });
     this.setupProgressLogHandlers();
     this.setImportProgressIcon('importing');
+
+    // Setup close button handler (idempotent)
+    const closeBtn = document.getElementById('close-import-status');
+    if (closeBtn && !closeBtn._modalHandlerSet) {
+      closeBtn.addEventListener('click', () => {
+        this.hideImportProgressModal();
+      });
+      closeBtn._modalHandlerSet = true;
+    }
   }
-
-  /**
-   * Update import progress
-   * @param {number} current - Current progress
-   * @param {number} total - Total items
-   * @param {string} status - Status message
-   * @param {Object} results - Results object
-   * @param {string} populationName - Population name
-   */
-  updateImportProgress(current, total, status, results) {
-    let populationName = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : '';
-    // Update progress bar
-    const progressBar = document.getElementById('import-progress');
-    const progressPercent = document.getElementById('import-progress-percent');
-    const progressText = document.getElementById('import-progress-text');
-    const progressCount = document.getElementById('import-progress-count');
-    const populationNameElement = document.getElementById('import-population-name');
-    if (progressBar && total > 0) {
-      const percent = Math.round(current / total * 100);
-      progressBar.style.width = `${percent}%`;
-      progressBar.setAttribute('aria-valuenow', percent);
-      if (progressPercent) progressPercent.textContent = `${percent}%`;
-    }
-    if (progressText) progressText.textContent = status;
-    if (progressCount) progressCount.textContent = `${current} of ${total} users`;
-
-    // Update population name
-    if (populationNameElement) {
-      populationNameElement.textContent = populationName || 'Not selected';
-    }
-
-    // Update result counters
-    if (results) {
-      const successElement = document.getElementById('import-success-count');
-      const failedElement = document.getElementById('import-failed-count');
-      const skippedElement = document.getElementById('import-skipped-count');
-      if (successElement) successElement.textContent = results.success || 0;
-      if (failedElement) failedElement.textContent = results.failed || 0;
-      if (skippedElement) skippedElement.textContent = results.skipped || 0;
-    }
-
-    // Add progress log entry
-    let logType = 'info';
-    if (status.includes('completed') || status.includes('success')) {
-      logType = 'success';
-      this.setImportProgressIcon('complete');
-    } else if (status.includes('failed') || status.includes('error')) {
-      logType = 'error';
-      this.setImportProgressIcon('error');
-    } else if (status.includes('skipped')) {
-      logType = 'warning';
-    } else if (status.includes('Importing')) {
-      logType = 'progress';
-      this.setImportProgressIcon('importing');
-    }
-    this.addProgressLogEntry(status, logType, results);
-
-    // Update persistent status
-    const operationStatus = current >= total ? 'Completed' : 'In Progress';
-    this.updateLastRunStatus('import', 'User Import', operationStatus, status, {
-      total,
-      success: results?.success || 0,
-      failed: results?.failed || 0,
-      skipped: results?.skipped || 0
-    });
+  hideImportProgressModal() {
+    // Hide modal overlay
+    const overlay = document.getElementById('import-progress-modal-overlay');
+    if (overlay) overlay.style.display = 'none';
+    // Remove blur
+    document.querySelector('.app-container')?.classList.remove('blurred');
   }
-
-  /**
-   * Reset the import state
-   */
-  resetImportState() {
-    // Set importing flag to false
-    this.isImporting = false;
-
-    // Clear the "In Progress" status to prevent progress screen from showing on future page loads
-    const currentStatus = this.lastRunStatus['import'];
-    if (currentStatus && currentStatus.status === 'In Progress') {
-      this.updateLastRunStatus('import', currentStatus.operation || 'Import', 'Ready', 'Import stopped or completed');
-    }
-
-    // Progress screen will stay open until user manually closes it with X button
-    // No automatic hiding
-  }
-
-  /**
-   * Reset/Clear the Import Progress area for a new import
-   */
   resetImportProgress() {
     // Progress bar
     const progressBar = document.getElementById('import-progress');
@@ -8847,6 +8781,8 @@ class UIManager {
       this.clearProgressLog();
     }
     this.setImportProgressIcon('idle');
+    // Hide modal and remove blur
+    this.hideImportProgressModal();
   }
 
   /**

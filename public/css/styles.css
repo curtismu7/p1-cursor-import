@@ -2791,3 +2791,43 @@ label {
 .import-progress-icon .fa-exclamation-circle {
   color: #e53935;
 }
+
+/* Modal overlay for import progress */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(30, 34, 44, 0.35);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+/* Modal content for import progress */
+.import-status {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  padding: 32px 32px 24px 32px;
+  min-width: 350px;
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+  z-index: 2100;
+  animation: modal-pop-in 0.18s cubic-bezier(.4,2,.6,1) 1;
+}
+@keyframes modal-pop-in {
+  from { transform: scale(0.95) translateY(30px); opacity: 0; }
+  to   { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+/* Blur effect for background when modal is open */
+.blurred {
+  filter: blur(5px) grayscale(0.1) brightness(0.98);
+  pointer-events: none;
+  user-select: none;
+}
