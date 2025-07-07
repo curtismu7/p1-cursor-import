@@ -3215,14 +3215,14 @@ class App {
         // Population Delete Section
         const deletePopulationCheckbox = document.getElementById('delete-all-users-population-checkbox');
         const populationDeleteControls = document.getElementById('population-delete-controls');
-        const deletePopulationBtn = document.getElementById('deletePopulationBtn');
-        const populationSelect = document.getElementById('populationSelect');
+        const deletePopulationBtn = document.getElementById('delete-all-users-population-btn');
+        const populationSelect = document.getElementById('population-delete-select');
 
         if (deletePopulationCheckbox) {
             deletePopulationCheckbox.addEventListener('change', (e) => {
                 populationDeleteControls.style.display = e.target.checked ? 'block' : 'none';
                 if (e.target.checked) {
-                    this.loadPopulations();
+                    this.loadPopulationsForDeletion();
                 }
             });
         }
@@ -3379,7 +3379,7 @@ class App {
     }
 
     async startDeleteAllUsersInPopulation() {
-        const populationSelect = document.getElementById('populationSelect');
+        const populationSelect = document.getElementById('population-delete-select');
         const populationId = populationSelect.value;
         
         if (!populationId) {
@@ -3427,52 +3427,7 @@ class App {
 
         } catch (error) {
             this.uiManager.showLoading(false);
-            this.uiManager.showNotification('Error deleting users: ' + error.message, 'error');
-        }
-    }
-
-    async startDeleteAllUsersInEnvironment() {
-        this.uiManager.showLoading(true, 'Fetching all users in environment...');
-        
-        try {
-            const users = await this.pingOneClient.getAllUsersInEnvironment();
-            
-            if (users.length === 0) {
-                this.uiManager.showLoading(false);
-                this.uiManager.showNotification('No users found in the environment.', 'info');
-                return;
-            }
-
-            this.uiManager.showLoading(true, `Deleting ${users.length} users from environment...`);
-            
-            let deletedCount = 0;
-            let errorCount = 0;
-            const errors = [];
-
-            for (let i = 0; i < users.length; i++) {
-                const user = users[i];
-                try {
-                    await this.pingOneClient.deleteUser(user.id);
-                    deletedCount++;
-                    this.uiManager.showLoading(true, `Deleted ${deletedCount}/${users.length} users...`);
-                } catch (error) {
-                    errorCount++;
-                    errors.push(`Failed to delete ${user.username || user.id}: ${error.message}`);
-                }
-            }
-
-            this.uiManager.showLoading(false);
-            
-            if (errorCount === 0) {
-                this.uiManager.showNotification(`Successfully deleted ${deletedCount} users from environment.`, 'success');
-            } else {
-                this.uiManager.showNotification(`Deleted ${deletedCount} users. ${errorCount} errors occurred.`, 'warning');
-                console.error('Delete errors:', errors);
-            }
-
-        } catch (error) {
-            this.uiManager.showLoading(false);
-            this.uiManager.showNotification('Error deleting users: ' + error.message, 'error');
+            this.uiManager.showNotification('Error deleting users from population: ' + error.message, 'error');
         }
     }
 
