@@ -1016,13 +1016,13 @@ class App {
                 throw new Error('No users found in CSV file. Please check your file and try again.');
             }
 
-            // Show import progress
-            this.uiManager.showImportStatus(users.length);
+            // Show import progress with population name
+            this.uiManager.showImportStatus(users.length, importOptions.selectedPopulationName);
             this.uiManager.updateImportProgress(0, 0, 'Starting import...', {
                 success: 0,
                 failed: 0,
                 skipped: 0
-            });
+            }, importOptions.selectedPopulationName);
 
             // Get import options
             const importOptions = this.getImportOptions();
@@ -1092,7 +1092,7 @@ class App {
                         throw new Error('Import cancelled by user');
                     }
                     
-                    this.uiManager.updateImportProgress(current, total, `Importing user ${current}/${total}...`, counts);
+                    this.uiManager.updateImportProgress(current, total, `Importing user ${current}/${total}...`, counts, importOptions.selectedPopulationName);
                     
                     // Log progress for debugging
                     if (current % 10 === 0 || current === total) {
@@ -1134,7 +1134,7 @@ class App {
                 success: results.success,
                 failed: results.failed,
                 skipped: results.skipped
-            });
+            }, importOptions.selectedPopulationName);
 
             // Show completion message
             let message = `Import completed! Successfully imported ${results.success} users.`;
@@ -1172,7 +1172,7 @@ class App {
                     success: 0,
                     failed: 0,
                     skipped: 0
-                });
+                }, importOptions.selectedPopulationName);
                 this.uiManager.showNotification('Import cancelled by user', 'warning');
                 return;
             }
@@ -1200,7 +1200,7 @@ class App {
                 success: 0,
                 failed: 0,
                 skipped: 0
-            });
+            }, importOptions.selectedPopulationName);
 
         } finally {
             this.isImporting = false;
@@ -2731,8 +2731,16 @@ class App {
         const useCsvPopulationId = document.getElementById('use-csv-population-id')?.checked || false;
         const useDefaultPopulation = document.getElementById('use-default-population')?.checked || true;
 
+        // Get the population name from the selected option
+        let selectedPopulationName = '';
+        if (selectedPopulationId) {
+            const selectedOption = document.getElementById('import-population-select')?.querySelector(`option[value="${selectedPopulationId}"]`);
+            selectedPopulationName = selectedOption?.textContent || '';
+        }
+
         return {
             selectedPopulationId,
+            selectedPopulationName,
             useCsvPopulationId,
             useDefaultPopulation
         };

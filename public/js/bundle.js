@@ -1,66 +1,14 @@
 (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
-var toPropertyKey = require("./toPropertyKey.js");
-function _defineProperty(e, r, t) {
-  return (r = toPropertyKey(r)) in e ? Object.defineProperty(e, r, {
-    value: t,
-    enumerable: !0,
-    configurable: !0,
-    writable: !0
-  }) : e[r] = t, e;
-}
-module.exports = _defineProperty, module.exports.__esModule = true, module.exports["default"] = module.exports;
-},{"./toPropertyKey.js":4}],2:[function(require,module,exports){
-function _interopRequireDefault(e) {
-  return e && e.__esModule ? e : {
-    "default": e
-  };
-}
-module.exports = _interopRequireDefault, module.exports.__esModule = true, module.exports["default"] = module.exports;
-},{}],3:[function(require,module,exports){
-var _typeof = require("./typeof.js")["default"];
-function toPrimitive(t, r) {
-  if ("object" != _typeof(t) || !t) return t;
-  var e = t[Symbol.toPrimitive];
-  if (void 0 !== e) {
-    var i = e.call(t, r || "default");
-    if ("object" != _typeof(i)) return i;
-    throw new TypeError("@@toPrimitive must return a primitive value.");
-  }
-  return ("string" === r ? String : Number)(t);
-}
-module.exports = toPrimitive, module.exports.__esModule = true, module.exports["default"] = module.exports;
-},{"./typeof.js":5}],4:[function(require,module,exports){
-var _typeof = require("./typeof.js")["default"];
-var toPrimitive = require("./toPrimitive.js");
-function toPropertyKey(t) {
-  var i = toPrimitive(t, "string");
-  return "symbol" == _typeof(i) ? i : i + "";
-}
-module.exports = toPropertyKey, module.exports.__esModule = true, module.exports["default"] = module.exports;
-},{"./toPrimitive.js":3,"./typeof.js":5}],5:[function(require,module,exports){
-function _typeof(o) {
-  "@babel/helpers - typeof";
-
-  return module.exports = _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) {
-    return typeof o;
-  } : function (o) {
-    return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o;
-  }, module.exports.__esModule = true, module.exports["default"] = module.exports, _typeof(o);
-}
-module.exports = _typeof, module.exports.__esModule = true, module.exports["default"] = module.exports;
-},{}],6:[function(require,module,exports){
 "use strict";
 
-var _interopRequireDefault = require("@babel/runtime/helpers/interopRequireDefault");
-var _defineProperty2 = _interopRequireDefault(require("@babel/runtime/helpers/defineProperty"));
 var _logger = require("./modules/logger.js");
 var _uiManager = require("./modules/ui-manager.js");
 var _fileHandler = require("./modules/file-handler.js");
 var _settingsManager = require("./modules/settings-manager.js");
 var _apiFactory = require("./modules/api-factory.js");
 var _versionManager = require("./modules/version-manager.js");
-function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
-function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { (0, _defineProperty2.default)(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; } // Main application entry point
+// Main application entry point
+
 class App {
   constructor() {
     try {
@@ -115,7 +63,7 @@ class App {
 
       // Start async initialization
       this.initializeAsync().catch(error => {
-        const errorMsg = "Failed to initialize application: ".concat(error.message);
+        const errorMsg = `Failed to initialize application: ${error.message}`;
         this.logger.fileLogger.error(errorMsg, {
           error
         });
@@ -138,7 +86,7 @@ class App {
       // Try to show error in UI if possible
       const errorContainer = document.getElementById('app-error');
       if (errorContainer) {
-        errorContainer.textContent = "Initialization error: ".concat(error.message);
+        errorContainer.textContent = `Initialization error: ${error.message}`;
         errorContainer.style.display = 'block';
       }
       throw error; // Re-throw to be caught by the global error handler
@@ -167,8 +115,7 @@ class App {
             try {
               return await origPost(...arguments);
             } catch (error) {
-              var _error$response;
-              if ((error === null || error === void 0 || (_error$response = error.response) === null || _error$response === void 0 ? void 0 : _error$response.status) === 429 && _this.uiManager) {
+              if (error?.response?.status === 429 && _this.uiManager) {
                 _this.uiManager.showRateLimitWarning('You are being rate limited. Please wait and try again.');
               }
               throw error;
@@ -187,8 +134,7 @@ class App {
             }
             return response;
           } catch (error) {
-            var _error$response2;
-            if ((error === null || error === void 0 || (_error$response2 = error.response) === null || _error$response2 === void 0 ? void 0 : _error$response2.status) === 429 && _this.uiManager) {
+            if (error?.response?.status === 429 && _this.uiManager) {
               _this.uiManager.showRateLimitWarning('You are being rate limited. Please wait and try again.');
             }
             throw error;
@@ -196,7 +142,7 @@ class App {
         };
         this.logger.fileLogger.info('Fetch patched for rate limit warnings');
       } catch (error) {
-        const errorMsg = "Failed to initialize API: ".concat(error.message);
+        const errorMsg = `Failed to initialize API: ${error.message}`;
         this.logger.fileLogger.error(errorMsg, {
           error
         });
@@ -214,7 +160,7 @@ class App {
       await this.checkSettingsAndRestore();
       this.logger.fileLogger.info('Application initialization complete');
     } catch (error) {
-      const errorMsg = "Error initializing application: ".concat(error.message);
+      const errorMsg = `Error initializing application: ${error.message}`;
       this.logger.fileLogger.error(errorMsg, {
         error
       });
@@ -268,7 +214,7 @@ class App {
         return false;
       }
     } catch (error) {
-      const errorMsg = "Error checking/restoring settings: ".concat(error.message);
+      const errorMsg = `Error checking/restoring settings: ${error.message}`;
       this.logger.fileLogger.error(errorMsg, {
         error
       });
@@ -684,9 +630,9 @@ class App {
         if (typeof localStorage !== 'undefined') {
           localStorage.setItem('lastView', view);
         }
-        console.log("Switched to view: ".concat(view));
+        console.log(`Switched to view: ${view}`);
       } else {
-        console.error("View not found: ".concat(view));
+        console.error(`View not found: ${view}`);
       }
     } catch (error) {
       console.error('Error showing view:', error);
@@ -730,16 +676,15 @@ class App {
         success: true
       };
     } catch (error) {
-      var _error$response3;
-      const errorMessage = ((_error$response3 = error.response) === null || _error$response3 === void 0 || (_error$response3 = _error$response3.data) === null || _error$response3 === void 0 ? void 0 : _error$response3.message) || error.message || 'Unknown error';
+      const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
       this.logger.fileLogger.error('Error saving settings', {
         error: errorMessage
       });
-      this.uiManager.updateConnectionStatus('error', "\u274C Error: ".concat(errorMessage), false);
+      this.uiManager.updateConnectionStatus('error', `❌ Error: ${errorMessage}`, false);
       if (this.uiManager.showNotification) {
-        this.uiManager.showNotification("Error: ".concat(errorMessage), 'error');
+        this.uiManager.showNotification(`Error: ${errorMessage}`, 'error');
       }
-      this.uiManager.updateSettingsSaveStatus("\u274C Error saving settings: ".concat(errorMessage), 'error');
+      this.uiManager.updateSettingsSaveStatus(`❌ Error saving settings: ${errorMessage}`, 'error');
       return {
         success: false,
         error: errorMessage
@@ -794,9 +739,9 @@ class App {
       this.logger.fileLogger.error('Error getting token', {
         error: errorMessage
       });
-      this.uiManager.updateConnectionStatus('error', "\u274C Error: ".concat(errorMessage), false);
+      this.uiManager.updateConnectionStatus('error', `❌ Error: ${errorMessage}`, false);
       if (this.uiManager.showNotification) {
-        this.uiManager.showNotification("Error getting token: ".concat(errorMessage), 'error');
+        this.uiManager.showNotification(`Error getting token: ${errorMessage}`, 'error');
       }
       return {
         success: false,
@@ -851,7 +796,7 @@ class App {
           this.logger.fileLogger.warn('Failed to get new token with updated settings', {
             error: result.error
           });
-          combinedMsg = "\u26A0\uFE0F Settings saved but new token request failed: ".concat(result.error);
+          combinedMsg = `⚠️ Settings saved but new token request failed: ${result.error}`;
           if (result.warning) {
             combinedMsg += '<br>' + result.warning;
           }
@@ -907,8 +852,7 @@ class App {
         return false;
       }
     } catch (error) {
-      var _error$response4;
-      const errorMessage = ((_error$response4 = error.response) === null || _error$response4 === void 0 || (_error$response4 = _error$response4.data) === null || _error$response4 === void 0 ? void 0 : _error$response4.message) || error.message || 'Unknown error';
+      const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
       this.logger.fileLogger.error('Error checking server connection status', {
         error: errorMessage
       });
@@ -917,7 +861,7 @@ class App {
       let statusMessage = 'Error checking connection status';
       if (error.response) {
         // Server responded with error status
-        statusMessage = "Server error: ".concat(error.response.status, " ").concat(errorMessage);
+        statusMessage = `Server error: ${error.response.status} ${errorMessage}`;
       } else if (error.request) {
         // Request was made but no response received
         statusMessage = 'No response from server. Please check your connection.';
@@ -1042,7 +986,7 @@ class App {
         const errorData = await response.json().catch(() => ({
           message: 'Unknown error'
         }));
-        throw new Error(errorData.message || "Token refresh failed: ".concat(response.status));
+        throw new Error(errorData.message || `Token refresh failed: ${response.status}`);
       }
       const result = await response.json();
       if (result.success) {
@@ -1063,7 +1007,7 @@ class App {
 
       // Update UI status
       this.uiManager.updateConnectionStatus('error', errorMessage);
-      this.uiManager.showNotification("\u274C Token refresh failed: ".concat(errorMessage), 'error');
+      this.uiManager.showNotification(`❌ Token refresh failed: ${errorMessage}`, 'error');
       return {
         success: false,
         error: errorMessage
@@ -1084,13 +1028,13 @@ class App {
         throw new Error('No users found in CSV file. Please check your file and try again.');
       }
 
-      // Show import progress
-      this.uiManager.showImportStatus(users.length);
+      // Show import progress with population name
+      this.uiManager.showImportStatus(users.length, importOptions.selectedPopulationName);
       this.uiManager.updateImportProgress(0, 0, 'Starting import...', {
         success: 0,
         failed: 0,
         skipped: 0
-      });
+      }, importOptions.selectedPopulationName);
 
       // Get import options
       const importOptions = this.getImportOptions();
@@ -1142,7 +1086,7 @@ class App {
         });
 
         // Show warning but continue with valid users
-        this.uiManager.showNotification("".concat(validationResults.invalidUsers.length, " users failed validation and will be skipped. ").concat(validationResults.validUsers.length, " users will be imported."), 'warning');
+        this.uiManager.showNotification(`${validationResults.invalidUsers.length} users failed validation and will be skipped. ${validationResults.validUsers.length} users will be imported.`, 'warning');
       }
 
       // Use only valid users for import
@@ -1158,7 +1102,7 @@ class App {
           if (this.currentImportAbortController.signal.aborted) {
             throw new Error('Import cancelled by user');
           }
-          this.uiManager.updateImportProgress(current, total, "Importing user ".concat(current, "/").concat(total, "..."), counts);
+          this.uiManager.updateImportProgress(current, total, `Importing user ${current}/${total}...`, counts, importOptions.selectedPopulationName);
 
           // Log progress for debugging
           if (current % 10 === 0 || current === total) {
@@ -1199,18 +1143,18 @@ class App {
         success: results.success,
         failed: results.failed,
         skipped: results.skipped
-      });
+      }, importOptions.selectedPopulationName);
 
       // Show completion message
-      let message = "Import completed! Successfully imported ".concat(results.success, " users.");
+      let message = `Import completed! Successfully imported ${results.success} users.`;
       if (results.failed > 0) {
-        message += " ".concat(results.failed, " users failed.");
+        message += ` ${results.failed} users failed.`;
       }
       if (results.skipped > 0) {
-        message += " ".concat(results.skipped, " users were skipped.");
+        message += ` ${results.skipped} users were skipped.`;
       }
       if (results.retries > 0) {
-        message += " ".concat(results.retries, " retries were performed.");
+        message += ` ${results.retries} retries were performed.`;
       }
       this.uiManager.showNotification(message, results.failed > 0 ? 'warning' : 'success');
 
@@ -1235,7 +1179,7 @@ class App {
           success: 0,
           failed: 0,
           skipped: 0
-        });
+        }, importOptions.selectedPopulationName);
         this.uiManager.showNotification('Import cancelled by user', 'warning');
         return;
       }
@@ -1260,7 +1204,7 @@ class App {
         success: 0,
         failed: 0,
         skipped: 0
-      });
+      }, importOptions.selectedPopulationName);
     } finally {
       this.isImporting = false;
       this.currentImportAbortController = null;
@@ -1288,7 +1232,7 @@ class App {
         invalidUsers.push(user);
         errors.push({
           row: i + 1,
-          user: user.email || user.username || "Row ".concat(i + 1),
+          user: user.email || user.username || `Row ${i + 1}`,
           error: validationError
         });
       } else {
@@ -1312,24 +1256,24 @@ class App {
   validateUser(user, rowNumber) {
     // Check required fields
     if (!user.username) {
-      return "Row ".concat(rowNumber, ": User must have a username");
+      return `Row ${rowNumber}: User must have a username`;
     }
 
     // Validate email format if provided
     if (user.email && !this.isValidEmail(user.email)) {
-      return "Row ".concat(rowNumber, ": Invalid email format '").concat(user.email, "'");
+      return `Row ${rowNumber}: Invalid email format '${user.email}'`;
     }
 
     // Validate username format if provided
     if (user.username && !this.isValidUsername(user.username)) {
-      return "Row ".concat(rowNumber, ": Invalid username format '").concat(user.username, "' (no spaces or special characters)");
+      return `Row ${rowNumber}: Invalid username format '${user.username}' (no spaces or special characters)`;
     }
 
     // Validate enabled field if provided
     if (user.enabled !== undefined && user.enabled !== null) {
       const enabledValue = String(user.enabled).toLowerCase();
       if (enabledValue !== 'true' && enabledValue !== 'false' && enabledValue !== '1' && enabledValue !== '0') {
-        return "Row ".concat(rowNumber, ": Enabled field must be true/false or 1/0, got '").concat(user.enabled, "'");
+        return `Row ${rowNumber}: Enabled field must be true/false or 1/0, got '${user.enabled}'`;
       }
     }
     return null;
@@ -1394,12 +1338,12 @@ class App {
     try {
       const results = await this.pingOneClient.deleteUsersFromCsv(this.deleteCsvUsers, {
         onProgress: progress => {
-          this.uiManager.updateDeleteCsvProgress(progress.current, progress.total, "Deleting user ".concat(progress.current, " of ").concat(progress.total, "..."), progress);
+          this.uiManager.updateDeleteCsvProgress(progress.current, progress.total, `Deleting user ${progress.current} of ${progress.total}...`, progress);
         }
       });
-      this.uiManager.updateDeleteCsvProgress(results.total, results.total, "Delete completed. Deleted: ".concat(results.success, ", Failed: ").concat(results.failed, ", Skipped: ").concat(results.skipped), results);
+      this.uiManager.updateDeleteCsvProgress(results.total, results.total, `Delete completed. Deleted: ${results.success}, Failed: ${results.failed}, Skipped: ${results.skipped}`, results);
     } catch (error) {
-      this.uiManager.updateDeleteCsvProgress(0, 0, "Delete failed: ".concat(error.message));
+      this.uiManager.updateDeleteCsvProgress(0, 0, `Delete failed: ${error.message}`);
     } finally {
       this.isDeletingCsv = false;
       this.uiManager.setDeletingCsv(false);
@@ -1446,7 +1390,7 @@ class App {
     for (let i = 1; i < lines.length; i++) {
       const values = this.parseCSVLine(lines[i]);
       if (values.length !== headers.length) {
-        console.warn("Row ".concat(i + 1, " has ").concat(values.length, " values but expected ").concat(headers.length, ", skipping"));
+        console.warn(`Row ${i + 1} has ${values.length} values but expected ${headers.length}, skipping`);
         continue;
       }
       const user = {};
@@ -1495,7 +1439,7 @@ class App {
     document.getElementById('delete-csv-progress').style.width = percent + '%';
     document.getElementById('delete-csv-progress-percent').textContent = percent + '%';
     document.getElementById('delete-csv-progress-text').textContent = message;
-    document.getElementById('delete-csv-progress-count').textContent = "".concat(current, " of ").concat(total, " users");
+    document.getElementById('delete-csv-progress-count').textContent = `${current} of ${total} users`;
     document.getElementById('delete-csv-success-count').textContent = counts.success || 0;
     document.getElementById('delete-csv-failed-count').textContent = counts.failed || 0;
     document.getElementById('delete-csv-skipped-count').textContent = counts.skipped || 0;
@@ -1618,9 +1562,10 @@ class App {
       this.logger.warn('No settings provided to populate form');
       return;
     }
-    this.logger.debug('Populating settings form with:', _objectSpread(_objectSpread({}, settings), {}, {
+    this.logger.debug('Populating settings form with:', {
+      ...settings,
       apiSecret: settings.apiSecret ? '***' : '[empty]'
-    }));
+    });
     try {
       // Define form fields and their corresponding settings keys
       const fields = {
@@ -1670,16 +1615,16 @@ class App {
           }
           setFields.push(id);
         } catch (fieldError) {
-          this.logger.error("Error setting field ".concat(id, ":"), fieldError);
+          this.logger.error(`Error setting field ${id}:`, fieldError);
         }
       }
 
       // Log results
       if (setFields.length > 0) {
-        this.logger.debug("Successfully set ".concat(setFields.length, " form fields"));
+        this.logger.debug(`Successfully set ${setFields.length} form fields`);
       }
       if (missingFields.length > 0) {
-        this.logger.debug("Could not find ".concat(missingFields.length, " form fields:"), missingFields);
+        this.logger.debug(`Could not find ${missingFields.length} form fields:`, missingFields);
       }
 
       // Update connection status display if status element exists
@@ -1689,7 +1634,7 @@ class App {
         const message = settings.connectionMessage || 'Not connected';
 
         // Update status class
-        statusElement.className = "connection-status status-".concat(status);
+        statusElement.className = `connection-status status-${status}`;
 
         // Update status icon and message
         const iconMap = {
@@ -1708,7 +1653,7 @@ class App {
       }
       this.logger.debug('Finished populating settings form');
     } catch (error) {
-      const errorMsg = "Error populating settings form: ".concat(error.message);
+      const errorMsg = `Error populating settings form: ${error.message}`;
       this.logger.error(errorMsg, error);
       this.uiManager.showError('Form Error', 'Failed to populate settings form');
       throw error;
@@ -1747,9 +1692,9 @@ class App {
       // Check server connection status
       await this.checkServerConnectionStatus();
       this.logger.fileLogger.info('Application initialization complete');
-      console.log("PingOne Import Tool ".concat(this.versionManager.getFormattedVersion(), " initialized"));
+      console.log(`PingOne Import Tool ${this.versionManager.getFormattedVersion()} initialized`);
     } catch (error) {
-      const errorMsg = "Failed to initialize application: ".concat(error.message);
+      const errorMsg = `Failed to initialize application: ${error.message}`;
       this.logger.fileLogger.error(errorMsg, {
         error
       });
@@ -1843,7 +1788,7 @@ class App {
       });
       const results = await this.pingOneClient.modifyUsersFromCsv(this.modifyCsvUsers, {
         onProgress: progress => {
-          this.uiManager.updateModifyProgress(progress.current, progress.total, "Modifying user ".concat(progress.current, " of ").concat(progress.total, "..."), progress);
+          this.uiManager.updateModifyProgress(progress.current, progress.total, `Modifying user ${progress.current} of ${progress.total}...`, progress);
         },
         createIfNotExists: modifyOptions.createIfNotExists,
         updateUserStatus: modifyOptions.updateUserStatus,
@@ -1851,9 +1796,9 @@ class App {
         defaultEnabled: modifyOptions.defaultEnabled,
         generatePasswords: modifyOptions.generatePasswords
       });
-      this.uiManager.updateModifyProgress(results.total, results.total, "Modify completed. Modified: ".concat(results.modified, ", Created: ").concat(results.created || 0, ", Failed: ").concat(results.failed, ", Skipped: ").concat(results.skipped, ", No Changes: ").concat(results.noChanges), results);
+      this.uiManager.updateModifyProgress(results.total, results.total, `Modify completed. Modified: ${results.modified}, Created: ${results.created || 0}, Failed: ${results.failed}, Skipped: ${results.skipped}, No Changes: ${results.noChanges}`, results);
     } catch (error) {
-      this.uiManager.updateModifyProgress(0, 0, "Modify failed: ".concat(error.message));
+      this.uiManager.updateModifyProgress(0, 0, `Modify failed: ${error.message}`);
     } finally {
       this.isModifying = false;
       this.uiManager.setModifying(false);
@@ -1877,7 +1822,7 @@ class App {
    */
   generateSequentialFilename(baseName, extension) {
     // Get the current counter from localStorage or start at 1
-    const counterKey = "export_counter_".concat(baseName);
+    const counterKey = `export_counter_${baseName}`;
     let counter = parseInt(localStorage.getItem(counterKey) || '0') + 1;
 
     // Save the updated counter
@@ -1885,7 +1830,7 @@ class App {
 
     // Generate filename with sequential number
     const date = new Date().toISOString().split('T')[0];
-    return "".concat(baseName, "-").concat(date, "-").concat(counter.toString().padStart(3, '0'), ".").concat(extension);
+    return `${baseName}-${date}-${counter.toString().padStart(3, '0')}.${extension}`;
   }
 
   // Export functionality
@@ -1934,7 +1879,7 @@ class App {
       });
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || "Export failed with status ".concat(response.status));
+        throw new Error(errorData.message || `Export failed with status ${response.status}`);
       }
       if (format === 'json') {
         // Handle JSON response
@@ -1949,7 +1894,7 @@ class App {
 
         // Log ignored users if any
         if ((data.ignored || 0) > 0) {
-          const msg = "Ignored ".concat(data.ignored, " disabled user(s) during export.");
+          const msg = `Ignored ${data.ignored} disabled user(s) during export.`;
           this.logger.info(msg);
           this.logger.fileLogger.info(msg);
           this.uiManager.showInfo(msg);
@@ -1983,7 +1928,7 @@ class App {
 
         // Log ignored users if any
         if (ignoredCount > 0) {
-          const msg = "Ignored ".concat(ignoredCount, " disabled user(s) during export.");
+          const msg = `Ignored ${ignoredCount} disabled user(s) during export.`;
           this.logger.info(msg);
           this.logger.fileLogger.info(msg);
           this.uiManager.showInfo(msg);
@@ -2011,7 +1956,7 @@ class App {
         this.logger.fileLogger.info('Export cancelled by user');
         this.uiManager.showInfo('Export cancelled');
       } else {
-        const errorMsg = "Export failed: ".concat(error.message);
+        const errorMsg = `Export failed: ${error.message}`;
         this.logger.fileLogger.error(errorMsg, {
           error
         });
@@ -2054,7 +1999,7 @@ class App {
             types: [{
               description: mimeType === 'application/json' ? 'JSON File' : 'CSV File',
               accept: {
-                [mimeType]: [".".concat(fileName.split('.').pop())]
+                [mimeType]: [`.${fileName.split('.').pop()}`]
               }
             }]
           };
@@ -2069,7 +2014,7 @@ class App {
           fileSaved = true;
 
           // Show success message to user
-          this.uiManager.showSuccess("File saved successfully: ".concat(fileName));
+          this.uiManager.showSuccess(`File saved successfully: ${fileName}`);
         } catch (fsError) {
           // If File System Access API fails, fall back to download
           this.logger.fileLogger.warn('File System Access API failed, falling back to download', {
@@ -2100,7 +2045,7 @@ class App {
         fileSaved = true;
 
         // Show success message to user
-        this.uiManager.showSuccess("File downloaded successfully: ".concat(fileName));
+        this.uiManager.showSuccess(`File downloaded successfully: ${fileName}`);
       }
 
       // After successful save, attempt to open the file with preferred application
@@ -2113,7 +2058,7 @@ class App {
         fileName,
         mimeType
       });
-      throw new Error("Failed to save file: ".concat(error.message));
+      throw new Error(`Failed to save file: ${error.message}`);
     }
   }
   async loadPopulationsForExport() {
@@ -2144,7 +2089,7 @@ class App {
       // Get populations from PingOne
       const response = await fetch('/api/pingone/populations');
       if (!response.ok) {
-        throw new Error("Failed to fetch populations: ".concat(response.status));
+        throw new Error(`Failed to fetch populations: ${response.status}`);
       }
       const populations = await response.json();
       console.log('Populations loaded:', populations);
@@ -2222,7 +2167,7 @@ class App {
       // Get populations from PingOne
       const response = await fetch('/api/pingone/populations');
       if (!response.ok) {
-        throw new Error("Failed to fetch populations: ".concat(response.status));
+        throw new Error(`Failed to fetch populations: ${response.status}`);
       }
       const populations = await response.json();
       console.log('Import populations loaded:', populations);
@@ -2259,10 +2204,9 @@ class App {
    * Save export preferences to localStorage
    */
   saveExportPreferences() {
-    var _document$getElementB, _document$getElementB2, _document$getElementB3;
-    const openAfterExport = ((_document$getElementB = document.getElementById('open-after-export')) === null || _document$getElementB === void 0 ? void 0 : _document$getElementB.checked) || false;
-    const preferredCsvApp = ((_document$getElementB2 = document.getElementById('preferred-csv-app')) === null || _document$getElementB2 === void 0 ? void 0 : _document$getElementB2.value) || '';
-    const customAppPath = ((_document$getElementB3 = document.getElementById('custom-app-path')) === null || _document$getElementB3 === void 0 ? void 0 : _document$getElementB3.value) || '';
+    const openAfterExport = document.getElementById('open-after-export')?.checked || false;
+    const preferredCsvApp = document.getElementById('preferred-csv-app')?.value || '';
+    const customAppPath = document.getElementById('custom-app-path')?.value || '';
     const preferences = {
       openAfterExport,
       preferredCsvApp,
@@ -2363,7 +2307,7 @@ class App {
         error,
         fileName
       });
-      this.uiManager.showWarning('File Open Warning', "Could not open file with preferred application: ".concat(error.message, ". File was saved successfully."));
+      this.uiManager.showWarning('File Open Warning', `Could not open file with preferred application: ${error.message}. File was saved successfully.`);
     }
   }
 
@@ -2376,7 +2320,7 @@ class App {
     if (isMac) {
       // On macOS, browsers can't directly launch applications due to security restrictions
       // Show macOS-specific instructions
-      this.uiManager.showInfo('File Download Complete (macOS)', "File ".concat(fileName, " has been downloaded successfully.\n\n") + "To open the file on macOS:\n" + "1. Check your Downloads folder\n" + "2. Double-click the file to open with your default application\n" + "3. Or right-click and select \"Open with\" to choose a specific application\n" + "4. If the file doesn't open, right-click and select \"Open\" (this bypasses Gatekeeper)\n\n" + "\uD83D\uDCA1 Tip: You can also drag the file to your preferred application's icon in the Dock.");
+      this.uiManager.showInfo('File Download Complete (macOS)', `File ${fileName} has been downloaded successfully.\n\n` + `To open the file on macOS:\n` + `1. Check your Downloads folder\n` + `2. Double-click the file to open with your default application\n` + `3. Or right-click and select "Open with" to choose a specific application\n` + `4. If the file doesn't open, right-click and select "Open" (this bypasses Gatekeeper)\n\n` + `💡 Tip: You can also drag the file to your preferred application's icon in the Dock.`);
       return;
     }
 
@@ -2384,7 +2328,7 @@ class App {
     try {
       const newWindow = window.open(url, '_blank');
       if (newWindow) {
-        this.uiManager.showSuccess("File opened in new tab: ".concat(fileName));
+        this.uiManager.showSuccess(`File opened in new tab: ${fileName}`);
         return;
       }
     } catch (error) {
@@ -2404,15 +2348,15 @@ class App {
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
     if (isMac) {
       // On macOS, provide specific instructions for Excel
-      this.uiManager.showInfo('Microsoft Excel (macOS)', "File ".concat(fileName, " has been downloaded successfully.\n\n") + "To open with Microsoft Excel on macOS:\n" + "1. Open Microsoft Excel\n" + "2. Click \"File\" > \"Open\"\n" + "3. Navigate to your Downloads folder\n" + "4. Select the file and click \"Open\"\n\n" + "\uD83D\uDCA1 Alternative: Right-click the file and select \"Open with\" > \"Microsoft Excel\"");
+      this.uiManager.showInfo('Microsoft Excel (macOS)', `File ${fileName} has been downloaded successfully.\n\n` + `To open with Microsoft Excel on macOS:\n` + `1. Open Microsoft Excel\n` + `2. Click "File" > "Open"\n` + `3. Navigate to your Downloads folder\n` + `4. Select the file and click "Open"\n\n` + `💡 Alternative: Right-click the file and select "Open with" > "Microsoft Excel"`);
       return;
     }
 
     // For non-macOS systems, try to use the ms-excel protocol
     try {
-      const excelUrl = "ms-excel:ofe|u|".concat(url);
+      const excelUrl = `ms-excel:ofe|u|${url}`;
       window.location.href = excelUrl;
-      this.uiManager.showSuccess("Opening ".concat(fileName, " with Microsoft Excel"));
+      this.uiManager.showSuccess(`Opening ${fileName} with Microsoft Excel`);
     } catch (error) {
       this.logger.fileLogger.warn('Failed to open with Excel protocol', {
         error
@@ -2427,7 +2371,7 @@ class App {
   async openWithGoogleSheets(content, fileName) {
     try {
       // For Google Sheets, we need to upload the file or provide instructions
-      this.uiManager.showInfo('Google Sheets Integration', "File ".concat(fileName, " has been downloaded. To open in Google Sheets:\n\n") + "1. Go to sheets.google.com\n" + "2. Click \"File\" > \"Import\"\n" + "3. Select the downloaded file\n" + "4. Choose your import settings and click \"Import data\"");
+      this.uiManager.showInfo('Google Sheets Integration', `File ${fileName} has been downloaded. To open in Google Sheets:\n\n` + `1. Go to sheets.google.com\n` + `2. Click "File" > "Import"\n` + `3. Select the downloaded file\n` + `4. Choose your import settings and click "Import data"`);
     } catch (error) {
       this.logger.fileLogger.warn('Failed to provide Google Sheets instructions', {
         error
@@ -2443,7 +2387,7 @@ class App {
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
     if (isMac) {
       // On macOS, provide specific instructions for LibreOffice
-      this.uiManager.showInfo('LibreOffice Calc (macOS)', "File ".concat(fileName, " has been downloaded successfully.\n\n") + "To open with LibreOffice Calc on macOS:\n" + "1. Open LibreOffice Calc (from Applications folder)\n" + "2. Click \"File\" > \"Open\"\n" + "3. Navigate to your Downloads folder\n" + "4. Select the file and click \"Open\"\n\n" + "\uD83D\uDCA1 Alternative: Right-click the file and select \"Open with\" > \"LibreOffice Calc\"\n" + "\uD83D\uDCA1 Note: If LibreOffice isn't installed, you can download it from libreoffice.org");
+      this.uiManager.showInfo('LibreOffice Calc (macOS)', `File ${fileName} has been downloaded successfully.\n\n` + `To open with LibreOffice Calc on macOS:\n` + `1. Open LibreOffice Calc (from Applications folder)\n` + `2. Click "File" > "Open"\n` + `3. Navigate to your Downloads folder\n` + `4. Select the file and click "Open"\n\n` + `💡 Alternative: Right-click the file and select "Open with" > "LibreOffice Calc"\n` + `💡 Note: If LibreOffice isn't installed, you can download it from libreoffice.org`);
       return;
     }
 
@@ -2452,7 +2396,7 @@ class App {
       await this.openWithSystemDefault(url, fileName);
 
       // Show additional instructions for LibreOffice
-      this.uiManager.showInfo('LibreOffice Calc', "File ".concat(fileName, " has been downloaded. If LibreOffice Calc doesn't open automatically:\n\n") + "1. Open LibreOffice Calc\n" + "2. Click \"File\" > \"Open\"\n" + "3. Select the downloaded file\n" + "4. Choose your import settings if prompted");
+      this.uiManager.showInfo('LibreOffice Calc', `File ${fileName} has been downloaded. If LibreOffice Calc doesn't open automatically:\n\n` + `1. Open LibreOffice Calc\n` + `2. Click "File" > "Open"\n` + `3. Select the downloaded file\n` + `4. Choose your import settings if prompted`);
     } catch (error) {
       this.logger.fileLogger.warn('Failed to open with LibreOffice', {
         error
@@ -2468,7 +2412,7 @@ class App {
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
     if (isMac) {
       // On macOS, provide specific instructions for Numbers
-      this.uiManager.showInfo('Apple Numbers (macOS)', "File ".concat(fileName, " has been downloaded successfully.\n\n") + "To open with Apple Numbers on macOS:\n" + "1. Open Numbers (from Applications folder or Spotlight)\n" + "2. Click \"File\" > \"Open\"\n" + "3. Navigate to your Downloads folder\n" + "4. Select the file and click \"Open\"\n\n" + "\uD83D\uDCA1 Alternative: Right-click the file and select \"Open with\" > \"Numbers\"\n" + "\uD83D\uDCA1 Tip: You can also drag the file to the Numbers icon in your Dock");
+      this.uiManager.showInfo('Apple Numbers (macOS)', `File ${fileName} has been downloaded successfully.\n\n` + `To open with Apple Numbers on macOS:\n` + `1. Open Numbers (from Applications folder or Spotlight)\n` + `2. Click "File" > "Open"\n` + `3. Navigate to your Downloads folder\n` + `4. Select the file and click "Open"\n\n` + `💡 Alternative: Right-click the file and select "Open with" > "Numbers"\n` + `💡 Tip: You can also drag the file to the Numbers icon in your Dock`);
       return;
     }
 
@@ -2477,7 +2421,7 @@ class App {
       await this.openWithSystemDefault(url, fileName);
 
       // Show additional instructions for Numbers
-      this.uiManager.showInfo('Apple Numbers', "File ".concat(fileName, " has been downloaded. If Numbers doesn't open automatically:\n\n") + "1. Open Numbers\n" + "2. Click \"File\" > \"Open\"\n" + "3. Select the downloaded file\n" + "4. Choose your import settings if prompted");
+      this.uiManager.showInfo('Apple Numbers', `File ${fileName} has been downloaded. If Numbers doesn't open automatically:\n\n` + `1. Open Numbers\n` + `2. Click "File" > "Open"\n` + `3. Select the downloaded file\n` + `4. Choose your import settings if prompted`);
     } catch (error) {
       this.logger.fileLogger.warn('Failed to open with Numbers', {
         error
@@ -2493,7 +2437,7 @@ class App {
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
     if (isMac) {
       // On macOS, provide specific instructions for text editors
-      this.uiManager.showInfo('Text Editor (macOS)', "File ".concat(fileName, " has been downloaded successfully.\n\n") + "To open with a text editor on macOS:\n" + "1. Right-click the file in Finder\n" + "2. Select \"Open with\" > \"TextEdit\" (or your preferred editor)\n" + "3. Or drag the file to TextEdit in your Applications folder\n\n" + "\uD83D\uDCA1 Popular text editors on macOS:\n" + "\u2022 TextEdit (built-in)\n" + "\u2022 Visual Studio Code\n" + "\u2022 Sublime Text\n" + "\u2022 BBEdit");
+      this.uiManager.showInfo('Text Editor (macOS)', `File ${fileName} has been downloaded successfully.\n\n` + `To open with a text editor on macOS:\n` + `1. Right-click the file in Finder\n` + `2. Select "Open with" > "TextEdit" (or your preferred editor)\n` + `3. Or drag the file to TextEdit in your Applications folder\n\n` + `💡 Popular text editors on macOS:\n` + `• TextEdit (built-in)\n` + `• Visual Studio Code\n` + `• Sublime Text\n` + `• BBEdit`);
       return;
     }
 
@@ -2501,7 +2445,7 @@ class App {
     try {
       const newWindow = window.open(url, '_blank');
       if (newWindow) {
-        this.uiManager.showSuccess("File opened in text editor: ".concat(fileName));
+        this.uiManager.showSuccess(`File opened in text editor: ${fileName}`);
         return;
       }
     } catch (error) {
@@ -2511,7 +2455,7 @@ class App {
     }
 
     // Show instructions
-    this.uiManager.showInfo('Text Editor', "File ".concat(fileName, " has been downloaded. To open in your preferred text editor:\n\n") + "1. Right-click the downloaded file\n" + "2. Select \"Open with\" > \"Text Editor\" (or your preferred editor)\n" + "3. The CSV data will be displayed as plain text");
+    this.uiManager.showInfo('Text Editor', `File ${fileName} has been downloaded. To open in your preferred text editor:\n\n` + `1. Right-click the downloaded file\n` + `2. Select "Open with" > "Text Editor" (or your preferred editor)\n` + `3. The CSV data will be displayed as plain text`);
   }
 
   /**
@@ -2525,12 +2469,12 @@ class App {
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       if (isMac) {
         // On macOS, provide specific instructions for custom applications
-        this.uiManager.showInfo('Custom Application (macOS)', "File ".concat(fileName, " has been downloaded successfully.\n\n") + "To open with your custom application on macOS:\n" + "1. Right-click the file in Finder\n" + "2. Select \"Open with\" > \"Choose another app\"\n" + "3. Navigate to: ".concat(customPath, "\n") + "4. Select your application and click \"Open\"\n\n" + "\uD83D\uDCA1 Alternative: Drag the file to your application's icon in the Dock\n" + "\uD83D\uDCA1 Note: You may need to hold Option (\u2325) when selecting \"Open with\" to see all applications");
+        this.uiManager.showInfo('Custom Application (macOS)', `File ${fileName} has been downloaded successfully.\n\n` + `To open with your custom application on macOS:\n` + `1. Right-click the file in Finder\n` + `2. Select "Open with" > "Choose another app"\n` + `3. Navigate to: ${customPath}\n` + `4. Select your application and click "Open"\n\n` + `💡 Alternative: Drag the file to your application's icon in the Dock\n` + `💡 Note: You may need to hold Option (⌥) when selecting "Open with" to see all applications`);
         return;
       }
 
       // For non-macOS systems, show instructions
-      this.uiManager.showInfo('Custom Application', "File ".concat(fileName, " has been downloaded. To open with your custom application:\n\n") + "1. Locate the downloaded file\n" + "2. Right-click and select \"Open with\" > \"Choose another app\"\n" + "3. Navigate to: ".concat(customPath, "\n") + "4. Select your application and click \"Open\"");
+      this.uiManager.showInfo('Custom Application', `File ${fileName} has been downloaded. To open with your custom application:\n\n` + `1. Locate the downloaded file\n` + `2. Right-click and select "Open with" > "Choose another app"\n` + `3. Navigate to: ${customPath}\n` + `4. Select your application and click "Open"`);
     } catch (error) {
       this.logger.fileLogger.warn('Failed to open with custom app', {
         error
@@ -2543,7 +2487,7 @@ class App {
    * Show general file open instructions
    */
   showFileOpenInstructions(fileName) {
-    this.uiManager.showInfo('File Download Complete', "File ".concat(fileName, " has been downloaded successfully.\n\n") + "To open the file:\n" + "1. Check your Downloads folder\n" + "2. Double-click the file to open with your default application\n" + "3. Or right-click and select \"Open with\" to choose a specific application");
+    this.uiManager.showInfo('File Download Complete', `File ${fileName} has been downloaded successfully.\n\n` + `To open the file:\n` + `1. Check your Downloads folder\n` + `2. Double-click the file to open with your default application\n` + `3. Or right-click and select "Open with" to choose a specific application`);
   }
 
   /**
@@ -2613,12 +2557,11 @@ class App {
    * Get modify options from UI
    */
   getModifyOptions() {
-    var _document$getElementB4, _document$getElementB5, _document$getElementB6, _document$getElementB7, _document$getElementB8;
-    const createIfNotExists = ((_document$getElementB4 = document.getElementById('create-if-not-exists')) === null || _document$getElementB4 === void 0 ? void 0 : _document$getElementB4.checked) || false;
-    const updateUserStatus = ((_document$getElementB5 = document.getElementById('update-user-status')) === null || _document$getElementB5 === void 0 ? void 0 : _document$getElementB5.checked) || false;
-    const defaultPopulationId = ((_document$getElementB6 = document.getElementById('default-population-select')) === null || _document$getElementB6 === void 0 ? void 0 : _document$getElementB6.value) || '';
-    const defaultEnabled = ((_document$getElementB7 = document.getElementById('default-enabled-status')) === null || _document$getElementB7 === void 0 ? void 0 : _document$getElementB7.value) || 'true';
-    const generatePasswords = ((_document$getElementB8 = document.getElementById('generate-passwords')) === null || _document$getElementB8 === void 0 ? void 0 : _document$getElementB8.checked) || true;
+    const createIfNotExists = document.getElementById('create-if-not-exists')?.checked || false;
+    const updateUserStatus = document.getElementById('update-user-status')?.checked || false;
+    const defaultPopulationId = document.getElementById('default-population-select')?.value || '';
+    const defaultEnabled = document.getElementById('default-enabled-status')?.value || 'true';
+    const generatePasswords = document.getElementById('generate-passwords')?.checked || true;
     return {
       createIfNotExists,
       updateUserStatus,
@@ -2628,12 +2571,19 @@ class App {
     };
   }
   getImportOptions() {
-    var _document$getElementB9, _document$getElementB0, _document$getElementB1;
-    const selectedPopulationId = ((_document$getElementB9 = document.getElementById('import-population-select')) === null || _document$getElementB9 === void 0 ? void 0 : _document$getElementB9.value) || '';
-    const useCsvPopulationId = ((_document$getElementB0 = document.getElementById('use-csv-population-id')) === null || _document$getElementB0 === void 0 ? void 0 : _document$getElementB0.checked) || false;
-    const useDefaultPopulation = ((_document$getElementB1 = document.getElementById('use-default-population')) === null || _document$getElementB1 === void 0 ? void 0 : _document$getElementB1.checked) || true;
+    const selectedPopulationId = document.getElementById('import-population-select')?.value || '';
+    const useCsvPopulationId = document.getElementById('use-csv-population-id')?.checked || false;
+    const useDefaultPopulation = document.getElementById('use-default-population')?.checked || true;
+
+    // Get the population name from the selected option
+    let selectedPopulationName = '';
+    if (selectedPopulationId) {
+      const selectedOption = document.getElementById('import-population-select')?.querySelector(`option[value="${selectedPopulationId}"]`);
+      selectedPopulationName = selectedOption?.textContent || '';
+    }
     return {
       selectedPopulationId,
+      selectedPopulationName,
       useCsvPopulationId,
       useDefaultPopulation
     };
@@ -2709,12 +2659,12 @@ class App {
       this.updateDeleteCsvButtonState();
 
       // Show success message
-      this.uiManager.showNotification("\u2705 Successfully processed ".concat(users.length, " users for deletion"), 'success');
+      this.uiManager.showNotification(`✅ Successfully processed ${users.length} users for deletion`, 'success');
     } catch (error) {
       this.logger.fileLogger.error('Error processing delete CSV file', {
         error: error.message
       });
-      this.uiManager.showNotification("Error processing file: ".concat(error.message), 'error');
+      this.uiManager.showNotification(`Error processing file: ${error.message}`, 'error');
     } finally {
       this.uiManager.showLoading(false);
     }
@@ -2744,26 +2694,25 @@ class App {
       this.updateModifyCsvButtonState();
 
       // Show success message
-      this.uiManager.showNotification("\u2705 Successfully processed ".concat(users.length, " users for modification"), 'success');
+      this.uiManager.showNotification(`✅ Successfully processed ${users.length} users for modification`, 'success');
     } catch (error) {
       this.logger.fileLogger.error('Error processing modify CSV file', {
         error: error.message
       });
-      this.uiManager.showNotification("Error processing file: ".concat(error.message), 'error');
+      this.uiManager.showNotification(`Error processing file: ${error.message}`, 'error');
     } finally {
       this.uiManager.showLoading(false);
     }
   }
   updateImportButtonState() {
-    var _document$getElementB10, _document$getElementB11, _document$getElementB12;
     // Check if we have users to import
     const users = this.fileHandler.getParsedUsers();
     const hasUsers = users && users.length > 0;
 
     // Check if population choice has been made
-    const selectedPopulationId = ((_document$getElementB10 = document.getElementById('import-population-select')) === null || _document$getElementB10 === void 0 ? void 0 : _document$getElementB10.value) || '';
-    const useDefaultPopulation = ((_document$getElementB11 = document.getElementById('use-default-population')) === null || _document$getElementB11 === void 0 ? void 0 : _document$getElementB11.checked) || false;
-    const useCsvPopulationId = ((_document$getElementB12 = document.getElementById('use-csv-population-id')) === null || _document$getElementB12 === void 0 ? void 0 : _document$getElementB12.checked) || false;
+    const selectedPopulationId = document.getElementById('import-population-select')?.value || '';
+    const useDefaultPopulation = document.getElementById('use-default-population')?.checked || false;
+    const useCsvPopulationId = document.getElementById('use-csv-population-id')?.checked || false;
     const hasSelectedPopulation = selectedPopulationId && selectedPopulationId.trim() !== '';
     const hasPopulationChoice = hasSelectedPopulation || useDefaultPopulation || useCsvPopulationId;
 
@@ -2871,7 +2820,7 @@ class App {
     const populationId = populationSelect.value;
     const populationName = populationSelect.options[populationSelect.selectedIndex].text;
     // Use modal instead of confirm
-    const confirmed = await this.confirmDeleteAction("<strong>\u26A0\uFE0F WARNING:</strong> This will permanently delete <b>ALL</b> users in the population <b>\"".concat(populationName, "\"</b>. This action cannot be undone.<br><br>Type <b>DELETE</b> to confirm."));
+    const confirmed = await this.confirmDeleteAction(`<strong>⚠️ WARNING:</strong> This will permanently delete <b>ALL</b> users in the population <b>"${populationName}"</b>. This action cannot be undone.<br><br>Type <b>DELETE</b> to confirm.`);
     if (!confirmed) return;
     this.isDeletingPopulation = true;
     this.updatePopulationDeleteButtonState();
@@ -2886,7 +2835,7 @@ class App {
       });
       const users = await this.pingOneClient.getUsersByPopulation(populationId);
       if (!users || users.length === 0) {
-        this.uiManager.showNotification("No users found in population: ".concat(populationName), 'info');
+        this.uiManager.showNotification(`No users found in population: ${populationName}`, 'info');
         this.resetPopulationDeleteState();
         return;
       }
@@ -2905,7 +2854,7 @@ class App {
         populationName,
         error: error.message
       });
-      this.uiManager.showNotification("Failed to delete users from population: ".concat(error.message), 'error');
+      this.uiManager.showNotification(`Failed to delete users from population: ${error.message}`, 'error');
       this.resetPopulationDeleteState();
     }
   }
@@ -2915,7 +2864,7 @@ class App {
    */
   async showPopulationDeleteConfirmation(populationName) {
     return new Promise(resolve => {
-      const confirmed = confirm("\u26A0\uFE0F WARNING: This action will permanently delete ALL users in the population \"".concat(populationName, "\".\n\n") + "This action cannot be undone. Are you absolutely sure you want to proceed?\n\n" + "Type \"DELETE\" to confirm:");
+      const confirmed = confirm(`⚠️ WARNING: This action will permanently delete ALL users in the population "${populationName}".\n\n` + `This action cannot be undone. Are you absolutely sure you want to proceed?\n\n` + `Type "DELETE" to confirm:`);
       if (confirmed) {
         const userInput = prompt('Type "DELETE" to confirm the deletion of all users:');
         resolve(userInput === 'DELETE');
@@ -2948,7 +2897,7 @@ class App {
 
         // Update progress
         const progress = (i + 1) / totalUsers * 100;
-        this.updatePopulationDeleteProgress(i + 1, totalUsers, "Deleting user ".concat(i + 1, " of ").concat(totalUsers, "..."), {
+        this.updatePopulationDeleteProgress(i + 1, totalUsers, `Deleting user ${i + 1} of ${totalUsers}...`, {
           success: deletedCount,
           failed: failedCount,
           skipped: skippedCount
@@ -2966,7 +2915,7 @@ class App {
         // Rate limiting
         await this.delay(1000 / this.settings.rateLimit);
       } catch (error) {
-        console.error("Failed to delete user ".concat(user.username, ":"), error);
+        console.error(`Failed to delete user ${user.username}:`, error);
         this.logger.fileLogger.error('Failed to delete user', {
           userId: user.id,
           username: user.username,
@@ -2985,7 +2934,7 @@ class App {
     });
 
     // Show completion message
-    const message = "Population deletion completed: ".concat(deletedCount, " deleted, ").concat(failedCount, " failed, ").concat(skippedCount, " skipped");
+    const message = `Population deletion completed: ${deletedCount} deleted, ${failedCount} failed, ${skippedCount} skipped`;
     this.uiManager.showNotification(message, deletedCount > 0 ? 'success' : 'warning');
     this.logger.fileLogger.info('Population deletion completed', {
       populationName,
@@ -3010,12 +2959,12 @@ class App {
     const skippedCount = document.getElementById('population-delete-skipped-count');
     if (progressBar) {
       const percent = total > 0 ? current / total * 100 : 0;
-      progressBar.style.width = "".concat(percent, "%");
+      progressBar.style.width = `${percent}%`;
       progressBar.setAttribute('aria-valuenow', percent);
     }
-    if (progressPercent) progressPercent.textContent = "".concat(Math.round(current / total * 100), "%");
+    if (progressPercent) progressPercent.textContent = `${Math.round(current / total * 100)}%`;
     if (progressText) progressText.textContent = message;
-    if (progressCount) progressCount.textContent = "".concat(current, " of ").concat(total, " users");
+    if (progressCount) progressCount.textContent = `${current} of ${total} users`;
     if (successCount) successCount.textContent = counts.success || 0;
     if (failedCount) failedCount.textContent = counts.failed || 0;
     if (skippedCount) skippedCount.textContent = counts.skipped || 0;
@@ -3102,7 +3051,7 @@ class App {
       return;
     }
     // Confirm again before proceeding
-    const confirmed = await this.confirmDeleteAction("<strong>\u26A0\uFE0F FINAL WARNING:</strong> This will permanently delete <b>ALL</b> users in your PingOne environment (".concat(users.length, " users). This action cannot be undone.<br><br>Type <b>DELETE</b> to confirm."));
+    const confirmed = await this.confirmDeleteAction(`<strong>⚠️ FINAL WARNING:</strong> This will permanently delete <b>ALL</b> users in your PingOne environment (${users.length} users). This action cannot be undone.<br><br>Type <b>DELETE</b> to confirm.`);
     if (!confirmed) return;
     // Show progress UI
     this.uiManager.showLoading(true, 'Deleting all users in environment...');
@@ -3115,10 +3064,10 @@ class App {
       } catch (err) {
         failed++;
       }
-      this.uiManager.showLoading(true, "Deleting user ".concat(i + 1, " of ").concat(users.length, "... (").concat(deleted, " deleted, ").concat(failed, " failed)"));
+      this.uiManager.showLoading(true, `Deleting user ${i + 1} of ${users.length}... (${deleted} deleted, ${failed} failed)`);
     }
     this.uiManager.showLoading(false);
-    this.uiManager.showNotification("Environment delete completed: ".concat(deleted, " deleted, ").concat(failed, " failed"), deleted > 0 ? 'success' : 'warning');
+    this.uiManager.showNotification(`Environment delete completed: ${deleted} deleted, ${failed} failed`, deleted > 0 ? 'success' : 'warning');
   }
   setupDeletePage() {
     // CSV Delete Section
@@ -3266,7 +3215,7 @@ class App {
         this.uiManager.showNotification('No valid users found in CSV file.', 'error');
         return;
       }
-      this.uiManager.showLoading(true, "Deleting ".concat(users.length, " users..."));
+      this.uiManager.showLoading(true, `Deleting ${users.length} users...`);
       let deletedCount = 0;
       let errorCount = 0;
       const errors = [];
@@ -3275,17 +3224,17 @@ class App {
         try {
           await this.pingOneClient.deleteUser(user.username);
           deletedCount++;
-          this.uiManager.showLoading(true, "Deleted ".concat(deletedCount, "/").concat(users.length, " users..."));
+          this.uiManager.showLoading(true, `Deleted ${deletedCount}/${users.length} users...`);
         } catch (error) {
           errorCount++;
-          errors.push("Failed to delete ".concat(user.username, ": ").concat(error.message));
+          errors.push(`Failed to delete ${user.username}: ${error.message}`);
         }
       }
       this.uiManager.showLoading(false);
       if (errorCount === 0) {
-        this.uiManager.showNotification("Successfully deleted ".concat(deletedCount, " users."), 'success');
+        this.uiManager.showNotification(`Successfully deleted ${deletedCount} users.`, 'success');
       } else {
-        this.uiManager.showNotification("Deleted ".concat(deletedCount, " users. ").concat(errorCount, " errors occurred."), 'warning');
+        this.uiManager.showNotification(`Deleted ${deletedCount} users. ${errorCount} errors occurred.`, 'warning');
         console.error('Delete errors:', errors);
       }
     } catch (error) {
@@ -3308,7 +3257,7 @@ class App {
         this.uiManager.showNotification('No users found in the selected population.', 'info');
         return;
       }
-      this.uiManager.showLoading(true, "Deleting ".concat(users.length, " users from population..."));
+      this.uiManager.showLoading(true, `Deleting ${users.length} users from population...`);
       let deletedCount = 0;
       let errorCount = 0;
       const errors = [];
@@ -3317,17 +3266,17 @@ class App {
         try {
           await this.pingOneClient.deleteUser(user.id);
           deletedCount++;
-          this.uiManager.showLoading(true, "Deleted ".concat(deletedCount, "/").concat(users.length, " users..."));
+          this.uiManager.showLoading(true, `Deleted ${deletedCount}/${users.length} users...`);
         } catch (error) {
           errorCount++;
-          errors.push("Failed to delete ".concat(user.username || user.id, ": ").concat(error.message));
+          errors.push(`Failed to delete ${user.username || user.id}: ${error.message}`);
         }
       }
       this.uiManager.showLoading(false);
       if (errorCount === 0) {
-        this.uiManager.showNotification("Successfully deleted ".concat(deletedCount, " users from population."), 'success');
+        this.uiManager.showNotification(`Successfully deleted ${deletedCount} users from population.`, 'success');
       } else {
-        this.uiManager.showNotification("Deleted ".concat(deletedCount, " users. ").concat(errorCount, " errors occurred."), 'warning');
+        this.uiManager.showNotification(`Deleted ${deletedCount} users. ${errorCount} errors occurred.`, 'warning');
         console.error('Delete errors:', errors);
       }
     } catch (error) {
@@ -3401,12 +3350,12 @@ document.addEventListener('DOMContentLoaded', () => {
     errorDiv.style.border = '1px solid #f5c6cb';
     errorDiv.style.borderRadius = '4px';
     errorDiv.style.backgroundColor = '#f8d7da';
-    errorDiv.textContent = "Failed to initialize application: ".concat(error.message);
+    errorDiv.textContent = `Failed to initialize application: ${error.message}`;
     document.body.prepend(errorDiv);
   }
 });
 
-},{"./modules/api-factory.js":7,"./modules/file-handler.js":9,"./modules/logger.js":13,"./modules/settings-manager.js":15,"./modules/ui-manager.js":16,"./modules/version-manager.js":17,"@babel/runtime/helpers/defineProperty":1,"@babel/runtime/helpers/interopRequireDefault":2}],7:[function(require,module,exports){
+},{"./modules/api-factory.js":2,"./modules/file-handler.js":4,"./modules/logger.js":8,"./modules/settings-manager.js":10,"./modules/ui-manager.js":11,"./modules/version-manager.js":12}],2:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -3453,7 +3402,7 @@ class APIFactory {
    */
   getLocalClient() {
     let baseUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '';
-    const cacheKey = "local_".concat(baseUrl);
+    const cacheKey = `local_${baseUrl}`;
     if (!this.clients.has(cacheKey)) {
       this.clients.set(cacheKey, new _localApiClient.LocalAPIClient(this.logger, baseUrl));
     }
@@ -3513,7 +3462,7 @@ const initAPIFactory = async (logger, settingsManager) => {
       }
       resolve(factory);
     } catch (error) {
-      const errorMsg = "Failed to initialize API Factory: ".concat(error.message);
+      const errorMsg = `Failed to initialize API Factory: ${error.message}`;
       if (logger && logger.error) {
         logger.error(errorMsg, {
           error
@@ -3554,7 +3503,7 @@ const apiFactory = exports.apiFactory = {
 const getAPIFactory = () => defaultAPIFactory;
 exports.getAPIFactory = getAPIFactory;
 
-},{"./local-api-client.js":11,"./pingone-client.js":14}],8:[function(require,module,exports){
+},{"./local-api-client.js":6,"./pingone-client.js":9}],3:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -3638,7 +3587,7 @@ class CryptoUtils {
 exports.CryptoUtils = CryptoUtils;
 const cryptoUtils = exports.cryptoUtils = new CryptoUtils();
 
-},{}],9:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -3843,12 +3792,12 @@ class FileHandler {
       this.parseResults = parseResults;
 
       // Show results to user
-      let message = "CSV file processed successfully! Found ".concat(parseResults.validUsers, " valid users.");
+      let message = `CSV file processed successfully! Found ${parseResults.validUsers} valid users.`;
       if (parseResults.invalidUsers > 0) {
-        message += " ".concat(parseResults.invalidUsers, " users had validation errors and will be skipped.");
+        message += ` ${parseResults.invalidUsers} users had validation errors and will be skipped.`;
       }
       if (parseResults.errors.length > 0) {
-        message += " ".concat(parseResults.errors.length, " rows had parsing errors.");
+        message += ` ${parseResults.errors.length} rows had parsing errors.`;
       }
       this.uiManager.showNotification(message, parseResults.invalidUsers > 0 ? 'warning' : 'success');
 
@@ -3913,7 +3862,7 @@ class FileHandler {
     const fileExt = this.getFileExtension(fileName).toLowerCase();
     const knownBadExts = ['exe', 'js', 'png', 'jpg', 'jpeg', 'gif', 'pdf', 'zip', 'tar', 'gz'];
     if (fileExt && knownBadExts.includes(fileExt)) {
-      const errorMsg = "Unsupported file type: ".concat(fileExt, ". Please upload a CSV or text file.");
+      const errorMsg = `Unsupported file type: ${fileExt}. Please upload a CSV or text file.`;
       this.logger.error(errorMsg, {
         fileName,
         fileExt
@@ -3924,7 +3873,7 @@ class FileHandler {
     // Check file size (max 10MB)
     const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
-      throw new Error("File is too large. Maximum size is ".concat(this.formatFileSize(maxSize)));
+      throw new Error(`File is too large. Maximum size is ${this.formatFileSize(maxSize)}`);
     }
 
     // Update UI
@@ -3949,7 +3898,7 @@ class FileHandler {
           // Validate required fields
           const missingHeaders = this.requiredFields.filter(field => !headers.includes(field));
           if (missingHeaders.length > 0) {
-            throw new Error("Missing required columns: ".concat(missingHeaders.join(', ')));
+            throw new Error(`Missing required columns: ${missingHeaders.join(', ')}`);
           }
 
           // Convert rows to user objects and store them
@@ -4052,7 +4001,7 @@ class FileHandler {
           const requiredHeaders = ['username'];
           const missingHeaders = requiredHeaders.filter(header => !headers.some(h => h.toLowerCase() === header.toLowerCase()));
           if (missingHeaders.length > 0) {
-            reject(new Error("Missing required headers: ".concat(missingHeaders.join(', '), ". Required headers are: ").concat(requiredHeaders.join(', '))));
+            reject(new Error(`Missing required headers: ${missingHeaders.join(', ')}. Required headers are: ${requiredHeaders.join(', ')}`));
             return;
           }
 
@@ -4086,7 +4035,7 @@ class FileHandler {
             sample: users.slice(0, 5) // First 5 users for preview
           });
         } catch (error) {
-          reject(new Error("Failed to parse CSV file: ".concat(error.message)));
+          reject(new Error(`Failed to parse CSV file: ${error.message}`));
         }
       };
       reader.onerror = () => {
@@ -4138,7 +4087,7 @@ class FileHandler {
     }
     const values = this.parseCSVRow(line);
     if (values.length !== headers.length) {
-      throw new Error("Row ".concat(rowNumber, ": Number of columns (").concat(values.length, ") doesn't match headers (").concat(headers.length, ")"));
+      throw new Error(`Row ${rowNumber}: Number of columns (${values.length}) doesn't match headers (${headers.length})`);
     }
     const user = {};
     for (let i = 0; i < headers.length; i++) {
@@ -4154,7 +4103,7 @@ class FileHandler {
         } else if (value === '') {
           value = true; // Default to enabled
         } else {
-          throw new Error("Row ".concat(rowNumber, ": Invalid enabled value '").concat(value, "'. Must be true/false or 1/0"));
+          throw new Error(`Row ${rowNumber}: Invalid enabled value '${value}'. Must be true/false or 1/0`);
         }
       }
 
@@ -4186,7 +4135,7 @@ class FileHandler {
 
     // Validate required fields
     if (!user.username) {
-      throw new Error("Row ".concat(rowNumber, ": User must have a username"));
+      throw new Error(`Row ${rowNumber}: User must have a username`);
     }
 
     // Set default username if not provided
@@ -4217,7 +4166,7 @@ class FileHandler {
       // Check for duplicate emails
       if (user.email) {
         if (seenEmails.has(user.email.toLowerCase())) {
-          errorMessage = "Duplicate email '".concat(user.email, "' found in row ").concat(rowNumber);
+          errorMessage = `Duplicate email '${user.email}' found in row ${rowNumber}`;
           isValid = false;
         } else {
           seenEmails.add(user.email.toLowerCase());
@@ -4225,7 +4174,7 @@ class FileHandler {
 
         // Validate email format
         if (!this.isValidEmail(user.email)) {
-          errorMessage = "Invalid email format '".concat(user.email, "' in row ").concat(rowNumber);
+          errorMessage = `Invalid email format '${user.email}' in row ${rowNumber}`;
           isValid = false;
         }
       }
@@ -4233,7 +4182,7 @@ class FileHandler {
       // Check for duplicate usernames
       if (user.username) {
         if (seenUsernames.has(user.username.toLowerCase())) {
-          errorMessage = "Duplicate username '".concat(user.username, "' found in row ").concat(rowNumber);
+          errorMessage = `Duplicate username '${user.username}' found in row ${rowNumber}`;
           isValid = false;
         } else {
           seenUsernames.add(user.username.toLowerCase());
@@ -4241,7 +4190,7 @@ class FileHandler {
 
         // Validate username format
         if (!this.isValidUsername(user.username)) {
-          errorMessage = "Invalid username format '".concat(user.username, "' in row ").concat(rowNumber, " (no spaces or special characters)");
+          errorMessage = `Invalid username format '${user.username}' in row ${rowNumber} (no spaces or special characters)`;
           isValid = false;
         }
       }
@@ -4251,7 +4200,7 @@ class FileHandler {
         invalidUsers.push(user);
         errors.push({
           row: rowNumber,
-          user: user.email || user.username || "Row ".concat(rowNumber),
+          user: user.email || user.username || `Row ${rowNumber}`,
           error: errorMessage
         });
       }
@@ -4325,7 +4274,63 @@ class FileHandler {
     const fileSizeInMB = Math.round(file.size / 1024 / 1024 * 100) / 100;
 
     // Create comprehensive file info display
-    const fileInfoHTML = "\n            <div class=\"file-info-details\" style=\"background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 15px; margin: 10px 0;\">\n                <div class=\"file-info-header\" style=\"margin-bottom: 10px;\">\n                    <h5 style=\"margin: 0; color: #495057;\">\n                        <i class=\"fas fa-file-csv\"></i> File Information\n                    </h5>\n                </div>\n                \n                <div class=\"file-info-grid\" style=\"display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9em;\">\n                    <div class=\"file-info-item\">\n                        <strong style=\"color: #495057;\">\uD83D\uDCC1 Filename:</strong><br>\n                        <span style=\"color: #6c757d; word-break: break-all;\">".concat(file.name, "</span>\n                    </div>\n                    \n                    <div class=\"file-info-item\">\n                        <strong style=\"color: #495057;\">\uD83D\uDCCA File Size:</strong><br>\n                        <span style=\"color: #6c757d;\">").concat(fileSize, " (").concat(fileSizeInKB, " KB, ").concat(fileSizeInMB, " MB)</span>\n                    </div>\n                    \n                    <div class=\"file-info-item\">\n                        <strong style=\"color: #495057;\">\uD83D\uDCC2 Directory:</strong><br>\n                        <span style=\"color: #6c757d;\">").concat(filePath, "</span>\n                    </div>\n                    \n                    <div class=\"file-info-item\">\n                        <strong style=\"color: #495057;\">\uD83D\uDCC5 Last Modified:</strong><br>\n                        <span style=\"color: #6c757d;\">").concat(lastModified, "</span>\n                    </div>\n                    \n                    <div class=\"file-info-item\">\n                        <strong style=\"color: #495057;\">\uD83D\uDD24 File Type:</strong><br>\n                        <span style=\"color: #6c757d;\">").concat(fileType || 'Unknown', "</span>\n                    </div>\n                    \n                    <div class=\"file-info-item\">\n                        <strong style=\"color: #495057;\">\uD83D\uDCC4 Extension:</strong><br>\n                        <span style=\"color: ").concat(isValidType ? '#28a745' : '#dc3545', "; font-weight: bold;\">\n                            ").concat(fileExtension ? '.' + fileExtension : 'None', "\n                        </span>\n                    </div>\n                </div>\n                \n                <div class=\"file-info-status\" style=\"margin-top: 10px; padding: 8px; border-radius: 3px; background: ").concat(isValidType ? '#d4edda' : '#f8d7da', "; border: 1px solid ").concat(isValidType ? '#c3e6cb' : '#f5c6cb', ";\">\n                    <i class=\"fas ").concat(isValidType ? 'fa-check-circle' : 'fa-exclamation-triangle', "\" style=\"color: ").concat(isValidType ? '#155724' : '#721c24', ";\"></i>\n                    <span style=\"color: ").concat(isValidType ? '#155724' : '#721c24', "; font-weight: bold;\">\n                        ").concat(isValidType ? 'File type is supported' : 'Warning: File type may not be optimal', "\n                    </span>\n                </div>\n                \n                ").concat(file.size > 5 * 1024 * 1024 ? "\n                <div class=\"file-info-warning\" style=\"margin-top: 10px; padding: 8px; border-radius: 3px; background: #fff3cd; border: 1px solid #ffeaa7;\">\n                    <i class=\"fas fa-exclamation-triangle\" style=\"color: #856404;\"></i>\n                    <span style=\"color: #856404; font-weight: bold;\">Large file detected - processing may take longer</span>\n                </div>\n                " : '', "\n            </div>\n        ");
+    const fileInfoHTML = `
+            <div class="file-info-details" style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 15px; margin: 10px 0;">
+                <div class="file-info-header" style="margin-bottom: 10px;">
+                    <h5 style="margin: 0; color: #495057;">
+                        <i class="fas fa-file-csv"></i> File Information
+                    </h5>
+                </div>
+                
+                <div class="file-info-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9em;">
+                    <div class="file-info-item">
+                        <strong style="color: #495057;">📁 Filename:</strong><br>
+                        <span style="color: #6c757d; word-break: break-all;">${file.name}</span>
+                    </div>
+                    
+                    <div class="file-info-item">
+                        <strong style="color: #495057;">📊 File Size:</strong><br>
+                        <span style="color: #6c757d;">${fileSize} (${fileSizeInKB} KB, ${fileSizeInMB} MB)</span>
+                    </div>
+                    
+                    <div class="file-info-item">
+                        <strong style="color: #495057;">📂 Directory:</strong><br>
+                        <span style="color: #6c757d;">${filePath}</span>
+                    </div>
+                    
+                    <div class="file-info-item">
+                        <strong style="color: #495057;">📅 Last Modified:</strong><br>
+                        <span style="color: #6c757d;">${lastModified}</span>
+                    </div>
+                    
+                    <div class="file-info-item">
+                        <strong style="color: #495057;">🔤 File Type:</strong><br>
+                        <span style="color: #6c757d;">${fileType || 'Unknown'}</span>
+                    </div>
+                    
+                    <div class="file-info-item">
+                        <strong style="color: #495057;">📄 Extension:</strong><br>
+                        <span style="color: ${isValidType ? '#28a745' : '#dc3545'}; font-weight: bold;">
+                            ${fileExtension ? '.' + fileExtension : 'None'}
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="file-info-status" style="margin-top: 10px; padding: 8px; border-radius: 3px; background: ${isValidType ? '#d4edda' : '#f8d7da'}; border: 1px solid ${isValidType ? '#c3e6cb' : '#f5c6cb'};">
+                    <i class="fas ${isValidType ? 'fa-check-circle' : 'fa-exclamation-triangle'}" style="color: ${isValidType ? '#155724' : '#721c24'};"></i>
+                    <span style="color: ${isValidType ? '#155724' : '#721c24'}; font-weight: bold;">
+                        ${isValidType ? 'File type is supported' : 'Warning: File type may not be optimal'}
+                    </span>
+                </div>
+                
+                ${file.size > 5 * 1024 * 1024 ? `
+                <div class="file-info-warning" style="margin-top: 10px; padding: 8px; border-radius: 3px; background: #fff3cd; border: 1px solid #ffeaa7;">
+                    <i class="fas fa-exclamation-triangle" style="color: #856404;"></i>
+                    <span style="color: #856404; font-weight: bold;">Large file detected - processing may take longer</span>
+                </div>
+                ` : ''}
+            </div>
+        `;
     container.innerHTML = fileInfoHTML;
   }
   updateFileInfo(file) {
@@ -4349,7 +4354,25 @@ class FileHandler {
     const headers = Object.keys(rows[0]);
     const previewRows = rows.slice(0, 5); // Show first 5 rows
 
-    let html = "\n            <div class=\"table-responsive\">\n                <table class=\"table table-sm table-striped\">\n                    <thead>\n                        <tr>\n                            ".concat(headers.map(h => "<th>".concat(h, "</th>")).join(''), "\n                        </tr>\n                    </thead>\n                    <tbody>\n                        ").concat(previewRows.map(row => "\n                            <tr>\n                                ".concat(headers.map(h => "<td>".concat(row[h] || '', "</td>")).join(''), "\n                            </tr>\n                        ")).join(''), "\n                    </tbody>\n                </table>\n                ").concat(rows.length > 5 ? "<small class=\"text-muted\">Showing 5 of ".concat(rows.length, " rows</small>") : '', "\n            </div>\n        ");
+    let html = `
+            <div class="table-responsive">
+                <table class="table table-sm table-striped">
+                    <thead>
+                        <tr>
+                            ${headers.map(h => `<th>${h}</th>`).join('')}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${previewRows.map(row => `
+                            <tr>
+                                ${headers.map(h => `<td>${row[h] || ''}</td>`).join('')}
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                ${rows.length > 5 ? `<small class="text-muted">Showing 5 of ${rows.length} rows</small>` : ''}
+            </div>
+        `;
     this.previewContainer.innerHTML = html;
 
     // Check if population choice has been made
@@ -4360,13 +4383,13 @@ class FileHandler {
     const importBtnBottom = document.getElementById('start-import-btn-bottom');
     if (importBtn) {
       importBtn.disabled = !hasPopulationChoice;
-      this.logger.log("Import button ".concat(hasPopulationChoice ? 'enabled' : 'disabled'), 'debug');
+      this.logger.log(`Import button ${hasPopulationChoice ? 'enabled' : 'disabled'}`, 'debug');
     } else {
       this.logger.warn('Could not find import button to enable', 'warn');
     }
     if (importBtnBottom) {
       importBtnBottom.disabled = !hasPopulationChoice;
-      this.logger.log("Bottom import button ".concat(hasPopulationChoice ? 'enabled' : 'disabled'), 'debug');
+      this.logger.log(`Bottom import button ${hasPopulationChoice ? 'enabled' : 'disabled'}`, 'debug');
     } else {
       this.logger.warn('Could not find bottom import button to enable', 'warn');
     }
@@ -4377,10 +4400,9 @@ class FileHandler {
    * @returns {boolean} True if a population choice has been made
    */
   checkPopulationChoice() {
-    var _document$getElementB, _document$getElementB2, _document$getElementB3;
-    const selectedPopulationId = ((_document$getElementB = document.getElementById('import-population-select')) === null || _document$getElementB === void 0 ? void 0 : _document$getElementB.value) || '';
-    const useDefaultPopulation = ((_document$getElementB2 = document.getElementById('use-default-population')) === null || _document$getElementB2 === void 0 ? void 0 : _document$getElementB2.checked) || false;
-    const useCsvPopulationId = ((_document$getElementB3 = document.getElementById('use-csv-population-id')) === null || _document$getElementB3 === void 0 ? void 0 : _document$getElementB3.checked) || false;
+    const selectedPopulationId = document.getElementById('import-population-select')?.value || '';
+    const useDefaultPopulation = document.getElementById('use-default-population')?.checked || false;
+    const useCsvPopulationId = document.getElementById('use-csv-population-id')?.checked || false;
     const hasSelectedPopulation = selectedPopulationId && selectedPopulationId.trim() !== '';
     return hasSelectedPopulation || useDefaultPopulation || useCsvPopulationId;
   }
@@ -4463,7 +4485,7 @@ class FileHandler {
 }
 exports.FileHandler = FileHandler;
 
-},{}],10:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -4587,7 +4609,7 @@ class FileLogger {
     if (!this.initialized) {
       await this._initialize();
     }
-    const logEntry = "[".concat(timestamp, "] [").concat(level.toUpperCase(), "] ").concat(message, "\n");
+    const logEntry = `[${timestamp}] [${level.toUpperCase()}] ${message}\n`;
     if (this.writableStream) {
       try {
         await this.writableStream.write(logEntry);
@@ -4598,7 +4620,7 @@ class FileLogger {
         await this.writableStream.write(logEntry);
       }
     } else {
-      console[level]("[FileLogger] ".concat(logEntry));
+      console[level](`[FileLogger] ${logEntry}`);
     }
   }
 
@@ -4672,17 +4694,13 @@ class FileLogger {
 }
 exports.FileLogger = FileLogger;
 
-},{}],11:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 "use strict";
 
-var _interopRequireDefault = require("@babel/runtime/helpers/interopRequireDefault");
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.localAPIClient = exports.LocalAPIClient = void 0;
-var _defineProperty2 = _interopRequireDefault(require("@babel/runtime/helpers/defineProperty"));
-function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
-function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { (0, _defineProperty2.default)(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
 /**
  * Local API Client
  * Handles all API calls to the local server (localhost:4000)
@@ -4711,14 +4729,15 @@ class LocalAPIClient {
   async request(method, endpoint) {
     let data = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : null;
     let options = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
-    const url = "".concat(this.baseUrl).concat(endpoint);
+    const url = `${this.baseUrl}${endpoint}`;
     const startTime = Date.now();
 
     // Enhanced options with retry logic
-    const requestOptions = _objectSpread(_objectSpread({}, options), {}, {
+    const requestOptions = {
+      ...options,
       retries: options.retries || 3,
       retryDelay: options.retryDelay || 1000 // 1 second base delay
-    });
+    };
 
     // Prepare headers
     const headers = {
@@ -4728,7 +4747,7 @@ class LocalAPIClient {
 
     // Add authorization if available
     if (this.accessToken) {
-      headers.Authorization = "Bearer ".concat(this.accessToken);
+      headers.Authorization = `Bearer ${this.accessToken}`;
     }
 
     // Prepare request body
@@ -4771,7 +4790,7 @@ class LocalAPIClient {
         return responseData;
       } catch (error) {
         lastError = error;
-        this.logger.error("Local API Error (attempt ".concat(attempt, "/").concat(requestOptions.retries, "):"), error);
+        this.logger.error(`Local API Error (attempt ${attempt}/${requestOptions.retries}):`, error);
 
         // Get the friendly error message if available
         const friendlyMessage = error.friendlyMessage || error.message;
@@ -4814,7 +4833,7 @@ class LocalAPIClient {
         }
 
         // Use the delay calculated above
-        this.logger.info("Retrying request in ".concat(delay, "ms... (attempt ").concat(attempt + 1, "/").concat(requestOptions.retries, ")"));
+        this.logger.info(`Retrying request in ${delay}ms... (attempt ${attempt + 1}/${requestOptions.retries})`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
@@ -4863,7 +4882,7 @@ class LocalAPIClient {
           errorMessage = this._getServerErrorMessage(response.status);
           break;
         default:
-          errorMessage = data.message || "Request failed with status ".concat(response.status);
+          errorMessage = data.message || `Request failed with status ${response.status}`;
       }
       const error = new Error(errorMessage);
       error.status = response.status;
@@ -4996,17 +5015,13 @@ class LocalAPIClient {
 exports.LocalAPIClient = LocalAPIClient;
 const localAPIClient = exports.localAPIClient = new LocalAPIClient(console);
 
-},{"@babel/runtime/helpers/defineProperty":1,"@babel/runtime/helpers/interopRequireDefault":2}],12:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 "use strict";
 
-var _interopRequireDefault = require("@babel/runtime/helpers/interopRequireDefault");
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.localAPI = void 0;
-var _defineProperty2 = _interopRequireDefault(require("@babel/runtime/helpers/defineProperty"));
-function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
-function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { (0, _defineProperty2.default)(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
 /**
  * Local API Client
  * Handles all API calls to the local server (localhost:4000)
@@ -5033,21 +5048,23 @@ class LocalAPI {
   async request(method, endpoint) {
     let data = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : null;
     let options = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
-    const url = "".concat(this.baseUrl).concat(endpoint);
+    const url = `${this.baseUrl}${endpoint}`;
 
     // Prepare headers
-    const headers = _objectSpread({
+    const headers = {
       'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    }, options.headers);
+      'Accept': 'application/json',
+      ...options.headers
+    };
 
     // Log the request
     this.logger.debug('Local API Request:', {
       method,
       url,
-      headers: _objectSpread(_objectSpread({}, headers), {}, {
+      headers: {
+        ...headers,
         'Authorization': headers.Authorization ? '***REDACTED***' : 'Not set'
-      }),
+      },
       data
     });
     try {
@@ -5116,7 +5133,7 @@ class LocalAPI {
 // Export a singleton instance
 const localAPI = exports.localAPI = new LocalAPI(console);
 
-},{"@babel/runtime/helpers/defineProperty":1,"@babel/runtime/helpers/interopRequireDefault":2}],13:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -5205,9 +5222,9 @@ class Logger {
         // Always log to console for debugging
         const consoleLevel = level === 'log' ? 'info' : level;
         if (console[consoleLevel]) {
-          console[consoleLevel]("[".concat(level.toUpperCase(), "]"), message, data || '', context || '');
+          console[consoleLevel](`[${level.toUpperCase()}]`, message, data || '', context || '');
         } else {
-          console.log("[".concat(level.toUpperCase(), "]"), message, data || '', context || '');
+          console.log(`[${level.toUpperCase()}]`, message, data || '', context || '');
         }
 
         // If we're not in a browser environment, don't try to use FileLogger
@@ -5359,7 +5376,7 @@ class Logger {
     }
     try {
       const logElement = document.createElement('div');
-      logElement.className = "log-entry log-".concat(logEntry.level);
+      logElement.className = `log-entry log-${logEntry.level}`;
       const timeStr = new Date(logEntry.timestamp).toLocaleTimeString();
 
       // Create a more structured log entry
@@ -5367,7 +5384,7 @@ class Logger {
       timeElement.className = 'log-time';
       timeElement.textContent = timeStr;
       const levelElement = document.createElement('span');
-      levelElement.className = "log-level ".concat(logEntry.level);
+      levelElement.className = `log-level ${logEntry.level}`;
       levelElement.textContent = logEntry.level.toUpperCase();
       const messageElement = document.createElement('div');
       messageElement.className = 'log-message';
@@ -5393,7 +5410,7 @@ class Logger {
       if (logEntry.context) {
         const contextElement = document.createElement('pre');
         contextElement.className = 'log-context';
-        contextElement.textContent = "Context: ".concat(JSON.stringify(logEntry.context, null, 2));
+        contextElement.textContent = `Context: ${JSON.stringify(logEntry.context, null, 2)}`;
         logElement.appendChild(contextElement);
       }
 
@@ -5440,7 +5457,7 @@ class Logger {
   }
   async processOfflineLogs() {
     if (this.offlineLogs.length === 0) return;
-    this.log("Processing ".concat(this.offlineLogs.length, " queued logs..."), 'info');
+    this.log(`Processing ${this.offlineLogs.length} queued logs...`, 'info');
     for (const logEntry of this.offlineLogs) {
       try {
         await this.fileLogger.log(logEntry.level, logEntry.message, logEntry.data);
@@ -5471,7 +5488,7 @@ class Logger {
 
     // Log to console
     const logFn = console[level] || console.log;
-    logFn("[".concat(timestamp, "] [").concat(level.toUpperCase(), "] ").concat(message), data);
+    logFn(`[${timestamp}] [${level.toUpperCase()}] ${message}`, data);
 
     // Save to file logger if available
     if (this.fileLogger) {
@@ -5481,7 +5498,7 @@ class Logger {
         if (typeof logMethod === 'function') {
           await logMethod.call(this.fileLogger, message, data);
         } else {
-          console.warn("Log method '".concat(level, "' not available on fileLogger"));
+          console.warn(`Log method '${level}' not available on fileLogger`);
         }
       } catch (error) {
         console.error('Error saving log to file:', error);
@@ -5514,9 +5531,13 @@ class Logger {
   _updateLogUI(logEntry) {
     if (!this.logContainer) return;
     const logElement = document.createElement('div');
-    logElement.className = "log-entry log-".concat(logEntry.level);
+    logElement.className = `log-entry log-${logEntry.level}`;
     const timestamp = new Date(logEntry.timestamp).toLocaleTimeString();
-    logElement.innerHTML = "\n            <span class=\"log-timestamp\">[".concat(timestamp, "]</span>\n            <span class=\"log-level\">").concat(logEntry.level.toUpperCase(), "</span>\n            <span class=\"log-message\">").concat(logEntry.message, "</span>\n        ");
+    logElement.innerHTML = `
+            <span class="log-timestamp">[${timestamp}]</span>
+            <span class="log-level">${logEntry.level.toUpperCase()}</span>
+            <span class="log-message">${logEntry.message}</span>
+        `;
     if (logEntry.data && Object.keys(logEntry.data).length > 0) {
       const dataElement = document.createElement('pre');
       dataElement.className = 'log-data';
@@ -5570,21 +5591,19 @@ class Logger {
 }
 exports.Logger = Logger;
 
-},{"./file-logger.js":10}],14:[function(require,module,exports){
+},{"./file-logger.js":5}],9:[function(require,module,exports){
 "use strict";
 
-var _interopRequireDefault = require("@babel/runtime/helpers/interopRequireDefault");
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.PingOneClient = void 0;
-var _defineProperty2 = _interopRequireDefault(require("@babel/runtime/helpers/defineProperty"));
 var _localApi = require("./local-api.js");
-function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
-function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { (0, _defineProperty2.default)(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; } /**
+/**
  * PingOne API Client
  * Handles all API calls to the PingOne API through the local proxy
  */
+
 class PingOneClient {
   /**
    * Create a new PingOneClient instance
@@ -5670,11 +5689,11 @@ class PingOneClient {
           if (msLeft > 0) {
             const min = Math.floor(msLeft / 60000);
             const sec = Math.floor(msLeft % 60000 / 1000);
-            timeLeftMsg = " (expires in ".concat(min, "m ").concat(sec, "s)");
+            timeLeftMsg = ` (expires in ${min}m ${sec}s)`;
           }
         }
       }
-      const msg = "\u2705 Using cached PingOne Worker token".concat(timeLeftMsg);
+      const msg = `✅ Using cached PingOne Worker token${timeLeftMsg}`;
       if (typeof window !== 'undefined' && window.app && window.app.uiManager) {
         window.app.uiManager.updateConnectionStatus('connected', msg);
         window.app.uiManager.showNotification(msg, 'success');
@@ -5694,7 +5713,7 @@ class PingOneClient {
       });
       if (!response.ok) {
         const error = await response.text();
-        throw new Error("Failed to get access token: ".concat(response.status, " - ").concat(error));
+        throw new Error(`Failed to get access token: ${response.status} - ${error}`);
       }
       const data = await response.json();
 
@@ -5710,8 +5729,8 @@ class PingOneClient {
             let timeLeftMsg = '';
             const min = Math.floor(data.expires_in / 60);
             const sec = data.expires_in % 60;
-            timeLeftMsg = " (expires in ".concat(min, "m ").concat(sec, "s)");
-            const msg = "\u2705 New PingOne Worker token obtained".concat(timeLeftMsg);
+            timeLeftMsg = ` (expires in ${min}m ${sec}s)`;
+            const msg = `✅ New PingOne Worker token obtained${timeLeftMsg}`;
             if (window.app && window.app.uiManager) {
               window.app.uiManager.updateConnectionStatus('connected', msg);
               window.app.uiManager.showNotification(msg, 'success');
@@ -5745,7 +5764,7 @@ class PingOneClient {
     let data = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : null;
     let options = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
     const settings = this.getSettings();
-    const url = "".concat(this.basePath).concat(endpoint);
+    const url = `${this.basePath}${endpoint}`;
     const startTime = Date.now();
 
     // Get access token for all requests
@@ -5757,7 +5776,7 @@ class PingOneClient {
     const headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'Authorization': "Bearer ".concat(this.accessToken)
+      'Authorization': `Bearer ${this.accessToken}`
     };
 
     // Log the request with minimal details to avoid rate limiting
@@ -5789,7 +5808,7 @@ class PingOneClient {
         return response;
       } catch (error) {
         lastError = error;
-        this.logger.error("PingOne API Error (attempt ".concat(attempt, "/").concat(options.retries || 3, "):"), error);
+        this.logger.error(`PingOne API Error (attempt ${attempt}/${options.retries || 3}):`, error);
 
         // Get the friendly error message if available
         const friendlyMessage = error.friendlyMessage || error.message;
@@ -5834,7 +5853,7 @@ class PingOneClient {
         }
 
         // Use the delay calculated above
-        this.logger.info("Retrying request in ".concat(delay, "ms... (attempt ").concat(attempt + 1, "/").concat(options.retries || 3, ")"));
+        this.logger.info(`Retrying request in ${delay}ms... (attempt ${attempt + 1}/${options.retries || 3})`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
@@ -5849,7 +5868,7 @@ class PingOneClient {
    */
   async getPopulations() {
     const settings = this.getSettings();
-    return this.request('GET', "/environments/".concat(settings.environmentId, "/populations"));
+    return this.request('GET', `/environments/${settings.environmentId}/populations`);
   }
 
   /**
@@ -5860,7 +5879,7 @@ class PingOneClient {
     try {
       const settings = this.getSettings();
       // Try to get the populations endpoint as a way to test the connection
-      await this.request('GET', "/environments/".concat(settings.environmentId, "/populations?limit=1"));
+      await this.request('GET', `/environments/${settings.environmentId}/populations?limit=1`);
       return true;
     } catch (error) {
       this.logger.error('PingOne connection test failed:', error);
@@ -5877,7 +5896,7 @@ class PingOneClient {
   async importUsers(users) {
     let options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
     const settings = this.getSettings();
-    const endpoint = "/environments/".concat(settings.environmentId, "/users");
+    const endpoint = `/environments/${settings.environmentId}/users`;
     const {
       onProgress,
       retryAttempts = 3,
@@ -6005,7 +6024,7 @@ class PingOneClient {
           // Validate user data before creating
           const validationError = this.validateUserForImport(currentUser);
           if (validationError) {
-            this.logger.warn("User validation failed for ".concat(currentUser.email || currentUser.username, ": ").concat(validationError), 'warn');
+            this.logger.warn(`User validation failed for ${currentUser.email || currentUser.username}: ${validationError}`, 'warn');
             skippedCount++;
             results.push({
               success: false,
@@ -6021,10 +6040,10 @@ class PingOneClient {
           if (useCsvPopulationId && currentUser.populationId) {
             // Use population ID from CSV if available
             userPopulationId = currentUser.populationId;
-            this.logger.info("Using CSV population ID for user ".concat(currentUser.email || currentUser.username, ": ").concat(userPopulationId));
+            this.logger.info(`Using CSV population ID for user ${currentUser.email || currentUser.username}: ${userPopulationId}`);
           } else if (fallbackPopulationId) {
             // Use fallback population ID
-            this.logger.info("Using fallback population ID for user ".concat(currentUser.email || currentUser.username, ": ").concat(fallbackPopulationId));
+            this.logger.info(`Using fallback population ID for user ${currentUser.email || currentUser.username}: ${fallbackPopulationId}`);
           } else {
             throw new Error('No population ID available for user');
           }
@@ -6067,7 +6086,7 @@ class PingOneClient {
 
               // Check for backend warning (uniqueness violation)
               if (result && result.warning === true && /already exists/i.test(result.message)) {
-                this.logger.warn("User ".concat(currentUser.email || currentUser.username, " already exists, skipping"), 'warn');
+                this.logger.warn(`User ${currentUser.email || currentUser.username} already exists, skipping`, 'warn');
                 skippedCount++;
                 // Call progress callback for skipped user
                 if (onProgress) {
@@ -6097,7 +6116,7 @@ class PingOneClient {
 
               // Check if this is a retryable error
               if (this.isRetryableError(error) && attempt < retryAttempts) {
-                this.logger.warn("Attempt ".concat(attempt, " failed for user ").concat(currentUser.email || currentUser.username, ", retrying in ").concat(delayBetweenRetries, "ms..."), 'warn');
+                this.logger.warn(`Attempt ${attempt} failed for user ${currentUser.email || currentUser.username}, retrying in ${delayBetweenRetries}ms...`, 'warn');
                 retryCount++;
                 await new Promise(resolve => setTimeout(resolve, delayBetweenRetries));
                 continue;
@@ -6116,7 +6135,7 @@ class PingOneClient {
 
           // If we get here, all attempts failed
           if (lastError) {
-            this.logger.error("All ".concat(retryAttempts, " attempts failed for user ").concat(currentUser.email || currentUser.username, ": ").concat(lastError.message), 'error');
+            this.logger.error(`All ${retryAttempts} attempts failed for user ${currentUser.email || currentUser.username}: ${lastError.message}`, 'error');
             failedCount++;
             if (options.continueOnError) {
               results.push({
@@ -6138,11 +6157,10 @@ class PingOneClient {
           this.logger.error('Error importing user:', error);
           failedCount++;
           if (options.continueOnError) {
-            var _error$response;
             // Old logic for 409 Conflict (should not be needed now, but keep for safety)
-            const isSkipped = ((_error$response = error.response) === null || _error$response === void 0 ? void 0 : _error$response.status) === 409;
+            const isSkipped = error.response?.status === 409;
             if (isSkipped) {
-              this.logger.warn("User ".concat(currentUser.email, " already exists, skipping"), 'warn');
+              this.logger.warn(`User ${currentUser.email} already exists, skipping`, 'warn');
               skippedCount++;
               // Call progress callback for skipped user
               if (onProgress) {
@@ -6272,11 +6290,10 @@ class PingOneClient {
    * @private
    */
   isRetryableError(error) {
-    var _error$response2;
     // Retry on rate limits, network errors, and server errors
     const retryableStatuses = [429, 500, 502, 503, 504];
     const retryableMessages = ['rate limit', 'timeout', 'network', 'connection'];
-    if ((_error$response2 = error.response) !== null && _error$response2 !== void 0 && _error$response2.status && retryableStatuses.includes(error.response.status)) {
+    if (error.response?.status && retryableStatuses.includes(error.response.status)) {
       return true;
     }
     if (error.message) {
@@ -6338,7 +6355,7 @@ class PingOneClient {
         const current = userIndex + 1;
         try {
           // Minimal logging for user lookup
-          this.logger.info("[DELETE] Processing user ".concat(current, "/").concat(users.length, ": ").concat(user.username || user.email || 'Unknown'));
+          this.logger.info(`[DELETE] Processing user ${current}/${users.length}: ${user.username || user.email || 'Unknown'}`);
 
           // Find user by userId, username, or email with enhanced fallback
           let existingUser = null;
@@ -6348,28 +6365,28 @@ class PingOneClient {
           if (user.userId || user.id) {
             const userId = user.userId || user.id;
             try {
-              const response = await this.request('GET', "/environments/".concat(this.getSettings().environmentId, "/users/").concat(userId));
+              const response = await this.request('GET', `/environments/${this.getSettings().environmentId}/users/${userId}`);
               existingUser = response;
               lookupMethod = 'userId';
-              this.logger.info("[DELETE] Found user by ID: \"".concat(userId, "\""));
+              this.logger.info(`[DELETE] Found user by ID: "${userId}"`);
             } catch (error) {
-              this.logger.debug("[DELETE] User ID lookup failed for \"".concat(userId, "\": ").concat(error.message));
+              this.logger.debug(`[DELETE] User ID lookup failed for "${userId}": ${error.message}`);
             }
           }
 
           // If no user found by ID, try username (if provided)
           if (!existingUser && user.username) {
             try {
-              const response = await this.request('GET', "/environments/".concat(this.getSettings().environmentId, "/users?filter=username eq \"").concat(encodeURIComponent(user.username), "\""));
+              const response = await this.request('GET', `/environments/${this.getSettings().environmentId}/users?filter=username eq "${encodeURIComponent(user.username)}"`);
               if (response._embedded && response._embedded.users && response._embedded.users.length > 0) {
                 existingUser = response._embedded.users[0];
                 lookupMethod = 'username';
-                this.logger.info("[DELETE] Found user by username: \"".concat(user.username, "\""));
+                this.logger.info(`[DELETE] Found user by username: "${user.username}"`);
               } else {
-                this.logger.debug("[DELETE] No user found by username: \"".concat(user.username, "\""));
+                this.logger.debug(`[DELETE] No user found by username: "${user.username}"`);
               }
             } catch (error) {
-              this.logger.debug("[DELETE] Username lookup failed for \"".concat(user.username, "\": ").concat(error.message));
+              this.logger.debug(`[DELETE] Username lookup failed for "${user.username}": ${error.message}`);
             }
           }
 
@@ -6377,17 +6394,17 @@ class PingOneClient {
           // NOTE: If username was found, we skip email lookup to avoid conflicts
           if (!existingUser && user.email) {
             try {
-              const response = await this.request('GET', "/environments/".concat(this.getSettings().environmentId, "/users?filter=email eq \"").concat(encodeURIComponent(user.email), "\""));
+              const response = await this.request('GET', `/environments/${this.getSettings().environmentId}/users?filter=email eq "${encodeURIComponent(user.email)}"`);
               if (response._embedded && response._embedded.users && response._embedded.users.length > 0) {
                 const emailUser = response._embedded.users[0];
                 existingUser = emailUser;
                 lookupMethod = 'email';
-                this.logger.info("[DELETE] Found user by email: \"".concat(user.email, "\""));
+                this.logger.info(`[DELETE] Found user by email: "${user.email}"`);
               } else {
-                this.logger.debug("[DELETE] No user found by email: \"".concat(user.email, "\""));
+                this.logger.debug(`[DELETE] No user found by email: "${user.email}"`);
               }
             } catch (error) {
-              this.logger.debug("[DELETE] Email lookup failed for \"".concat(user.email, "\": ").concat(error.message));
+              this.logger.debug(`[DELETE] Email lookup failed for "${user.email}": ${error.message}`);
             }
           }
           if (!existingUser) {
@@ -6397,15 +6414,15 @@ class PingOneClient {
               status: 'failed',
               reason: 'User not found in PingOne'
             });
-            this.logger.warn("[DELETE] User not found: ".concat(user.username || user.email || 'Unknown'));
+            this.logger.warn(`[DELETE] User not found: ${user.username || user.email || 'Unknown'}`);
             continue;
           }
 
           // Log the user we're about to delete
-          this.logger.info("[DELETE] Deleting user found by ".concat(lookupMethod, ": ").concat(existingUser.username || existingUser.email));
+          this.logger.info(`[DELETE] Deleting user found by ${lookupMethod}: ${existingUser.username || existingUser.email}`);
 
           // Delete the user
-          await this.request('DELETE', "/environments/".concat(this.getSettings().environmentId, "/users/").concat(existingUser.id));
+          await this.request('DELETE', `/environments/${this.getSettings().environmentId}/users/${existingUser.id}`);
 
           // Only increment success if the DELETE request succeeds
           results.success++;
@@ -6415,7 +6432,7 @@ class PingOneClient {
             pingOneId: existingUser.id,
             lookupMethod: lookupMethod
           });
-          this.logger.info("[DELETE] Successfully deleted user: ".concat(existingUser.username || existingUser.email));
+          this.logger.info(`[DELETE] Successfully deleted user: ${existingUser.username || existingUser.email}`);
         } catch (error) {
           // Check if this is a 404 error (user not found)
           if (error.status === 404 || error.message.includes('404') || error.message.includes('not found')) {
@@ -6425,7 +6442,7 @@ class PingOneClient {
               status: 'skipped',
               reason: 'User not found (404)'
             });
-            this.logger.warn("[DELETE] User '".concat(user.username || user.email, "' not found in PingOne (404). Skipping."));
+            this.logger.warn(`[DELETE] User '${user.username || user.email}' not found in PingOne (404). Skipping.`);
           } else if (error.status === 429) {
             // Rate limit error - retry this user later
             results.failed++;
@@ -6434,7 +6451,7 @@ class PingOneClient {
               status: 'failed',
               error: 'Rate limited - will retry automatically'
             });
-            this.logger.warn("[DELETE] Rate limited while processing user '".concat(user.username || user.email, "'. Will retry."));
+            this.logger.warn(`[DELETE] Rate limited while processing user '${user.username || user.email}'. Will retry.`);
             throw error; // Re-throw to trigger retry logic
           } else {
             results.failed++;
@@ -6443,7 +6460,7 @@ class PingOneClient {
               status: 'failed',
               error: error.message
             });
-            this.logger.error("[DELETE] Failed to delete user '".concat(user.username || user.email, "': ").concat(error.message));
+            this.logger.error(`[DELETE] Failed to delete user '${user.username || user.email}': ${error.message}`);
           }
         }
 
@@ -6470,7 +6487,7 @@ class PingOneClient {
       }
 
       // Log batch completion
-      this.logger.info("[DELETE] Completed batch ".concat(Math.floor(i / batchSize) + 1, "/").concat(Math.ceil(users.length / batchSize)));
+      this.logger.info(`[DELETE] Completed batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(users.length / batchSize)}`);
     }
     return results;
   }
@@ -6485,11 +6502,11 @@ class PingOneClient {
       throw new Error('User ID is required for deletion');
     }
     try {
-      this.logger.info("[DELETE] Deleting user with ID: ".concat(userId));
-      await this.request('DELETE', "/environments/".concat(this.getSettings().environmentId, "/users/").concat(userId));
-      this.logger.info("[DELETE] Successfully deleted user: ".concat(userId));
+      this.logger.info(`[DELETE] Deleting user with ID: ${userId}`);
+      await this.request('DELETE', `/environments/${this.getSettings().environmentId}/users/${userId}`);
+      this.logger.info(`[DELETE] Successfully deleted user: ${userId}`);
     } catch (error) {
-      this.logger.error("[DELETE] Failed to delete user ".concat(userId, ": ").concat(error.message));
+      this.logger.error(`[DELETE] Failed to delete user ${userId}: ${error.message}`);
       throw error;
     }
   }
@@ -6523,7 +6540,7 @@ class PingOneClient {
         const current = userIndex + 1;
         try {
           // Enhanced logging for user lookup
-          this.logger.info("[MODIFY] Processing user ".concat(current, "/").concat(users.length, ":"), {
+          this.logger.info(`[MODIFY] Processing user ${current}/${users.length}:`, {
             userId: user.userId || user.id || 'NOT_PROVIDED',
             username: user.username || 'NOT_PROVIDED',
             email: user.email || 'NOT_PROVIDED',
@@ -6538,47 +6555,47 @@ class PingOneClient {
           if (user.userId || user.id) {
             const userId = user.userId || user.id;
             try {
-              this.logger.debug("[MODIFY] Looking up user by ID: \"".concat(userId, "\""));
-              const response = await this.request('GET', "/environments/".concat(this.getSettings().environmentId, "/users/").concat(userId));
+              this.logger.debug(`[MODIFY] Looking up user by ID: "${userId}"`);
+              const response = await this.request('GET', `/environments/${this.getSettings().environmentId}/users/${userId}`);
               existingUser = response;
               lookupMethod = 'userId';
-              this.logger.info("[MODIFY] Found user by ID: \"".concat(userId, "\" -> ID: ").concat(existingUser.id));
+              this.logger.info(`[MODIFY] Found user by ID: "${userId}" -> ID: ${existingUser.id}`);
             } catch (error) {
-              this.logger.debug("[MODIFY] Error looking up user by ID \"".concat(userId, "\":"), error.message);
+              this.logger.debug(`[MODIFY] Error looking up user by ID "${userId}":`, error.message);
             }
           }
 
           // If no user found by ID, try username (if provided)
           if (!existingUser && user.username) {
             try {
-              this.logger.debug("[MODIFY] Looking up user by username: \"".concat(user.username, "\""));
-              const response = await this.request('GET', "/environments/".concat(this.getSettings().environmentId, "/users?filter=username eq \"").concat(encodeURIComponent(user.username), "\""));
+              this.logger.debug(`[MODIFY] Looking up user by username: "${user.username}"`);
+              const response = await this.request('GET', `/environments/${this.getSettings().environmentId}/users?filter=username eq "${encodeURIComponent(user.username)}"`);
               if (response._embedded && response._embedded.users && response._embedded.users.length > 0) {
                 existingUser = response._embedded.users[0];
                 lookupMethod = 'username';
-                this.logger.info("[MODIFY] Found user by username: \"".concat(user.username, "\" -> ID: ").concat(existingUser.id));
+                this.logger.info(`[MODIFY] Found user by username: "${user.username}" -> ID: ${existingUser.id}`);
               } else {
-                this.logger.debug("[MODIFY] No user found by username: \"".concat(user.username, "\""));
+                this.logger.debug(`[MODIFY] No user found by username: "${user.username}"`);
               }
             } catch (error) {
-              this.logger.debug("[MODIFY] Error looking up user by username \"".concat(user.username, "\":"), error.message);
+              this.logger.debug(`[MODIFY] Error looking up user by username "${user.username}":`, error.message);
             }
           }
 
           // If no user found by ID or username, try email (if provided)
           if (!existingUser && user.email) {
             try {
-              this.logger.debug("[MODIFY] Looking up user by email: \"".concat(user.email, "\""));
-              const response = await this.request('GET', "/environments/".concat(this.getSettings().environmentId, "/users?filter=email eq \"").concat(encodeURIComponent(user.email), "\""));
+              this.logger.debug(`[MODIFY] Looking up user by email: "${user.email}"`);
+              const response = await this.request('GET', `/environments/${this.getSettings().environmentId}/users?filter=email eq "${encodeURIComponent(user.email)}"`);
               if (response._embedded && response._embedded.users && response._embedded.users.length > 0) {
                 const emailUser = response._embedded.users[0];
 
                 // If we already found a user by username, check if it's the same user
                 if (existingUser) {
                   if (existingUser.id === emailUser.id) {
-                    this.logger.info("[MODIFY] Email lookup confirmed same user: \"".concat(user.email, "\" -> ID: ").concat(emailUser.id));
+                    this.logger.info(`[MODIFY] Email lookup confirmed same user: "${user.email}" -> ID: ${emailUser.id}`);
                   } else {
-                    this.logger.warn("[MODIFY] Found different users by username and email! Username: \"".concat(user.username, "\" -> ID: ").concat(existingUser.id, ", Email: \"").concat(user.email, "\" -> ID: ").concat(emailUser.id));
+                    this.logger.warn(`[MODIFY] Found different users by username and email! Username: "${user.username}" -> ID: ${existingUser.id}, Email: "${user.email}" -> ID: ${emailUser.id}`);
                     // Use the email user as it might be more reliable
                     existingUser = emailUser;
                     lookupMethod = 'email';
@@ -6586,20 +6603,20 @@ class PingOneClient {
                 } else {
                   existingUser = emailUser;
                   lookupMethod = 'email';
-                  this.logger.info("[MODIFY] Found user by email: \"".concat(user.email, "\" -> ID: ").concat(existingUser.id));
+                  this.logger.info(`[MODIFY] Found user by email: "${user.email}" -> ID: ${existingUser.id}`);
                 }
               } else {
-                this.logger.debug("[MODIFY] No user found by email: \"".concat(user.email, "\""));
+                this.logger.debug(`[MODIFY] No user found by email: "${user.email}"`);
               }
             } catch (error) {
-              this.logger.debug("[MODIFY] Error looking up user by email \"".concat(user.email, "\":"), error.message);
+              this.logger.debug(`[MODIFY] Error looking up user by email "${user.email}":`, error.message);
             }
           }
 
           // If user not found and createIfNotExists is enabled, create the user
           if (!existingUser && createIfNotExists) {
             try {
-              this.logger.info("[MODIFY] User not found, creating new user: ".concat(user.username || user.email));
+              this.logger.info(`[MODIFY] User not found, creating new user: ${user.username || user.email}`);
 
               // Prepare user data for creation
               const userData = {
@@ -6623,7 +6640,7 @@ class PingOneClient {
               }
 
               // Create the user
-              const createdUser = await this.request('POST', "/environments/".concat(this.getSettings().environmentId, "/users"), userData);
+              const createdUser = await this.request('POST', `/environments/${this.getSettings().environmentId}/users`, userData);
               results.created++;
               results.details.push({
                 user,
@@ -6631,7 +6648,7 @@ class PingOneClient {
                 pingOneId: createdUser.id,
                 reason: 'User created because createIfNotExists was enabled'
               });
-              this.logger.info("[MODIFY] Successfully created user: ".concat(createdUser.username || createdUser.email, " (ID: ").concat(createdUser.id, ")"));
+              this.logger.info(`[MODIFY] Successfully created user: ${createdUser.username || createdUser.email} (ID: ${createdUser.id})`);
 
               // Update progress
               if (onProgress) {
@@ -6647,12 +6664,12 @@ class PingOneClient {
               }
               return;
             } catch (error) {
-              this.logger.error("[MODIFY] Failed to create user ".concat(user.username || user.email, ":"), error.message);
+              this.logger.error(`[MODIFY] Failed to create user ${user.username || user.email}:`, error.message);
               results.failed++;
               results.details.push({
                 user,
                 status: 'failed',
-                error: "Failed to create user: ".concat(error.message),
+                error: `Failed to create user: ${error.message}`,
                 reason: 'User creation failed'
               });
               return;
@@ -6667,12 +6684,12 @@ class PingOneClient {
               status: 'skipped',
               reason: 'User not found and createIfNotExists is disabled'
             });
-            this.logger.warn("[MODIFY] User not found: ".concat(user.username || user.email, ". Skipping (createIfNotExists: ").concat(createIfNotExists, ")"));
+            this.logger.warn(`[MODIFY] User not found: ${user.username || user.email}. Skipping (createIfNotExists: ${createIfNotExists})`);
             return;
           }
 
           // Log the user we're about to modify
-          this.logger.info("[MODIFY] Modifying user found by ".concat(lookupMethod, ":"), {
+          this.logger.info(`[MODIFY] Modifying user found by ${lookupMethod}:`, {
             username: existingUser.username,
             email: existingUser.email,
             id: existingUser.id,
@@ -6708,23 +6725,23 @@ class PingOneClient {
             if (user[csvField] !== undefined) {
               // Handle nested name fields
               if (apiField.startsWith('name.')) {
-                var _existingUser$name;
                 const nameField = apiField.split('.')[1]; // 'given' or 'family'
                 if (!changes.name) {
-                  changes.name = _objectSpread({}, existingUser.name);
+                  changes.name = {
+                    ...existingUser.name
+                  };
                 }
-                if (user[csvField] !== ((_existingUser$name = existingUser.name) === null || _existingUser$name === void 0 ? void 0 : _existingUser$name[nameField])) {
-                  var _existingUser$name2;
+                if (user[csvField] !== existingUser.name?.[nameField]) {
                   changes.name[nameField] = user[csvField];
                   hasChanges = true;
-                  this.logger.debug("[MODIFY] Name field \"".concat(nameField, "\" will be changed from \"").concat((_existingUser$name2 = existingUser.name) === null || _existingUser$name2 === void 0 ? void 0 : _existingUser$name2[nameField], "\" to \"").concat(user[csvField], "\""));
+                  this.logger.debug(`[MODIFY] Name field "${nameField}" will be changed from "${existingUser.name?.[nameField]}" to "${user[csvField]}"`);
                 }
               } else {
                 // Handle regular fields
                 if (user[csvField] !== existingUser[apiField]) {
                   changes[apiField] = user[csvField];
                   hasChanges = true;
-                  this.logger.debug("[MODIFY] Field \"".concat(apiField, "\" will be changed from \"").concat(existingUser[apiField], "\" to \"").concat(user[csvField], "\""));
+                  this.logger.debug(`[MODIFY] Field "${apiField}" will be changed from "${existingUser[apiField]}" to "${user[csvField]}"`);
                 }
               }
             }
@@ -6740,13 +6757,13 @@ class PingOneClient {
             if (newEnabledValue !== existingUser.enabled) {
               changes.enabled = newEnabledValue;
               hasChanges = true;
-              this.logger.debug("[MODIFY] Enabled status will be changed from \"".concat(existingUser.enabled, "\" to \"").concat(newEnabledValue, "\""));
+              this.logger.debug(`[MODIFY] Enabled status will be changed from "${existingUser.enabled}" to "${newEnabledValue}"`);
             }
           } else if (!updateUserStatus && user.enabled !== undefined && user.enabled !== existingUser.enabled) {
             // Show warning only if updateUserStatus is not enabled
-            this.logger.warn("[MODIFY] Cannot modify 'enabled' status for user ".concat(existingUser.username, " - updateUserStatus option is disabled"));
+            this.logger.warn(`[MODIFY] Cannot modify 'enabled' status for user ${existingUser.username} - updateUserStatus option is disabled`);
             if (window.app && window.app.uiManager) {
-              window.app.uiManager.showWarning("Cannot modify 'enabled' status for user ".concat(existingUser.username, " - updateUserStatus option is disabled"));
+              window.app.uiManager.showWarning(`Cannot modify 'enabled' status for user ${existingUser.username} - updateUserStatus option is disabled`);
             }
           }
 
@@ -6755,7 +6772,7 @@ class PingOneClient {
           if (hasChanges) {
             changes.username = existingUser.username;
             changes.email = existingUser.email;
-            this.logger.debug("[MODIFY] Including required fields: username=".concat(existingUser.username, ", email=").concat(existingUser.email));
+            this.logger.debug(`[MODIFY] Including required fields: username=${existingUser.username}, email=${existingUser.email}`);
           }
           if (!hasChanges) {
             results.noChanges++;
@@ -6765,16 +6782,16 @@ class PingOneClient {
               pingOneId: existingUser.id,
               lookupMethod: lookupMethod
             });
-            this.logger.info("[MODIFY] No changes needed for user: ".concat(existingUser.username || existingUser.email, " (ID: ").concat(existingUser.id, ")"));
+            this.logger.info(`[MODIFY] No changes needed for user: ${existingUser.username || existingUser.email} (ID: ${existingUser.id})`);
             return;
           }
-          this.logger.info("[MODIFY] Applying changes to user:", {
+          this.logger.info(`[MODIFY] Applying changes to user:`, {
             userId: existingUser.id,
             changes: changes
           });
 
           // Update the user with changes
-          await this.request('PUT', "/environments/".concat(this.getSettings().environmentId, "/users/").concat(existingUser.id), changes);
+          await this.request('PUT', `/environments/${this.getSettings().environmentId}/users/${existingUser.id}`, changes);
           results.modified++;
           results.details.push({
             user,
@@ -6783,7 +6800,7 @@ class PingOneClient {
             changes,
             lookupMethod: lookupMethod
           });
-          this.logger.info("[MODIFY] Successfully modified user: ".concat(existingUser.username || existingUser.email, " (ID: ").concat(existingUser.id, ") with changes:"), changes);
+          this.logger.info(`[MODIFY] Successfully modified user: ${existingUser.username || existingUser.email} (ID: ${existingUser.id}) with changes:`, changes);
         } catch (error) {
           // Get friendly error message if available
           const friendlyMessage = error.friendlyMessage || error.message;
@@ -6796,18 +6813,18 @@ class PingOneClient {
               status: 'skipped',
               reason: 'User not found (404)'
             });
-            this.logger.warn("[MODIFY] User '".concat(user.username || user.email, "' not found in PingOne (404). Skipping this user."));
+            this.logger.warn(`[MODIFY] User '${user.username || user.email}' not found in PingOne (404). Skipping this user.`);
           } else {
             results.failed++;
 
             // Provide more context for different error types
             let errorReason = friendlyMessage;
             if (error.status === 400) {
-              errorReason = "Data validation failed: ".concat(friendlyMessage);
+              errorReason = `Data validation failed: ${friendlyMessage}`;
             } else if (error.status === 429) {
-              errorReason = "Rate limited: ".concat(friendlyMessage);
+              errorReason = `Rate limited: ${friendlyMessage}`;
             } else if (error.status === 403) {
-              errorReason = "Permission denied: ".concat(friendlyMessage);
+              errorReason = `Permission denied: ${friendlyMessage}`;
             }
             results.details.push({
               user,
@@ -6815,11 +6832,11 @@ class PingOneClient {
               error: errorReason,
               statusCode: error.status
             });
-            this.logger.error("[MODIFY] Failed to modify user '".concat(user.username || user.email, "': ").concat(errorReason));
+            this.logger.error(`[MODIFY] Failed to modify user '${user.username || user.email}': ${errorReason}`);
 
             // Show user-friendly error in UI for specific error types
             if (window.app && window.app.uiManager && (error.status === 400 || error.status === 403)) {
-              window.app.uiManager.showWarning("User '".concat(user.username || user.email, "': ").concat(friendlyMessage));
+              window.app.uiManager.showWarning(`User '${user.username || user.email}': ${friendlyMessage}`);
             }
           }
         }
@@ -6846,7 +6863,7 @@ class PingOneClient {
       }
 
       // Log batch completion
-      this.logger.info("[MODIFY] Completed batch ".concat(Math.floor(i / batchSize) + 1, "/").concat(Math.ceil(users.length / batchSize)));
+      this.logger.info(`[MODIFY] Completed batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(users.length / batchSize)}`);
     }
     return results;
   }
@@ -6865,7 +6882,7 @@ class PingOneClient {
     let fetched = 0;
     do {
       // Use the general users endpoint with population filter instead of the non-existent populations/users endpoint
-      const resp = await this.request('GET', "/environments/".concat(settings.environmentId, "/users?limit=").concat(pageSize, "&page=").concat(page, "&population.id=").concat(populationId));
+      const resp = await this.request('GET', `/environments/${settings.environmentId}/users?limit=${pageSize}&page=${page}&population.id=${populationId}`);
       if (resp._embedded && resp._embedded.users) {
         users.push(...resp._embedded.users);
         fetched = resp._embedded.users.length;
@@ -6892,7 +6909,7 @@ class PingOneClient {
     let fetched = 0;
     do {
       // Use the general users endpoint with population filter
-      const resp = await this.request('GET', "/environments/".concat(settings.environmentId, "/users?limit=").concat(pageSize, "&page=").concat(page, "&population.id=").concat(populationId));
+      const resp = await this.request('GET', `/environments/${settings.environmentId}/users?limit=${pageSize}&page=${page}&population.id=${populationId}`);
       if (resp._embedded && resp._embedded.users) {
         users.push(...resp._embedded.users);
         fetched = resp._embedded.users.length;
@@ -6917,7 +6934,7 @@ class PingOneClient {
     let total = 0;
     let fetched = 0;
     do {
-      const resp = await this.request('GET', "/environments/".concat(settings.environmentId, "/users?limit=").concat(pageSize, "&page=").concat(page));
+      const resp = await this.request('GET', `/environments/${settings.environmentId}/users?limit=${pageSize}&page=${page}`);
       if (resp._embedded && resp._embedded.users) {
         users.push(...resp._embedded.users);
         fetched = resp._embedded.users.length;
@@ -6932,18 +6949,14 @@ class PingOneClient {
 }
 exports.PingOneClient = PingOneClient;
 
-},{"./local-api.js":12,"@babel/runtime/helpers/defineProperty":1,"@babel/runtime/helpers/interopRequireDefault":2}],15:[function(require,module,exports){
+},{"./local-api.js":7}],10:[function(require,module,exports){
 "use strict";
 
-var _interopRequireDefault = require("@babel/runtime/helpers/interopRequireDefault");
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.settingsManager = exports.SettingsManager = void 0;
-var _defineProperty2 = _interopRequireDefault(require("@babel/runtime/helpers/defineProperty"));
 var _cryptoUtils = require("./crypto-utils.js");
-function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
-function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { (0, _defineProperty2.default)(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
 class SettingsManager {
   constructor(logger) {
     // Initialize settings and storage key
@@ -6975,7 +6988,7 @@ class SettingsManager {
             args[_key - 2] = arguments[_key];
           }
           if (typeof message === 'string') {
-            logFn("[".concat(level.toUpperCase(), "] ").concat(message), ...args);
+            logFn(`[${level.toUpperCase()}] ${message}`, ...args);
           } else {
             logFn(message, ...args);
           }
@@ -7261,13 +7274,15 @@ class SettingsManager {
       if (validate) {
         const validation = this.validateSettings(updatedSettings);
         if (!validation.isValid) {
-          this.logger.warn("Cannot save settings: Missing required fields - ".concat(validation.missingFields.join(', ')));
+          this.logger.warn(`Cannot save settings: Missing required fields - ${validation.missingFields.join(', ')}`);
           return false;
         }
       }
 
       // Create a copy of settings for saving (without connection fields)
-      const settingsToSave = _objectSpread({}, updatedSettings);
+      const settingsToSave = {
+        ...updatedSettings
+      };
 
       // Only encrypt API secret if it's not already encrypted and not empty
       if (settingsToSave.apiSecret && !settingsToSave.apiSecret.startsWith('enc:')) {
@@ -7290,7 +7305,7 @@ class SettingsManager {
         });
         if (!response.ok) {
           const error = await response.text();
-          throw new Error("Server responded with status ".concat(response.status, ": ").concat(error));
+          throw new Error(`Server responded with status ${response.status}: ${error}`);
         }
 
         // Update in-memory settings
@@ -7339,7 +7354,7 @@ class SettingsManager {
         await this.initializeEncryption();
       }
       const encrypted = await _cryptoUtils.CryptoUtils.encrypt(value, this.encryptionKey);
-      return "enc:".concat(encrypted);
+      return `enc:${encrypted}`;
     } catch (error) {
       this.logger.error('Encryption failed:', error);
       throw new Error('Failed to encrypt sensitive data');
@@ -7396,7 +7411,9 @@ class SettingsManager {
    * @returns {Object} Merged object
    */
   deepMerge(target, source) {
-    const output = _objectSpread({}, target);
+    const output = {
+      ...target
+    };
     if (this.isObject(target) && this.isObject(source)) {
       Object.keys(source).forEach(key => {
         if (this.isObject(source[key])) {
@@ -7438,11 +7455,14 @@ class SettingsManager {
       }
 
       // Merge new settings with existing ones
-      this.settings = _objectSpread(_objectSpread({}, this.settings), newSettings);
+      this.settings = {
+        ...this.settings,
+        ...newSettings
+      };
       this.logger.info('Settings updated in memory');
       return this.settings;
     } catch (error) {
-      this.logger.error("Error updating settings: ".concat(error.message));
+      this.logger.error(`Error updating settings: ${error.message}`);
       throw error;
     }
   }
@@ -7460,7 +7480,7 @@ class SettingsManager {
       this.logger.log('Settings cleared successfully', 'success');
       return true;
     } catch (error) {
-      this.logger.error("Error clearing settings: ".concat(error.message), 'error');
+      this.logger.error(`Error clearing settings: ${error.message}`, 'error');
       return false;
     }
   }
@@ -7470,7 +7490,9 @@ class SettingsManager {
    * @returns {Object} Current settings object
    */
   getSettings() {
-    return _objectSpread({}, this.settings); // Return a shallow copy to prevent direct modification
+    return {
+      ...this.settings
+    }; // Return a shallow copy to prevent direct modification
   }
 
   /**
@@ -7501,17 +7523,13 @@ class SettingsManager {
 exports.SettingsManager = SettingsManager;
 const settingsManager = exports.settingsManager = new SettingsManager();
 
-},{"./crypto-utils.js":8,"@babel/runtime/helpers/defineProperty":1,"@babel/runtime/helpers/interopRequireDefault":2}],16:[function(require,module,exports){
+},{"./crypto-utils.js":3}],11:[function(require,module,exports){
 "use strict";
 
-var _interopRequireDefault = require("@babel/runtime/helpers/interopRequireDefault");
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.UIManager = void 0;
-var _defineProperty2 = _interopRequireDefault(require("@babel/runtime/helpers/defineProperty"));
-function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
-function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { (0, _defineProperty2.default)(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
 class UIManager {
   constructor(logger) {
     this.logger = logger;
@@ -7648,9 +7666,8 @@ class UIManager {
       const button = document.getElementById(id);
       if (button) {
         button.addEventListener('click', () => {
-          var _this$logger;
           this[action]();
-          (_this$logger = this.logger) === null || _this$logger === void 0 || _this$logger.info("Log navigation: ".concat(action));
+          this.logger?.info(`Log navigation: ${action}`);
         });
       }
     });
@@ -7725,7 +7742,7 @@ class UIManager {
     // Update counter
     const startRecord = (currentPage - 1) * pageSize + 1;
     const endRecord = Math.min(currentPage * pageSize, totalRecords);
-    counter.textContent = "".concat(startRecord, "-").concat(endRecord, " of ").concat(totalRecords, " records shown");
+    counter.textContent = `${startRecord}-${endRecord} of ${totalRecords} records shown`;
 
     // Update page input and total pages
     pageInput.value = currentPage;
@@ -7780,20 +7797,33 @@ class UIManager {
         if (log && typeof log === 'object') {
           const logElement = document.createElement('div');
           const logLevel = (log.level || 'info').toLowerCase();
-          logElement.className = "log-entry log-".concat(logLevel);
+          logElement.className = `log-entry log-${logLevel}`;
           logElement.style.cursor = 'pointer';
           const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
           const level = log.level ? log.level.toUpperCase() : 'INFO';
           const message = log.message || 'No message';
 
           // Create the main log content with expand icon
-          logElement.innerHTML = "\n                        <div class=\"log-content\">\n                            <span class=\"log-timestamp\">[".concat(timestamp, "]</span>\n                            <span class=\"log-level\">").concat(level, "</span>\n                            <span class=\"log-message\">").concat(message, "</span>\n                            <span class=\"log-expand-icon\">\n                                <i class=\"fas fa-chevron-right\"></i>\n                            </span>\n                        </div>\n                    ");
+          logElement.innerHTML = `
+                        <div class="log-content">
+                            <span class="log-timestamp">[${timestamp}]</span>
+                            <span class="log-level">${level}</span>
+                            <span class="log-message">${message}</span>
+                            <span class="log-expand-icon">
+                                <i class="fas fa-chevron-right"></i>
+                            </span>
+                        </div>
+                    `;
 
           // Add expandable details section
           const detailsElement = document.createElement('div');
           detailsElement.className = 'log-details';
           detailsElement.style.display = 'none';
-          detailsElement.innerHTML = "\n                        <div class=\"log-details-content\">\n                            <pre class=\"log-detail-json\">".concat(JSON.stringify(log, null, 2), "</pre>\n                        </div>\n                    ");
+          detailsElement.innerHTML = `
+                        <div class="log-details-content">
+                            <pre class="log-detail-json">${JSON.stringify(log, null, 2)}</pre>
+                        </div>
+                    `;
           logElement.appendChild(detailsElement);
 
           // Add click handler for expand/collapse
@@ -7815,7 +7845,7 @@ class UIManager {
           logEntries.appendChild(logElement);
         }
       } catch (logError) {
-        console.error("Error processing log entry at index ".concat(index, ":"), logError);
+        console.error(`Error processing log entry at index ${index}:`, logError);
       }
     });
   }
@@ -7885,25 +7915,23 @@ class UIManager {
    * @param {number} delay - Delay in milliseconds (default: 5000)
    */
   hideProgressScreenWithDelay(statusElementId) {
-    var _this$logger3;
     let delay = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 5000;
     const statusElement = document.getElementById(statusElementId);
     if (!statusElement) return;
 
     // Clear any existing timeout for this element
-    const timeoutKey = "hideTimeout_".concat(statusElementId);
+    const timeoutKey = `hideTimeout_${statusElementId}`;
     if (this[timeoutKey]) {
       clearTimeout(this[timeoutKey]);
     }
 
     // Set new timeout to hide the progress screen
     this[timeoutKey] = setTimeout(() => {
-      var _this$logger2;
       statusElement.style.display = 'none';
       delete this[timeoutKey]; // Clean up the timeout reference
-      (_this$logger2 = this.logger) === null || _this$logger2 === void 0 || _this$logger2.info("Progress screen auto-hidden after delay: ".concat(statusElementId));
+      this.logger?.info(`Progress screen auto-hidden after delay: ${statusElementId}`);
     }, delay);
-    (_this$logger3 = this.logger) === null || _this$logger3 === void 0 || _this$logger3.info("Progress screen will be hidden in ".concat(delay, "ms: ").concat(statusElementId));
+    this.logger?.info(`Progress screen will be hidden in ${delay}ms: ${statusElementId}`);
   }
 
   /**
@@ -7937,9 +7965,8 @@ class UIManager {
       const statusElement = document.getElementById(statusId);
       if (closeButton && statusElement) {
         closeButton.addEventListener('click', () => {
-          var _this$logger4;
           // Clear any pending hide timeout
-          const timeoutKey = "hideTimeout_".concat(statusId);
+          const timeoutKey = `hideTimeout_${statusId}`;
           if (this[timeoutKey]) {
             clearTimeout(this[timeoutKey]);
             delete this[timeoutKey];
@@ -7953,8 +7980,8 @@ class UIManager {
           if (currentStatus && currentStatus.status === 'In Progress') {
             this.updateLastRunStatus(viewName, currentStatus.operation || 'Operation', 'Ready', 'Operation stopped by user');
           }
-          (_this$logger4 = this.logger) === null || _this$logger4 === void 0 || _this$logger4.info("Progress screen closed: ".concat(statusId));
-          this.showNotification("".concat(viewName.charAt(0).toUpperCase() + viewName.slice(1), " progress screen closed"), 'info');
+          this.logger?.info(`Progress screen closed: ${statusId}`);
+          this.showNotification(`${viewName.charAt(0).toUpperCase() + viewName.slice(1)} progress screen closed`, 'info');
         });
       }
     });
@@ -7968,7 +7995,10 @@ class UIManager {
       const saved = localStorage.getItem('pingone-import-last-status');
       if (saved) {
         const parsed = JSON.parse(saved);
-        this.lastRunStatus = _objectSpread(_objectSpread({}, this.lastRunStatus), parsed);
+        this.lastRunStatus = {
+          ...this.lastRunStatus,
+          ...parsed
+        };
       }
     } catch (error) {
       this.logger.error('Failed to load persisted status:', error);
@@ -8026,7 +8056,7 @@ class UIManager {
     // For operation views (import, export, delete-csv, modify), 
     // show the progress section if the operation is currently "In Progress" OR if it was recently completed
     if (['import', 'export', 'delete-csv', 'modify'].includes(viewName)) {
-      const statusElement = document.getElementById("".concat(viewName, "-status"));
+      const statusElement = document.getElementById(`${viewName}-status`);
 
       // Show the progress screen if the operation is currently in progress OR if it was completed recently
       if (statusElement) {
@@ -8046,7 +8076,7 @@ class UIManager {
       }
     } else {
       // For logs and settings, always show status
-      const statusElement = document.getElementById("".concat(viewName, "-status"));
+      const statusElement = document.getElementById(`${viewName}-status`);
       if (!statusElement) return;
       statusElement.style.display = 'block';
       if (viewName === 'logs') {
@@ -8070,7 +8100,7 @@ class UIManager {
     if (elements.operation) elements.operation.textContent = status.operation;
     if (elements.status) {
       elements.status.textContent = status.status;
-      elements.status.className = "stat-value ".concat(this.getStatusClass(status.status));
+      elements.status.className = `stat-value ${this.getStatusClass(status.status)}`;
     }
     if (elements.timestamp) {
       elements.timestamp.textContent = status.timestamp ? new Date(status.timestamp).toLocaleString() : '-';
@@ -8090,7 +8120,16 @@ class UIManager {
         lastOpElement = document.createElement('div');
         lastOpElement.id = 'settings-last-operation-status';
         lastOpElement.className = 'settings-last-operation-status';
-        lastOpElement.innerHTML = "\n                    <div class=\"status-details\">\n                        <span class=\"status-icon\">\uD83D\uDCCB</span>\n                        <span class=\"status-message\">\n                            <strong>Last Operation:</strong> <span id=\"settings-last-op-text\">".concat(status.operation, "</span> - \n                            <span id=\"settings-last-op-status\" class=\"").concat(this.getStatusClass(status.status), "\">").concat(status.status, "</span>\n                            <small class=\"timestamp\">").concat(status.timestamp ? new Date(status.timestamp).toLocaleString() : '', "</small>\n                        </span>\n                    </div>\n                ");
+        lastOpElement.innerHTML = `
+                    <div class="status-details">
+                        <span class="status-icon">📋</span>
+                        <span class="status-message">
+                            <strong>Last Operation:</strong> <span id="settings-last-op-text">${status.operation}</span> - 
+                            <span id="settings-last-op-status" class="${this.getStatusClass(status.status)}">${status.status}</span>
+                            <small class="timestamp">${status.timestamp ? new Date(status.timestamp).toLocaleString() : ''}</small>
+                        </span>
+                    </div>
+                `;
         container.appendChild(lastOpElement);
       }
     } else {
@@ -8114,38 +8153,41 @@ class UIManager {
    */
   updateOperationStatus(viewName, status) {
     // Update the main status text
-    const statusTextElement = document.getElementById("".concat(viewName, "-progress-text"));
+    const statusTextElement = document.getElementById(`${viewName}-progress-text`);
     if (statusTextElement) {
-      statusTextElement.textContent = "".concat(status.operation, " - ").concat(status.status);
-      statusTextElement.className = "stat-value ".concat(this.getStatusClass(status.status));
+      statusTextElement.textContent = `${status.operation} - ${status.status}`;
+      statusTextElement.className = `stat-value ${this.getStatusClass(status.status)}`;
     }
 
     // If we have results, update the counters
     if (status.results) {
       const counters = ['success', 'failed', 'skipped'];
       counters.forEach(counter => {
-        const element = document.getElementById("".concat(viewName, "-").concat(counter, "-count"));
+        const element = document.getElementById(`${viewName}-${counter}-count`);
         if (element && status.results[counter] !== undefined) {
           element.textContent = status.results[counter];
         }
       });
 
       // Update progress count if available
-      const progressCountElement = document.getElementById("".concat(viewName, "-progress-count"));
+      const progressCountElement = document.getElementById(`${viewName}-progress-count`);
       if (progressCountElement && status.results.total !== undefined) {
         const processed = (status.results.success || 0) + (status.results.failed || 0) + (status.results.skipped || 0);
-        progressCountElement.textContent = "".concat(processed, " of ").concat(status.results.total, " users");
+        progressCountElement.textContent = `${processed} of ${status.results.total} users`;
       }
     }
 
     // Add timestamp info
-    const timestampElement = document.getElementById("".concat(viewName, "-timestamp"));
+    const timestampElement = document.getElementById(`${viewName}-timestamp`);
     if (!timestampElement && status.timestamp) {
-      const statsContainer = document.getElementById("".concat(viewName, "-stats"));
+      const statsContainer = document.getElementById(`${viewName}-stats`);
       if (statsContainer) {
         const timestampDiv = document.createElement('div');
         timestampDiv.className = 'stat-item';
-        timestampDiv.innerHTML = "\n                    <span class=\"stat-label\">Last Run:</span>\n                    <span id=\"".concat(viewName, "-timestamp\" class=\"stat-value\">").concat(new Date(status.timestamp).toLocaleString(), "</span>\n                ");
+        timestampDiv.innerHTML = `
+                    <span class="stat-label">Last Run:</span>
+                    <span id="${viewName}-timestamp" class="stat-value">${new Date(status.timestamp).toLocaleString()}</span>
+                `;
         statsContainer.appendChild(timestampDiv);
       }
     } else if (timestampElement) {
@@ -8195,7 +8237,6 @@ class UIManager {
    * @throws {Error} If view is not found
    */
   async showView(viewName) {
-    var _this$connectionStatu, _this$connectionStatu2;
     // Hide all views and remove 'active'
     Object.entries(this.views).forEach(_ref3 => {
       let [name, element] = _ref3;
@@ -8203,7 +8244,7 @@ class UIManager {
         element.style.display = 'none';
         element.classList.remove('active');
       }
-      const navItem = document.querySelector("[data-view=\"".concat(name, "\"]"));
+      const navItem = document.querySelector(`[data-view="${name}"]`);
       if (navItem) navItem.classList.remove('active');
     });
     // Show the selected view
@@ -8212,7 +8253,7 @@ class UIManager {
       viewElement.style.display = 'block';
       viewElement.classList.add('active');
       this.currentView = viewName;
-      const navItem = document.querySelector("[data-view=\"".concat(viewName, "\"]"));
+      const navItem = document.querySelector(`[data-view="${viewName}"]`);
       if (navItem) navItem.classList.add('active');
 
       // Special handling for logs/settings
@@ -8226,8 +8267,8 @@ class UIManager {
           if (window.app && typeof window.app.checkSettingsAndRestore === 'function') {
             window.app.checkSettingsAndRestore();
           }
-          const currentStatus = (_this$connectionStatu = this.connectionStatusElement) !== null && _this$connectionStatu !== void 0 && _this$connectionStatu.classList.contains('status-connected') ? 'connected' : 'disconnected';
-          const currentMessage = ((_this$connectionStatu2 = this.connectionStatusElement) === null || _this$connectionStatu2 === void 0 || (_this$connectionStatu2 = _this$connectionStatu2.querySelector('.status-message')) === null || _this$connectionStatu2 === void 0 ? void 0 : _this$connectionStatu2.textContent) || '';
+          const currentStatus = this.connectionStatusElement?.classList.contains('status-connected') ? 'connected' : 'disconnected';
+          const currentMessage = this.connectionStatusElement?.querySelector('.status-message')?.textContent || '';
           this.updateSettingsConnectionStatus(currentStatus, currentMessage);
           break;
       }
@@ -8236,7 +8277,7 @@ class UIManager {
       this.displayLastRunStatus(viewName);
       return true;
     } else {
-      console.warn("View '".concat(viewName, "' not found"));
+      console.warn(`View '${viewName}' not found`);
       return false;
     }
   }
@@ -8250,8 +8291,8 @@ class UIManager {
     const normalizedViewName = viewName.toLowerCase();
     const viewElement = this.views[normalizedViewName];
     if (!viewElement) {
-      console.error("View '".concat(viewName, "' not found"));
-      throw new Error("View '".concat(viewName, "' not found"));
+      console.error(`View '${viewName}' not found`);
+      throw new Error(`View '${viewName}' not found`);
     }
 
     // Hide all views
@@ -8262,7 +8303,7 @@ class UIManager {
         element.classList.remove('active');
       }
       // Update nav items
-      const navItem = document.querySelector("[data-view=\"".concat(name, "\"]"));
+      const navItem = document.querySelector(`[data-view="${name}"]`);
       if (navItem) {
         navItem.classList.remove('active');
       }
@@ -8274,7 +8315,7 @@ class UIManager {
     this.currentView = normalizedViewName;
 
     // Update active state of nav item
-    const activeNavItem = document.querySelector("[data-view=\"".concat(normalizedViewName, "\"]"));
+    const activeNavItem = document.querySelector(`[data-view="${normalizedViewName}"]`);
     if (activeNavItem) {
       activeNavItem.classList.add('active');
     }
@@ -8282,7 +8323,7 @@ class UIManager {
     try {
       localStorage.setItem('currentView', normalizedViewName);
     } catch (e) {}
-    this.logger.debug("Switched to ".concat(viewName, " view"));
+    this.logger.debug(`Switched to ${viewName} view`);
     return true;
   }
 
@@ -8294,10 +8335,16 @@ class UIManager {
     const statusElement = document.getElementById('settings-status');
     if (!statusElement) return;
     if (hasRequiredSettings) {
-      statusElement.innerHTML = "\n                <i class=\"fas fa-check-circle\"></i>\n                <span>All required settings are configured</span>\n            ";
+      statusElement.innerHTML = `
+                <i class="fas fa-check-circle"></i>
+                <span>All required settings are configured</span>
+            `;
       statusElement.className = 'status-message status-success';
     } else {
-      statusElement.innerHTML = "\n                <i class=\"fas fa-exclamation-triangle\"></i>\n                <span>Missing required settings</span>\n            ";
+      statusElement.innerHTML = `
+                <i class="fas fa-exclamation-triangle"></i>
+                <span>Missing required settings</span>
+            `;
       statusElement.className = 'status-message status-warning';
     }
   }
@@ -8319,7 +8366,7 @@ class UIManager {
       }
       const normalizedStatus = status.toLowerCase();
       const normalizedMessage = message || this._getDefaultStatusMessage(normalizedStatus);
-      console.debug("Updating connection status to: ".concat(normalizedStatus, " - ").concat(normalizedMessage));
+      console.debug(`Updating connection status to: ${normalizedStatus} - ${normalizedMessage}`);
 
       // Update main connection status
       const mainUpdateSuccess = this._updateStatusElement('connection-status', normalizedStatus, normalizedMessage);
@@ -8376,7 +8423,7 @@ class UIManager {
       if (connectButton) {
         connectButton.disabled = status === 'connected';
         connectButton.textContent = status === 'connected' ? 'Connected' : 'Connect';
-        connectButton.className = "btn ".concat(status === 'connected' ? 'btn-success' : 'btn-primary');
+        connectButton.className = `btn ${status === 'connected' ? 'btn-success' : 'btn-primary'}`;
       }
 
       // Update import button state
@@ -8389,8 +8436,8 @@ class UIManager {
       // Update status indicator in navigation
       const statusIndicator = document.getElementById('nav-connection-status');
       if (statusIndicator) {
-        statusIndicator.className = "nav-status-indicator status-".concat(status);
-        statusIndicator.title = "".concat(status.charAt(0).toUpperCase() + status.slice(1), ": ").concat(this._getDefaultStatusMessage(status));
+        statusIndicator.className = `nav-status-indicator status-${status}`;
+        statusIndicator.title = `${status.charAt(0).toUpperCase() + status.slice(1)}: ${this._getDefaultStatusMessage(status)}`;
       }
 
       // Show/hide connection error message
@@ -8422,7 +8469,7 @@ class UIManager {
     }
     const element = document.getElementById(elementId);
     if (!element) {
-      console.warn("Element with ID '".concat(elementId, "' not found"));
+      console.warn(`Element with ID '${elementId}' not found`);
       return false;
     }
     try {
@@ -8433,14 +8480,14 @@ class UIManager {
       element.className = element.className.split(' ').filter(cls => !cls.startsWith('status-')).join(' ');
 
       // Add the new status class
-      element.classList.add("status-".concat(status));
+      element.classList.add(`status-${status}`);
 
       // Add ARIA attributes for accessibility
       element.setAttribute('aria-live', 'polite');
       element.setAttribute('aria-atomic', 'true');
       return true;
     } catch (error) {
-      console.error("Error updating element '".concat(elementId, "':"), error);
+      console.error(`Error updating element '${elementId}':`, error);
       return false;
     }
   }
@@ -8453,7 +8500,7 @@ class UIManager {
    */
   _logStatusChange(status, message) {
     const timestamp = new Date().toISOString();
-    console.debug("[".concat(timestamp, "] Connection status changed to: ").concat(status, " - ").concat(message));
+    console.debug(`[${timestamp}] Connection status changed to: ${status} - ${message}`);
 
     // You could also log this to a server endpoint for auditing
     // this._logToServer('connection-status', { status, message, timestamp });
@@ -8467,14 +8514,14 @@ class UIManager {
    * @param {string} message - The message that was being set
    */
   _handleStatusUpdateError(error, status, message) {
-    const errorMessage = "Failed to update status to '".concat(status, "': ").concat(error.message);
+    const errorMessage = `Failed to update status to '${status}': ${error.message}`;
     console.error(errorMessage, error);
 
     // Try to show a user-visible error if possible
     try {
       const errorElement = document.getElementById('connection-error');
       if (errorElement) {
-        errorElement.textContent = "Error: ".concat(errorMessage, ". ").concat(message || '');
+        errorElement.textContent = `Error: ${errorMessage}. ${message || ''}`;
         errorElement.style.display = 'block';
       }
     } catch (uiError) {
@@ -8540,7 +8587,7 @@ class UIManager {
         if (console[level]) {
           console[level](message, data);
         } else {
-          console.log("[".concat(level.toUpperCase(), "]"), message, data);
+          console.log(`[${level.toUpperCase()}]`, message, data);
         }
       } catch (logError) {
         console.error('Error in safeLog:', logError);
@@ -8573,16 +8620,15 @@ class UIManager {
       counter.textContent = 'Loading...';
     }
     try {
-      var _responseData$logs;
       // Fetch logs from the UI logs endpoint
       safeLog('Fetching logs from /api/logs/ui...', 'debug');
       const response = await fetch('/api/logs/ui?limit=1000'); // Fetch more logs for pagination
       if (!response.ok) {
-        throw new Error("HTTP error! status: ".concat(response.status));
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
       const responseData = await response.json();
       safeLog('Received logs from server', 'debug', {
-        count: (_responseData$logs = responseData.logs) === null || _responseData$logs === void 0 ? void 0 : _responseData$logs.length
+        count: responseData.logs?.length
       });
 
       // Clear loading indicator
@@ -8630,7 +8676,7 @@ class UIManager {
         this.updatePaginationControls();
       }
     } catch (error) {
-      safeLog("Error fetching logs: ".concat(error.message), 'error', {
+      safeLog(`Error fetching logs: ${error.message}`, 'error', {
         error: {
           name: error.name,
           message: error.message,
@@ -8639,7 +8685,7 @@ class UIManager {
       });
       const errorElement = document.createElement('div');
       errorElement.className = 'log-entry error';
-      errorElement.textContent = "Error loading logs: ".concat(error.message);
+      errorElement.textContent = `Error loading logs: ${error.message}`;
       logEntries.appendChild(errorElement);
 
       // Update pagination
@@ -8655,6 +8701,7 @@ class UIManager {
    * @param {number} totalUsers - Total number of users to import
    */
   showImportStatus(totalUsers) {
+    let populationName = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '';
     const importStatus = document.getElementById('import-status');
     if (importStatus) {
       importStatus.style.display = 'block';
@@ -8664,7 +8711,7 @@ class UIManager {
     this.isImporting = true;
 
     // Update last run status
-    this.updateLastRunStatus('import', 'User Import', 'In Progress', "Importing ".concat(totalUsers, " users"), {
+    this.updateLastRunStatus('import', 'User Import', 'In Progress', `Importing ${totalUsers} users`, {
       total: totalUsers,
       success: 0,
       failed: 0,
@@ -8676,10 +8723,10 @@ class UIManager {
       success: 0,
       failed: 0,
       skipped: 0
-    });
+    }, populationName);
 
     // Add initial progress log entry
-    this.addProgressLogEntry("Starting import of ".concat(totalUsers, " users"), 'info', {
+    this.addProgressLogEntry(`Starting import of ${totalUsers} users`, 'info', {
       total: totalUsers
     });
 
@@ -8693,21 +8740,29 @@ class UIManager {
    * @param {number} total - Total items
    * @param {string} status - Status message
    * @param {Object} results - Results object
+   * @param {string} populationName - Population name
    */
   updateImportProgress(current, total, status, results) {
+    let populationName = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : '';
     // Update progress bar
     const progressBar = document.getElementById('import-progress');
     const progressPercent = document.getElementById('import-progress-percent');
     const progressText = document.getElementById('import-progress-text');
     const progressCount = document.getElementById('import-progress-count');
+    const populationNameElement = document.getElementById('import-population-name');
     if (progressBar && total > 0) {
       const percent = Math.round(current / total * 100);
-      progressBar.style.width = "".concat(percent, "%");
+      progressBar.style.width = `${percent}%`;
       progressBar.setAttribute('aria-valuenow', percent);
-      if (progressPercent) progressPercent.textContent = "".concat(percent, "%");
+      if (progressPercent) progressPercent.textContent = `${percent}%`;
     }
     if (progressText) progressText.textContent = status;
-    if (progressCount) progressCount.textContent = "".concat(current, " of ").concat(total, " users");
+    if (progressCount) progressCount.textContent = `${current} of ${total} users`;
+
+    // Update population name
+    if (populationNameElement) {
+      populationNameElement.textContent = populationName || 'Not selected';
+    }
 
     // Update result counters
     if (results) {
@@ -8736,9 +8791,9 @@ class UIManager {
     const operationStatus = current >= total ? 'Completed' : 'In Progress';
     this.updateLastRunStatus('import', 'User Import', operationStatus, status, {
       total,
-      success: (results === null || results === void 0 ? void 0 : results.success) || 0,
-      failed: (results === null || results === void 0 ? void 0 : results.failed) || 0,
-      skipped: (results === null || results === void 0 ? void 0 : results.skipped) || 0
+      success: results?.success || 0,
+      failed: results?.failed || 0,
+      skipped: results?.skipped || 0
     });
   }
 
@@ -8775,6 +8830,11 @@ class UIManager {
     if (progressText) progressText.textContent = 'Ready';
     const progressCount = document.getElementById('import-progress-count');
     if (progressCount) progressCount.textContent = '0 of 0 users';
+
+    // Population name
+    const populationNameElement = document.getElementById('import-population-name');
+    if (populationNameElement) populationNameElement.textContent = 'Not selected';
+
     // Stats
     const successCount = document.getElementById('import-success-count');
     if (successCount) successCount.textContent = '0';
@@ -8820,7 +8880,7 @@ class UIManager {
    */
   showSuccess(message) {
     // Add green checkmark if not already present
-    const messageWithCheckmark = message.startsWith('✅') ? message : "\u2705 ".concat(message);
+    const messageWithCheckmark = message.startsWith('✅') ? message : `✅ ${message}`;
     this.showNotification(messageWithCheckmark, 'success');
   }
 
@@ -8842,7 +8902,7 @@ class UIManager {
    * @param {string} message - The disclaimer warning message
    */
   showDisclaimerWarning(message) {
-    console.log("[disclaimer-warning] ".concat(message));
+    console.log(`[disclaimer-warning] ${message}`);
 
     // Get or create notification container
     let notificationArea = document.getElementById('notification-area');
@@ -8857,7 +8917,12 @@ class UIManager {
     notification.style.backgroundColor = '#ffe6e6'; // Light red background
     notification.style.borderColor = '#ff9999'; // Light red border
     notification.style.color = '#cc0000'; // Darker red text for contrast
-    notification.innerHTML = "\n            <div class=\"notification-content\">\n                <span class=\"notification-message\">".concat(message, "</span>\n                <button class=\"notification-close\">&times;</button>\n            </div>\n        ");
+    notification.innerHTML = `
+            <div class="notification-content">
+                <span class="notification-message">${message}</span>
+                <button class="notification-close">&times;</button>
+            </div>
+        `;
 
     // Add close button handler
     const closeButton = notification.querySelector('.notification-close');
@@ -8920,10 +8985,10 @@ class UIManager {
 
     // Add retry information if available
     if (isRetrying && retryAttempt && maxRetries) {
-      enhancedMessage += " (Retry ".concat(retryAttempt, "/").concat(maxRetries, ")");
+      enhancedMessage += ` (Retry ${retryAttempt}/${maxRetries})`;
       if (retryDelay) {
         const delaySeconds = Math.ceil(retryDelay / 1000);
-        enhancedMessage += " - Waiting ".concat(delaySeconds, "s before retry");
+        enhancedMessage += ` - Waiting ${delaySeconds}s before retry`;
       }
     }
 
@@ -8942,9 +9007,9 @@ class UIManager {
     // Add green checkmark to success messages if not already present
     let displayMessage = message;
     if (type === 'success' && !message.startsWith('✅')) {
-      displayMessage = "\u2705 ".concat(message);
+      displayMessage = `✅ ${message}`;
     }
-    console.log("[".concat(type, "] ").concat(displayMessage));
+    console.log(`[${type}] ${displayMessage}`);
 
     // Get or create notification container
     let notificationArea = document.getElementById('notification-area');
@@ -8963,8 +9028,13 @@ class UIManager {
 
     // Create notification element
     const notification = document.createElement('div');
-    notification.className = "notification notification-".concat(type);
-    notification.innerHTML = "\n            <div class=\"notification-content\">\n                <span class=\"notification-message\">".concat(displayMessage, "</span>\n                <button class=\"notification-close\">&times;</button>\n            </div>\n        ");
+    notification.className = `notification notification-${type}`;
+    notification.innerHTML = `
+            <div class="notification-content">
+                <span class="notification-message">${displayMessage}</span>
+                <button class="notification-close">&times;</button>
+            </div>
+        `;
 
     // Add close button handler
     const closeButton = notification.querySelector('.notification-close');
@@ -9072,11 +9142,11 @@ class UIManager {
             this.showNotification('Logs cleared. Only UI logs are cleared. Server logs are not affected.', 'info');
             await this.loadAndDisplayLogs();
           } else {
-            this.updateLogsOperationStatus('Clear Logs', false, "Failed to clear logs: ".concat(data.error || 'Unknown error'));
+            this.updateLogsOperationStatus('Clear Logs', false, `Failed to clear logs: ${data.error || 'Unknown error'}`);
             this.showNotification('Failed to clear logs: ' + (data.error || 'Unknown error'), 'error');
           }
         } catch (error) {
-          this.updateLogsOperationStatus('Clear Logs', false, "Error clearing logs: ".concat(error.message));
+          this.updateLogsOperationStatus('Clear Logs', false, `Error clearing logs: ${error.message}`);
           this.showNotification('Error clearing logs: ' + error.message, 'error');
         }
       });
@@ -9180,7 +9250,7 @@ class UIManager {
   addForm(formId, action, onSuccess, onError) {
     const form = document.getElementById(formId);
     if (!form) {
-      console.error("Form with ID '".concat(formId, "' not found"));
+      console.error(`Form with ID '${formId}' not found`);
       return;
     }
     form.addEventListener('submit', async event => {
@@ -9226,7 +9296,7 @@ class UIManager {
     if (element) {
       element.textContent = content;
     } else {
-      console.error("Element with ID ".concat(elementId, " not found"));
+      console.error(`Element with ID ${elementId} not found`);
     }
   }
 
@@ -9239,7 +9309,7 @@ class UIManager {
     const warningArea = document.getElementById('population-warning');
     const warningText = document.getElementById('population-warning-text');
     if (warningArea && warningText) {
-      warningText.textContent = "Invalid population ID \"".concat(csvPopulationId, "\" found in CSV file. Using settings population ID \"").concat(settingsPopulationId, "\" instead.");
+      warningText.textContent = `Invalid population ID "${csvPopulationId}" found in CSV file. Using settings population ID "${settingsPopulationId}" instead.`;
       warningArea.style.display = 'block';
     }
   }
@@ -9292,17 +9362,17 @@ class UIManager {
     const progressCount = document.getElementById('delete-csv-progress-count');
     if (progressBar) {
       const percent = total > 0 ? Math.min(100, Math.round(current / total * 100)) : 0;
-      progressBar.style.width = "".concat(percent, "%");
+      progressBar.style.width = `${percent}%`;
       progressBar.setAttribute('aria-valuenow', percent);
     }
     if (progressPercent) {
-      progressPercent.textContent = "".concat(total > 0 ? Math.min(100, Math.round(current / total * 100)) : 0, "%");
+      progressPercent.textContent = `${total > 0 ? Math.min(100, Math.round(current / total * 100)) : 0}%`;
     }
     if (progressText) {
       progressText.textContent = message || '';
     }
     if (progressCount) {
-      progressCount.textContent = "".concat(current, " of ").concat(total, " users");
+      progressCount.textContent = `${current} of ${total} users`;
     }
     if (counts.success !== undefined) {
       const successCount = document.getElementById('delete-csv-success-count');
@@ -9376,9 +9446,9 @@ class UIManager {
     const progressCount = document.getElementById('modify-progress-count');
     if (progressBar && progressPercent) {
       const percentage = total > 0 ? Math.round(current / total * 100) : 0;
-      progressBar.style.width = "".concat(percentage, "%");
+      progressBar.style.width = `${percentage}%`;
       progressBar.setAttribute('aria-valuenow', percentage);
-      progressPercent.textContent = "".concat(percentage, "%");
+      progressPercent.textContent = `${percentage}%`;
     }
     if (progressText) {
       progressText.textContent = status || 'Processing...';
@@ -9387,7 +9457,7 @@ class UIManager {
       console.warn('modify-progress-text element not found');
     }
     if (progressCount) {
-      progressCount.textContent = "".concat(current, " of ").concat(total, " users");
+      progressCount.textContent = `${current} of ${total} users`;
     }
 
     // Also update stats if progress object is provided
@@ -9451,8 +9521,8 @@ class UIManager {
     let type = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'info';
     let show = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : true;
     const statusElement = document.getElementById('settings-save-status');
-    const statusIcon = statusElement === null || statusElement === void 0 ? void 0 : statusElement.querySelector('.status-icon');
-    const statusMessage = statusElement === null || statusElement === void 0 ? void 0 : statusElement.querySelector('.status-message');
+    const statusIcon = statusElement?.querySelector('.status-icon');
+    const statusMessage = statusElement?.querySelector('.status-message');
     if (statusElement && statusIcon && statusMessage) {
       // Update the message
       statusMessage.textContent = message;
@@ -9467,7 +9537,7 @@ class UIManager {
       statusIcon.textContent = icons[type] || icons.info;
 
       // Update the styling
-      statusElement.className = "settings-save-status ".concat(type);
+      statusElement.className = `settings-save-status ${type}`;
 
       // Show or hide the status
       if (show) {
@@ -9535,18 +9605,18 @@ class UIManager {
     const progressCount = document.getElementById('export-progress-count');
     if (progressElement && total > 0) {
       const percentage = Math.round(current / total * 100);
-      progressElement.style.width = "".concat(percentage, "%");
+      progressElement.style.width = `${percentage}%`;
       progressElement.setAttribute('aria-valuenow', current);
       progressElement.setAttribute('aria-valuemax', total);
     }
     if (progressPercent) {
-      progressPercent.textContent = total > 0 ? "".concat(Math.round(current / total * 100), "%") : '0%';
+      progressPercent.textContent = total > 0 ? `${Math.round(current / total * 100)}%` : '0%';
     }
     if (progressText) {
       progressText.textContent = message || 'Exporting...';
     }
     if (progressCount) {
-      progressCount.textContent = "".concat(current, " of ").concat(total, " users");
+      progressCount.textContent = `${current} of ${total} users`;
     }
   }
   updateExportStats(stats) {
@@ -9629,10 +9699,15 @@ class UIManager {
     // Add all entries
     this.progressLog.forEach(entry => {
       const entryElement = document.createElement('div');
-      entryElement.className = "progress-log-entry ".concat(entry.type);
+      entryElement.className = `progress-log-entry ${entry.type}`;
       const icon = this.getProgressLogIcon(entry.type);
       const statsText = entry.stats ? this.formatProgressStats(entry.stats) : '';
-      entryElement.innerHTML = "\n                <span class=\"entry-timestamp\">".concat(entry.timestamp, "</span>\n                <span class=\"entry-icon\">").concat(icon, "</span>\n                <span class=\"entry-message\">").concat(entry.message, "</span>\n                ").concat(statsText ? "<span class=\"entry-stats\">".concat(statsText, "</span>") : '', "\n            ");
+      entryElement.innerHTML = `
+                <span class="entry-timestamp">${entry.timestamp}</span>
+                <span class="entry-icon">${icon}</span>
+                <span class="entry-message">${entry.message}</span>
+                ${statsText ? `<span class="entry-stats">${statsText}</span>` : ''}
+            `;
       logContainer.appendChild(entryElement);
     });
 
@@ -9663,10 +9738,10 @@ class UIManager {
    */
   formatProgressStats(stats) {
     const parts = [];
-    if (stats.success !== undefined) parts.push("\u2705 ".concat(stats.success));
-    if (stats.failed !== undefined) parts.push("\u274C ".concat(stats.failed));
-    if (stats.skipped !== undefined) parts.push("\u23ED\uFE0F ".concat(stats.skipped));
-    if (stats.total !== undefined) parts.push("\uD83D\uDCCA ".concat(stats.total));
+    if (stats.success !== undefined) parts.push(`✅ ${stats.success}`);
+    if (stats.failed !== undefined) parts.push(`❌ ${stats.failed}`);
+    if (stats.skipped !== undefined) parts.push(`⏭️ ${stats.skipped}`);
+    if (stats.total !== undefined) parts.push(`📊 ${stats.total}`);
     return parts.join(' ');
   }
 
@@ -9674,10 +9749,9 @@ class UIManager {
    * Clear the progress log
    */
   clearProgressLog() {
-    var _this$logger5;
     this.progressLog = [];
     this.updateProgressLogDisplay();
-    (_this$logger5 = this.logger) === null || _this$logger5 === void 0 || _this$logger5.info('Progress log cleared');
+    this.logger?.info('Progress log cleared');
   }
 
   /**
@@ -9738,7 +9812,7 @@ class UIManager {
 // No need for module.exports with ES modules
 exports.UIManager = UIManager;
 
-},{"@babel/runtime/helpers/defineProperty":1,"@babel/runtime/helpers/interopRequireDefault":2}],17:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -9748,13 +9822,13 @@ exports.VersionManager = void 0;
 class VersionManager {
   constructor() {
     this.version = '4.3.1'; // Update this with each new version
-    console.log("Version Manager initialized with version ".concat(this.version));
+    console.log(`Version Manager initialized with version ${this.version}`);
   }
   getVersion() {
     return this.version;
   }
   getFormattedVersion() {
-    return "v".concat(this.version);
+    return `v${this.version}`;
   }
   updateTitle() {
     // Update the main title
@@ -9762,11 +9836,11 @@ class VersionManager {
     if (title) {
       // Remove any existing version number
       const baseTitle = title.textContent.replace(/\s*\(v\d+\.\d+\.\d+\)\s*$/, '').trim();
-      title.textContent = "".concat(baseTitle, " (").concat(this.getFormattedVersion(), ")");
+      title.textContent = `${baseTitle} (${this.getFormattedVersion()})`;
     }
 
     // Update the document title
-    document.title = "PingOne User Import ".concat(this.getFormattedVersion());
+    document.title = `PingOne User Import ${this.getFormattedVersion()}`;
 
     // Update the import button text
     this.updateImportButton();
@@ -9781,7 +9855,7 @@ class VersionManager {
     const importButton = document.getElementById('start-import-btn');
     if (importButton) {
       const baseText = importButton.textContent.replace(/\s*\(v\d+\.\d+\.\d+\)\s*$/, '').trim();
-      importButton.innerHTML = "<i class=\"pi pi-upload\"></i> ".concat(baseText, " (").concat(this.getFormattedVersion(), ")");
+      importButton.innerHTML = `<i class="pi pi-upload"></i> ${baseText} (${this.getFormattedVersion()})`;
     }
   }
   updateTopVersionBadge() {
@@ -9817,4 +9891,4 @@ class VersionManager {
 // ES Module export
 exports.VersionManager = VersionManager;
 
-},{}]},{},[6]);
+},{}]},{},[1]);

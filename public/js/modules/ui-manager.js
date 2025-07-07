@@ -1130,7 +1130,7 @@ export class UIManager {
      * Show the import status section
      * @param {number} totalUsers - Total number of users to import
      */
-    showImportStatus(totalUsers) {
+    showImportStatus(totalUsers, populationName = '') {
         const importStatus = document.getElementById('import-status');
         if (importStatus) {
             importStatus.style.display = 'block';
@@ -1147,7 +1147,7 @@ export class UIManager {
             success: 0,
             failed: 0,
             skipped: 0
-        });
+        }, populationName);
         
         // Add initial progress log entry
         this.addProgressLogEntry(`Starting import of ${totalUsers} users`, 'info', { total: totalUsers });
@@ -1162,13 +1162,15 @@ export class UIManager {
      * @param {number} total - Total items
      * @param {string} status - Status message
      * @param {Object} results - Results object
+     * @param {string} populationName - Population name
      */
-    updateImportProgress(current, total, status, results) {
+    updateImportProgress(current, total, status, results, populationName = '') {
         // Update progress bar
         const progressBar = document.getElementById('import-progress');
         const progressPercent = document.getElementById('import-progress-percent');
         const progressText = document.getElementById('import-progress-text');
         const progressCount = document.getElementById('import-progress-count');
+        const populationNameElement = document.getElementById('import-population-name');
         
         if (progressBar && total > 0) {
             const percent = Math.round((current / total) * 100);
@@ -1179,6 +1181,11 @@ export class UIManager {
         
         if (progressText) progressText.textContent = status;
         if (progressCount) progressCount.textContent = `${current} of ${total} users`;
+        
+        // Update population name
+        if (populationNameElement) {
+            populationNameElement.textContent = populationName || 'Not selected';
+        }
         
         // Update result counters
         if (results) {
@@ -1248,6 +1255,11 @@ export class UIManager {
         if (progressText) progressText.textContent = 'Ready';
         const progressCount = document.getElementById('import-progress-count');
         if (progressCount) progressCount.textContent = '0 of 0 users';
+        
+        // Population name
+        const populationNameElement = document.getElementById('import-population-name');
+        if (populationNameElement) populationNameElement.textContent = 'Not selected';
+        
         // Stats
         const successCount = document.getElementById('import-success-count');
         if (successCount) successCount.textContent = '0';
