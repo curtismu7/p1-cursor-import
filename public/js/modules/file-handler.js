@@ -208,15 +208,8 @@ class FileHandler {
 
             this.uiManager.showNotification(message, parseResults.invalidUsers > 0 ? 'warning' : 'success');
 
-            // Update UI with file info
-            this.uiManager.updateFileInfo({
-                fileName: file.name,
-                totalRows: parseResults.totalRows,
-                validUsers: parseResults.validUsers,
-                invalidUsers: parseResults.invalidUsers,
-                errorCount: parseResults.errors.length,
-                sample: parseResults.sample
-            });
+            // Update UI with enhanced file info display
+            this.updateFileInfoForElement(file, 'file-info');
 
             // Log detailed errors for debugging
             if (parseResults.errors.length > 0) {
