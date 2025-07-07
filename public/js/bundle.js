@@ -591,6 +591,9 @@ class App {
 
     // Setup delete page functionality
     this.setupDeletePage();
+
+    // Setup delete warning modal
+    this.setupDeleteWarningModal();
     console.log('Event listeners setup complete');
   }
   async showView(view) {
