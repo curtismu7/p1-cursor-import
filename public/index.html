@@ -735,7 +735,14 @@
                             </div>
                         </div>
                     </div>
-                    
+
+                    <!-- Add Export Users button at the bottom -->
+                    <div class="export-bottom-actions" style="text-align:center; margin: 2rem 0 1rem 0;">
+                        <button id="start-export-btn-bottom" class="btn btn-success" disabled>
+                            <i class="fas fa-download"></i> Export Users
+                        </button>
+                    </div>
+
                     <!-- Export Status Section -->
                     <div id="export-status" class="import-status" style="display: none;">
                         <div class="progress-header">
@@ -840,5 +847,27 @@
     <script src="/js/bundle.js?v=3.7"></script>
     <script src="/setup-settings.js"></script>
     <script src="/setup-settings.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const topBtn = document.getElementById('start-export-btn');
+        const bottomBtn = document.getElementById('start-export-btn-bottom');
+        if (topBtn && bottomBtn) {
+          // Sync click
+          bottomBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (!bottomBtn.disabled) topBtn.click();
+          });
+          // Sync enabled/disabled state
+          const syncState = () => {
+            bottomBtn.disabled = topBtn.disabled;
+          };
+          // Observe changes to the top button's disabled property
+          const observer = new MutationObserver(syncState);
+          observer.observe(topBtn, { attributes: true, attributeFilter: ['disabled'] });
+          // Initial sync
+          syncState();
+        }
+      });
+    </script>
 </body>
 </html>

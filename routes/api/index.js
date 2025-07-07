@@ -598,4 +598,23 @@ router.post('/modify', upload.single('file'), async (req, res, next) => {
     }
 });
 
+// Dedicated endpoint to return populations as an array
+router.get('/pingone/populations', async (req, res, next) => {
+    try {
+        // Fetch from the proxy (which handles auth)
+        const response = await fetch('http://127.0.0.1:4000/api/pingone/environments/' + process.env.PINGONE_ENVIRONMENT_ID + '/populations', {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        });
+        if (!response.ok) {
+            return res.status(response.status).json({ error: 'Failed to fetch populations', status: response.status });
+        }
+        const data = await response.json();
+        const populations = data._embedded && Array.isArray(data._embedded.populations) ? data._embedded.populations : [];
+        res.json(populations);
+    } catch (error) {
+        next(error);
+    }
+});
+
 export default router;

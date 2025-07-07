@@ -207,6 +207,16 @@ class App {
         document.querySelectorAll('.nav-item').forEach(navItem => {
             navItem.addEventListener('click', (e) => {
                 e.preventDefault();
+                // Check disclaimer acceptance
+                if (localStorage.getItem('disclaimerAccepted') !== 'true') {
+                    this.showView('home');
+                    const acceptBtn = document.getElementById('accept-disclaimer');
+                    if (acceptBtn) acceptBtn.focus();
+                    if (this.uiManager) {
+                        this.uiManager.showWarning('Please accept the disclaimer before using the app.');
+                    }
+                    return;
+                }
                 const view = navItem.getAttribute('data-view');
                 if (view) {
                     console.log('Nav item clicked:', view);
@@ -1078,14 +1088,10 @@ class App {
     }
     
     async startImport() {
+        if (this.isImporting) return;
+        this.isImporting = true;
+        this.uiManager.setImporting(true);
         try {
-            if (this.isImporting) {
-                this.logger.fileLogger.warn('Import already in progress');
-                return;
-            }
-            this.isImporting = true;
-            this.currentImportAbortController = new AbortController();
-
             // Show import progress
             this.uiManager.showImportProgress();
             this.uiManager.updateImportProgress(0, 0, 'Starting import...', {
@@ -1258,6 +1264,8 @@ class App {
             setTimeout(() => {
                 this.uiManager.hideImportProgress();
             }, 3000);
+            this.uiManager.setImporting(false);
+            this.uiManager.showLoading(false); // Hide spinner
         }
     }
 
@@ -1396,6 +1404,7 @@ class App {
         } finally {
             this.isDeletingCsv = false;
             this.uiManager.setDeletingCsv(false);
+            this.uiManager.showLoading(false); // Hide spinner
         }
     }
 
@@ -1896,8 +1905,6 @@ class App {
         if (this.isModifying) return;
         this.isModifying = true;
         this.uiManager.setModifying(true);
-        this.uiManager.showModifyStatus(this.modifyCsvUsers.length);
-        
         try {
             // Get modify options from UI
             const modifyOptions = this.getModifyOptions();
@@ -1938,6 +1945,7 @@ class App {
         } finally {
             this.isModifying = false;
             this.uiManager.setModifying(false);
+            this.uiManager.showLoading(false); // Hide spinner
         }
     }
 
@@ -1971,17 +1979,14 @@ class App {
 
     // Export functionality
     async startExport() {
+        if (this.isExporting) return;
+        this.isExporting = true;
+        this.currentExportAbortController = new AbortController(); // Always initialize
+        this.uiManager.setExporting(true);
         try {
-            if (this.isExporting) {
-                this.logger.fileLogger.warn('Export already in progress');
-                return;
-            }
-
-            this.isExporting = true;
-            this.currentExportAbortController = new AbortController();
-
             // Set export button to show "Exporting..." state
-            this.uiManager.setExporting(true);
+            this.uiManager.showExportStatus();
+            this.uiManager.updateExportProgress(0, 0, 'Preparing export...');
 
             // Get export options
             const populationSelect = document.getElementById('export-population-select');
@@ -2003,10 +2008,6 @@ class App {
                 ignoreDisabledUsers
             });
 
-            // Show export status
-            this.uiManager.showExportStatus();
-            this.uiManager.updateExportProgress(0, 0, 'Preparing export...');
-
             // Make export request
             const response = await fetch('/api/export-users', {
                 method: 'POST',
@@ -2019,7 +2020,7 @@ class App {
                     format,
                     ignoreDisabledUsers
                 }),
-                signal: this.currentExportAbortController.signal
+                signal: this.currentExportAbortController ? this.currentExportAbortController.signal : undefined
             });
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
@@ -2118,6 +2119,7 @@ class App {
             this.isExporting = false;
             this.currentExportAbortController = null;
             this.uiManager.setExporting(false);
+            this.uiManager.showLoading(false); // Hide spinner
             this.uiManager.showExportButton(); // <-- Ensure export button is visible after export
         }
     }
@@ -2389,7 +2391,7 @@ class App {
                 const customAppPathGroup = document.getElementById('custom-app-path-group');
                 
                 if (openAfterExport) {
-                    openAfterExport.checked = preferences.openAfterExport !== false; // Default to true
+                    openAfterExport.checked = false; // Always unchecked on load
                 }
                 
                 if (preferredCsvApp) {
@@ -2479,7 +2481,25 @@ class App {
      * Open file with system default application
      */
     async openWithSystemDefault(url, fileName) {
-        // Try using window.open first
+        // Detect macOS
+        const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+        
+        if (isMac) {
+            // On macOS, browsers can't directly launch applications due to security restrictions
+            // Show macOS-specific instructions
+            this.uiManager.showInfo('File Download Complete (macOS)', 
+                `File ${fileName} has been downloaded successfully.\n\n` +
+                `To open the file on macOS:\n` +
+                `1. Check your Downloads folder\n` +
+                `2. Double-click the file to open with your default application\n` +
+                `3. Or right-click and select "Open with" to choose a specific application\n` +
+                `4. If the file doesn't open, right-click and select "Open" (this bypasses Gatekeeper)\n\n` +
+                `💡 Tip: You can also drag the file to your preferred application's icon in the Dock.`
+            );
+            return;
+        }
+        
+        // For non-macOS systems, try using window.open first
         try {
             const newWindow = window.open(url, '_blank');
             if (newWindow) {
@@ -2498,7 +2518,23 @@ class App {
      * Open file with Microsoft Excel
      */
     async openWithExcel(url, fileName) {
-        // For Excel, we can try to use the ms-excel protocol
+        const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+        
+        if (isMac) {
+            // On macOS, provide specific instructions for Excel
+            this.uiManager.showInfo('Microsoft Excel (macOS)', 
+                `File ${fileName} has been downloaded successfully.\n\n` +
+                `To open with Microsoft Excel on macOS:\n` +
+                `1. Open Microsoft Excel\n` +
+                `2. Click "File" > "Open"\n` +
+                `3. Navigate to your Downloads folder\n` +
+                `4. Select the file and click "Open"\n\n` +
+                `💡 Alternative: Right-click the file and select "Open with" > "Microsoft Excel"`
+            );
+            return;
+        }
+        
+        // For non-macOS systems, try to use the ms-excel protocol
         try {
             const excelUrl = `ms-excel:ofe|u|${url}`;
             window.location.href = excelUrl;
@@ -2532,8 +2568,25 @@ class App {
      * Open file with LibreOffice Calc
      */
     async openWithLibreOffice(url, fileName) {
+        const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+        
+        if (isMac) {
+            // On macOS, provide specific instructions for LibreOffice
+            this.uiManager.showInfo('LibreOffice Calc (macOS)', 
+                `File ${fileName} has been downloaded successfully.\n\n` +
+                `To open with LibreOffice Calc on macOS:\n` +
+                `1. Open LibreOffice Calc (from Applications folder)\n` +
+                `2. Click "File" > "Open"\n` +
+                `3. Navigate to your Downloads folder\n` +
+                `4. Select the file and click "Open"\n\n` +
+                `💡 Alternative: Right-click the file and select "Open with" > "LibreOffice Calc"\n` +
+                `💡 Note: If LibreOffice isn't installed, you can download it from libreoffice.org`
+            );
+            return;
+        }
+        
+        // For non-macOS systems, try to open with system default first
         try {
-            // Try to open with system default first
             await this.openWithSystemDefault(url, fileName);
             
             // Show additional instructions for LibreOffice
@@ -2554,8 +2607,25 @@ class App {
      * Open file with Apple Numbers
      */
     async openWithNumbers(url, fileName) {
+        const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+        
+        if (isMac) {
+            // On macOS, provide specific instructions for Numbers
+            this.uiManager.showInfo('Apple Numbers (macOS)', 
+                `File ${fileName} has been downloaded successfully.\n\n` +
+                `To open with Apple Numbers on macOS:\n` +
+                `1. Open Numbers (from Applications folder or Spotlight)\n` +
+                `2. Click "File" > "Open"\n` +
+                `3. Navigate to your Downloads folder\n` +
+                `4. Select the file and click "Open"\n\n` +
+                `💡 Alternative: Right-click the file and select "Open with" > "Numbers"\n` +
+                `💡 Tip: You can also drag the file to the Numbers icon in your Dock`
+            );
+            return;
+        }
+        
+        // For non-macOS systems, try to open with system default first
         try {
-            // Try to open with system default first
             await this.openWithSystemDefault(url, fileName);
             
             // Show additional instructions for Numbers
@@ -2576,8 +2646,27 @@ class App {
      * Open file with text editor
      */
     async openWithTextEditor(url, fileName) {
+        const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+        
+        if (isMac) {
+            // On macOS, provide specific instructions for text editors
+            this.uiManager.showInfo('Text Editor (macOS)', 
+                `File ${fileName} has been downloaded successfully.\n\n` +
+                `To open with a text editor on macOS:\n` +
+                `1. Right-click the file in Finder\n` +
+                `2. Select "Open with" > "TextEdit" (or your preferred editor)\n` +
+                `3. Or drag the file to TextEdit in your Applications folder\n\n` +
+                `💡 Popular text editors on macOS:\n` +
+                `• TextEdit (built-in)\n` +
+                `• Visual Studio Code\n` +
+                `• Sublime Text\n` +
+                `• BBEdit`
+            );
+            return;
+        }
+        
+        // For non-macOS systems, try to open in a new tab/window as text
         try {
-            // Open in a new tab/window as text
             const newWindow = window.open(url, '_blank');
             if (newWindow) {
                 this.uiManager.showSuccess(`File opened in text editor: ${fileName}`);
@@ -2605,7 +2694,24 @@ class App {
                 throw new Error('Custom application path not specified');
             }
             
-            // Show instructions since we can't directly launch custom applications from browser
+            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+            
+            if (isMac) {
+                // On macOS, provide specific instructions for custom applications
+                this.uiManager.showInfo('Custom Application (macOS)', 
+                    `File ${fileName} has been downloaded successfully.\n\n` +
+                    `To open with your custom application on macOS:\n` +
+                    `1. Right-click the file in Finder\n` +
+                    `2. Select "Open with" > "Choose another app"\n` +
+                    `3. Navigate to: ${customPath}\n` +
+                    `4. Select your application and click "Open"\n\n` +
+                    `💡 Alternative: Drag the file to your application's icon in the Dock\n` +
+                    `💡 Note: You may need to hold Option (⌥) when selecting "Open with" to see all applications`
+                );
+                return;
+            }
+            
+            // For non-macOS systems, show instructions
             this.uiManager.showInfo('Custom Application', 
                 `File ${fileName} has been downloaded. To open with your custom application:\n\n` +
                 `1. Locate the downloaded file\n` +

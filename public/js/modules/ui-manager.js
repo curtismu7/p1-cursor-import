@@ -15,6 +15,7 @@ export class UIManager {
         
         // Initialize UI elements
         this.views = {
+            'home': document.getElementById('home-view'),
             'import': document.getElementById('import-view'),
             'settings': document.getElementById('settings-view'),
             'logs': document.getElementById('logs-view'),
@@ -1096,7 +1097,62 @@ export class UIManager {
      * @param {string} message - The message to display
      */
     showWarning(message) {
-        this.showNotification(message, 'warning');
+        // Special handling for disclaimer warning
+        if (message.includes('disclaimer')) {
+            this.showDisclaimerWarning(message);
+        } else {
+            this.showNotification(message, 'warning');
+        }
+    }
+    
+    /**
+     * Show a special disclaimer warning with light red background and longer duration
+     * @param {string} message - The disclaimer warning message
+     */
+    showDisclaimerWarning(message) {
+        console.log(`[disclaimer-warning] ${message}`);
+        
+        // Get or create notification container
+        let notificationArea = document.getElementById('notification-area');
+        if (!notificationArea) {
+            console.warn('Notification area not found in the DOM');
+            return;
+        }
+        
+        // Create notification element with light red background
+        const notification = document.createElement('div');
+        notification.className = 'notification notification-disclaimer';
+        notification.style.backgroundColor = '#ffe6e6'; // Light red background
+        notification.style.borderColor = '#ff9999'; // Light red border
+        notification.style.color = '#cc0000'; // Darker red text for contrast
+        notification.innerHTML = `
+            <div class="notification-content">
+                <span class="notification-message">${message}</span>
+                <button class="notification-close">&times;</button>
+            </div>
+        `;
+        
+        // Add close button handler
+        const closeButton = notification.querySelector('.notification-close');
+        if (closeButton) {
+            closeButton.addEventListener('click', () => {
+                notification.classList.add('fade-out');
+                setTimeout(() => notification.remove(), 300);
+            });
+        }
+        
+        // Add to notification area
+        notificationArea.appendChild(notification);
+        
+        // Auto-remove after 10 seconds (twice as long as regular notifications)
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.classList.add('fade-out');
+                setTimeout(() => notification.remove(), 300);
+            }
+        }, 10000);
+        
+        return notification;
     }
     
     /**
