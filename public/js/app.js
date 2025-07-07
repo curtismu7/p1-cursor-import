@@ -1286,6 +1286,18 @@ class App {
             this.currentImportAbortController.abort();
             this.logger.fileLogger.info('Canceling import');
         }
+        
+        // Update UI to show "Stopped" state
+        this.uiManager.setImportButtonText('Stopped');
+        this.uiManager.showNotification('Import cancelled by user', 'warning');
+        
+        // Update progress screen cancel button text
+        const cancelProgressBtn = document.getElementById('cancel-import-progress');
+        if (cancelProgressBtn) {
+            cancelProgressBtn.innerHTML = '<i class="fas fa-stop"></i> Stopped';
+            cancelProgressBtn.disabled = true;
+        }
+        
         // Force reset import state
         this.resetImportState();
     }

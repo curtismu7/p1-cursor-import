@@ -1342,6 +1342,18 @@ class App {
       this.currentImportAbortController.abort();
       this.logger.fileLogger.info('Canceling import');
     }
+
+    // Update UI to show "Stopped" state
+    this.uiManager.setImportButtonText('Stopped');
+    this.uiManager.showNotification('Import cancelled by user', 'warning');
+
+    // Update progress screen cancel button text
+    const cancelProgressBtn = document.getElementById('cancel-import-progress');
+    if (cancelProgressBtn) {
+      cancelProgressBtn.innerHTML = '<i class="fas fa-stop"></i> Stopped';
+      cancelProgressBtn.disabled = true;
+    }
+
     // Force reset import state
     this.resetImportState();
   }
@@ -9644,6 +9656,21 @@ class UIManager {
     }
     if (cancelButtonBottom) {
       cancelButtonBottom.style.display = isImporting ? 'inline-block' : 'none';
+    }
+  }
+
+  /**
+   * Set custom text for import buttons
+   * @param {string} text - The text to display on import buttons
+   */
+  setImportButtonText(text) {
+    const importButton = document.getElementById('start-import-btn');
+    const importButtonBottom = document.getElementById('start-import-btn-bottom');
+    if (importButton) {
+      importButton.textContent = text;
+    }
+    if (importButtonBottom) {
+      importButtonBottom.textContent = text;
     }
   }
 }

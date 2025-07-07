@@ -2256,6 +2256,23 @@ export class UIManager {
             cancelButtonBottom.style.display = isImporting ? 'inline-block' : 'none';
         }
     }
+
+    /**
+     * Set custom text for import buttons
+     * @param {string} text - The text to display on import buttons
+     */
+    setImportButtonText(text) {
+        const importButton = document.getElementById('start-import-btn');
+        const importButtonBottom = document.getElementById('start-import-btn-bottom');
+        
+        if (importButton) {
+            importButton.textContent = text;
+        }
+        
+        if (importButtonBottom) {
+            importButtonBottom.textContent = text;
+        }
+    }
 }
 
 // No need for module.exports with ES modules
