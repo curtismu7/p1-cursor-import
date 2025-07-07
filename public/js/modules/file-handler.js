@@ -2,7 +2,7 @@ class FileHandler {
     constructor(logger, uiManager) {
         this.logger = logger;
         this.uiManager = uiManager;
-        this.requiredFields = ['email'];
+        this.requiredFields = ['username'];
         this.validationResults = {
             total: 0,
             valid: 0,
@@ -109,10 +109,19 @@ class FileHandler {
         }
 
         // Validate file type
-        if (!file.name.toLowerCase().endsWith('.csv')) {
-            this.logger.error('Invalid file type. Please select a CSV file.');
-            this.uiManager.showNotification('Please select a CSV file.', 'error');
+        const allowedExtensions = ['.csv', '.txt', ''];
+        const fileNameLower = file.name.toLowerCase();
+        const hasAllowedExtension = allowedExtensions.some(ext => fileNameLower.endsWith(ext));
+        const knownBadExtensions = ['.exe', '.js', '.png', '.jpg', '.jpeg', '.gif', '.pdf', '.zip', '.tar', '.gz'];
+        const hasBadExtension = knownBadExtensions.some(ext => fileNameLower.endsWith(ext));
+        if (hasBadExtension) {
+            this.logger.error('Invalid file type. Please select a CSV or text file.');
+            this.uiManager.showNotification('Please select a CSV or text file.', 'error');
             return;
+        }
+        // If not allowed, warn but try to process
+        if (!hasAllowedExtension) {
+            this.logger.warn('File does not have a standard CSV or text extension, attempting to process anyway.', { fileName: file.name });
         }
 
         // Validate file size (max 10MB)
@@ -229,12 +238,19 @@ class FileHandler {
         
         // Check if file has a valid extension or is a text file
         const isValidExtension = fileExt && ['csv', 'txt'].includes(fileExt);
-        const isTextFile = fileType.match(/text\/.*/) || fileType === ''; // Some browsers might not set type for CSV
-        
-        if (!isValidExtension && !isTextFile) {
-            const errorMsg = `Unsupported file type: ${fileExt || 'unknown'}. Please upload a CSV or text file.`;
-            this.logger.error(errorMsg, { fileName, fileExt, fileType });
-            throw new Error(errorMsg);
+        const isTextFile = fileType.match(/text\/.*/) || fileType === '';
+        const isOctetStream = fileType === 'application/octet-stream';
+
+        // Accept if extension is csv/txt, or if type is text/*, or if type is octet-stream (common for CSVs)
+        if (!isValidExtension && !isTextFile && !isOctetStream) {
+            // If both extension and type are blank, try to parse as CSV anyway
+            if (!fileExt && !fileType) {
+                this.logger.warn('File has no extension and no type, attempting to parse as CSV');
+            } else {
+                const errorMsg = `Unsupported file type: ${fileExt || fileType || 'unknown'}. Please upload a CSV or text file.`;
+                this.logger.error(errorMsg, { fileName, fileExt, fileType });
+                throw new Error(errorMsg);
+            }
         }
         
         // Check file size (max 10MB)
@@ -527,8 +543,8 @@ class FileHandler {
         }
         
         // Validate required fields
-        if (!user.email && !user.username) {
-            throw new Error(`Row ${rowNumber}: User must have either email or username`);
+        if (!user.username) {
+            throw new Error(`Row ${rowNumber}: User must have a username`);
         }
         
         // Set default username if not provided

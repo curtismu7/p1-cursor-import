@@ -208,7 +208,7 @@ class App {
             navItem.addEventListener('click', (e) => {
                 e.preventDefault();
                 // Check disclaimer acceptance
-                if (localStorage.getItem('disclaimerAccepted') !== 'true') {
+                if (localStorage.getItem('disclaimer-agreed') !== 'true') {
                     this.showView('home');
                     const acceptBtn = document.getElementById('accept-disclaimer');
                     if (acceptBtn) acceptBtn.focus();
@@ -490,15 +490,23 @@ class App {
         const disclaimerBtn = document.getElementById('accept-disclaimer');
         if (disclaimerBtn) {
             disclaimerBtn.addEventListener('click', () => {
-                localStorage.setItem('disclaimerAccepted', 'true');
+                localStorage.setItem('disclaimer-agreed', 'true');
+                localStorage.setItem('disclaimer-agreed-date', new Date().toISOString());
                 const disclaimerBox = document.getElementById('disclaimer');
                 if (disclaimerBox) disclaimerBox.style.display = 'none';
+                const featureCards = document.querySelector('.feature-cards');
+                if (featureCards) featureCards.style.display = 'grid';
             });
         }
-        // On load, show disclaimer if not accepted
-        if (localStorage.getItem('disclaimerAccepted') === 'true') {
-            const disclaimerBox = document.getElementById('disclaimer');
+        // On load, show disclaimer if not agreed
+        const disclaimerBox = document.getElementById('disclaimer');
+        const featureCards = document.querySelector('.feature-cards');
+        if (localStorage.getItem('disclaimer-agreed') === 'true') {
             if (disclaimerBox) disclaimerBox.style.display = 'none';
+            if (featureCards) featureCards.style.display = 'grid';
+        } else {
+            if (disclaimerBox) disclaimerBox.style.display = 'block';
+            if (featureCards) featureCards.style.display = 'none';
         }
 
         // Export functionality event listeners
@@ -1312,8 +1320,8 @@ class App {
      */
     validateUser(user, rowNumber) {
         // Check required fields
-        if (!user.email && !user.username) {
-            return `Row ${rowNumber}: User must have either email or username`;
+        if (!user.username) {
+            return `Row ${rowNumber}: User must have a username`;
         }
 
         // Validate email format if provided
@@ -1878,27 +1886,23 @@ class App {
         
         // Check if user has already agreed
         const hasAgreed = localStorage.getItem('disclaimer-agreed');
+        const disclaimer = document.getElementById('disclaimer');
+        const featureCards = document.querySelector('.feature-cards');
         if (hasAgreed === 'true') {
-            const disclaimer = document.getElementById('disclaimer');
-            const featureCards = document.querySelector('.feature-cards');
-            
             if (disclaimer) {
                 disclaimer.style.display = 'none';
             }
-            
             if (featureCards) {
                 featureCards.style.display = 'grid';
             }
         } else {
-            // Show feature cards by default, but keep disclaimer visible
-            const featureCards = document.querySelector('.feature-cards');
+            if (disclaimer) {
+                disclaimer.style.display = 'block';
+            }
             if (featureCards) {
-                featureCards.style.display = 'grid';
+                featureCards.style.display = 'none';
             }
         }
-        
-        // Initial check
-        checkAgreementStatus();
     }
 
     async startModifyCsv() {

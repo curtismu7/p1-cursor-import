@@ -588,8 +588,8 @@ export class PingOneClient {
      */
     validateUserForImport(user) {
         // Check required fields
-        if (!user.email && !user.username) {
-            return 'User must have either email or username';
+        if (!user.username) {
+            return 'User must have a username';
         }
         
         // Validate email format if provided
