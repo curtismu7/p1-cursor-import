@@ -584,7 +584,31 @@
                     </div>
                 </div>
 
-
+                <!-- Delete All Users in Population Section -->
+                <div class="population-delete-section" style="margin-top: 40px; padding: 20px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px;">
+                    <h4>Delete All Users in Population</h4>
+                    <div class="form-check" style="margin-bottom: 10px;">
+                        <input class="form-check-input" type="checkbox" id="delete-all-users-population-checkbox">
+                        <label class="form-check-label" for="delete-all-users-population-checkbox" style="font-weight: bold; color: #e17055;">
+                            Delete all users in selected population
+                        </label>
+                    </div>
+                    <div id="population-delete-controls" style="display: none;">
+                        <div class="mb-3">
+                            <label for="populationSelect" class="form-label">Select Population:</label>
+                            <select class="form-control" id="populationSelect" required>
+                                <option value="">Loading populations...</option>
+                            </select>
+                        </div>
+                        <div class="alert alert-warning" role="alert">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <strong>Warning:</strong> This will delete ALL users in the selected population. This action cannot be undone.
+                        </div>
+                        <button type="button" class="btn btn-warning" id="deletePopulationBtn">
+                            <i class="fas fa-trash"></i> Delete All Users in Population
+                        </button>
+                    </div>
+                </div>
 
                 <!-- Delete All Users in Environment Section -->
                 <div class="environment-delete-section" style="margin-top: 40px; padding: 20px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px;">
