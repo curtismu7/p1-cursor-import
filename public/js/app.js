@@ -3300,9 +3300,7 @@ class App {
                     this.uiManager.showNotification('Please select a population first.', 'error');
                     return;
                 }
-                this.showDeleteWarning('Population', () => {
-                    this.startDeleteAllUsersInPopulation();
-                });
+                this.startPopulationDelete();
             });
         }
 
