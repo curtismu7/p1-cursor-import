@@ -3198,6 +3198,9 @@ class FileHandler {
             });
             return user;
           });
+
+          // Also store in parsedUsers for compatibility with getParsedUsers
+          this.parsedUsers = this.lastParsedUsers;
           resolve({
             success: true,
             headers,
