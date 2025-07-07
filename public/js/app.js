@@ -1005,10 +1005,12 @@ class App {
         if (this.isImporting) return;
         this.isImporting = true;
         this.uiManager.setImporting(true);
-        
         // Create AbortController for cancellation
         this.currentImportAbortController = new AbortController();
-        
+
+        // FIX: Declare importOptions at the top
+        let importOptions = {};
+
         try {
             // Get the parsed users from the file handler
             const users = this.fileHandler.getParsedUsers();
@@ -1016,16 +1018,8 @@ class App {
                 throw new Error('No users found in CSV file. Please check your file and try again.');
             }
 
-            // Show import progress with population name
-            this.uiManager.showImportStatus(users.length, importOptions.selectedPopulationName);
-            this.uiManager.updateImportProgress(0, 0, 'Starting import...', {
-                success: 0,
-                failed: 0,
-                skipped: 0
-            }, importOptions.selectedPopulationName);
-
             // Get import options
-            const importOptions = this.getImportOptions();
+            importOptions = this.getImportOptions();
             this.logger.fileLogger.info('Import options', importOptions);
 
             // Validate population selection
@@ -1037,6 +1031,14 @@ class App {
             if (!hasSelectedPopulation && !useDefaultPopulation && !useCsvPopulationId) {
                 throw new Error('Please select a population or choose "Use default population from settings" before importing users.');
             }
+
+            // Show import progress with population name
+            this.uiManager.showImportStatus(users.length, importOptions.selectedPopulationName);
+            this.uiManager.updateImportProgress(0, 0, 'Starting import...', {
+                success: 0,
+                failed: 0,
+                skipped: 0
+            }, importOptions.selectedPopulationName);
 
             // Check if CSV population ID is enabled but not available
             if (importOptions.useCsvPopulationId) {
@@ -2609,7 +2611,7 @@ class App {
                     `3. Navigate to: ${customPath}\n` +
                     `4. Select your application and click "Open"\n\n` +
                     `💡 Alternative: Drag the file to your application's icon in the Dock\n` +
-                    `💡 Note: You may need to hold Option (⌥) when selecting "Open with" to see all applications`
+                    `�� Note: You may need to hold Option (⌥) when selecting "Open with" to see all applications`
                 );
                 return;
             }
