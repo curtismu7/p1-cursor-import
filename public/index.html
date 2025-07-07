@@ -642,7 +642,7 @@
                     
                     <div id="population-delete-status" class="import-status" style="display: none; margin-top: 20px;">
                         <div class="progress-header">
-                            <h3>Population Delete Progress</h3>
+                            <h3>Delete Progress</h3>
                             <button id="close-population-delete-status" class="close-progress-btn" type="button" aria-label="Close">
                                 <i class="fas fa-times"></i>
                             </button>
@@ -678,6 +678,18 @@
                             <div class="stat-item">
                                 <span class="stat-label">Skipped:</span>
                                 <span id="population-delete-skipped-count" class="stat-value warning">0</span>
+                            </div>
+                        </div>
+                        <!-- Real-time Progress Log for Delete -->
+                        <div id="population-delete-progress-log" class="import-progress-log">
+                            <div class="progress-log-header">
+                                <h4><i class="fas fa-list"></i> Progress Updates</h4>
+                                <button id="clear-population-delete-progress-log" class="btn btn-sm btn-outline-secondary" title="Clear Progress Log">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                            <div id="population-delete-progress-log-entries" class="progress-log-entries">
+                                <!-- Progress log entries will be displayed here -->
                             </div>
                         </div>
                     </div>
