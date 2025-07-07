@@ -1404,7 +1404,7 @@ export class UIManager {
         }
         
         // Add helpful context
-        enhancedMessage += ' 💡 The system has automatically increased rate limits to handle more requests.';
+        enhancedMessage += ' The system will pause slightly 💡 The system has automatically increased rate limits to handle more requests.';
         
         this.showNotification(enhancedMessage, 'warning');
     }

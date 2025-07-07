@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Disclaimer Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .btn { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        .btn-danger { background-color: #dc3545; color: white; }
+        .btn-success { background-color: #28a745; color: white; }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <h1>Simple Disclaimer Test</h1>
+    
+    <div id="disclaimer">
+        <h2>Disclaimer</h2>
+        <p>This is a test disclaimer.</p>
+        
+        <input type="checkbox" id="disclaimer-agreement">
+        <label for="disclaimer-agreement">I agree to the terms</label><br><br>
+        
+        <input type="checkbox" id="risk-acceptance">
+        <label for="risk-acceptance">I accept the risks</label><br><br>
+        
+        <button id="accept-disclaimer" class="btn btn-danger" disabled>
+            I UNDERSTAND AND ACCEPT ALL RISKS
+        </button>
+    </div>
+    
+    <div id="feature-cards" style="display: none;">
+        <h2>✅ Disclaimer Accepted!</h2>
+        <p>The disclaimer has been accepted.</p>
+    </div>
+    
+    <div style="margin-top: 20px;">
+        <button onclick="enableButton()">Enable Button</button>
+        <button onclick="disableButton()">Disable Button</button>
+        <button onclick="testClick()">Test Click</button>
+        <button onclick="resetTest()">Reset Test</button>
+    </div>
+    
+    <div id="debug" style="margin-top: 20px; padding: 10px; background: #f0f0f0; font-family: monospace;"></div>
+    
+    <script>
+        function log(message) {
+            const debug = document.getElementById('debug');
+            debug.innerHTML += new Date().toLocaleTimeString() + ': ' + message + '<br>';
+            console.log(message);
+        }
+        
+        function enableButton() {
+            const button = document.getElementById('accept-disclaimer');
+            button.disabled = false;
+            log('Button enabled');
+        }
+        
+        function disableButton() {
+            const button = document.getElementById('accept-disclaimer');
+            button.disabled = true;
+            log('Button disabled');
+        }
+        
+        function testClick() {
+            const button = document.getElementById('accept-disclaimer');
+            log('Attempting to click button...');
+            button.click();
+        }
+        
+        function resetTest() {
+            localStorage.removeItem('disclaimer-agreed');
+            location.reload();
+        }
+        
+        // Setup disclaimer functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            log('DOM loaded');
+            
+            const acceptButton = document.getElementById('accept-disclaimer');
+            const agreementCheckboxes = [
+                document.getElementById('disclaimer-agreement'),
+                document.getElementById('risk-acceptance')
+            ];
+            
+            log('Elements found: ' + (!!acceptButton) + ', checkboxes: ' + agreementCheckboxes.map(cb => !!cb).join(', '));
+            
+            // Always enable the button
+            acceptButton.disabled = false;
+            log('Button enabled by default');
+            
+            // Add event listener to button
+            acceptButton.addEventListener('click', function() {
+                log('BUTTON CLICKED!');
+                
+                // Store agreement
+                localStorage.setItem('disclaimer-agreed', 'true');
+                
+                // Hide disclaimer and show feature cards
+                document.getElementById('disclaimer').style.display = 'none';
+                document.getElementById('feature-cards').style.display = 'block';
+                
+                // Make button green
+                acceptButton.classList.add('btn-success');
+                acceptButton.classList.remove('btn-danger');
+                acceptButton.innerHTML = '✅ I UNDERSTAND AND ACCEPT ALL RISKS';
+                
+                log('Disclaimer accepted and UI updated');
+            });
+            
+            // Check if already agreed
+            if (localStorage.getItem('disclaimer-agreed') === 'true') {
+                log('User already agreed, hiding disclaimer');
+                document.getElementById('disclaimer').style.display = 'none';
+                document.getElementById('feature-cards').style.display = 'block';
+                acceptButton.classList.add('btn-success');
+                acceptButton.classList.remove('btn-danger');
+                acceptButton.innerHTML = '✅ I UNDERSTAND AND ACCEPT ALL RISKS';
+            }
+            
+            log('Setup complete');
+        });
+    </script>
+</body>
+</html> 

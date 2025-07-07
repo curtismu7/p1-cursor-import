@@ -6731,16 +6731,44 @@ class PingOneClient {
     let total = 0;
     let fetched = 0;
     do {
-      const resp = await this.request('GET', "/environments/".concat(settings.environmentId, "/populations/").concat(populationId, "/users?limit=").concat(pageSize, "&page=").concat(page));
+      // Use the general users endpoint with population filter instead of the non-existent populations/users endpoint
+      const resp = await this.request('GET', "/environments/".concat(settings.environmentId, "/users?limit=").concat(pageSize, "&page=").concat(page, "&population.id=").concat(populationId));
       if (resp._embedded && resp._embedded.users) {
         users.push(...resp._embedded.users);
         fetched = resp._embedded.users.length;
-        total = resp._embedded.users.length;
+        total = resp.page && resp.page.totalElements ? resp.page.totalElements : users.length;
       } else {
-        total = 0;
+        break;
       }
       page++;
-    } while (fetched === pageSize && total > 0);
+    } while (users.length < total && fetched > 0);
+    return users;
+  }
+
+  /**
+   * Fetch all users in a specific population using the correct API endpoint
+   * @param {string} populationId - The population ID
+   * @returns {Promise<Array>} Array of user objects
+   */
+  async getUsersByPopulation(populationId) {
+    const settings = this.getSettings();
+    const users = [];
+    let page = 1;
+    const pageSize = 100;
+    let total = 0;
+    let fetched = 0;
+    do {
+      // Use the general users endpoint with population filter
+      const resp = await this.request('GET', "/environments/".concat(settings.environmentId, "/users?limit=").concat(pageSize, "&page=").concat(page, "&population.id=").concat(populationId));
+      if (resp._embedded && resp._embedded.users) {
+        users.push(...resp._embedded.users);
+        fetched = resp._embedded.users.length;
+        total = resp.page && resp.page.totalElements ? resp.page.totalElements : users.length;
+      } else {
+        break;
+      }
+      page++;
+    } while (users.length < total && fetched > 0);
     return users;
   }
 

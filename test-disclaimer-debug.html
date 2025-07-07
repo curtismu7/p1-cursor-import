@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disclaimer Button Debug Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .disclaimer {
+            border: 2px solid #dc3545;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            background-color: #f8d7da;
+        }
+        .feature-cards {
+            display: none;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .card {
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 8px;
+            background: white;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .debug-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .checkbox-group {
+            margin: 15px 0;
+        }
+        .checkbox-group label {
+            display: block;
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Disclaimer Button Debug Test</h1>
+        
+        <div class="debug-info">
+            <h3>Debug Information</h3>
+            <div id="debug-output"></div>
+        </div>
+
+        <div id="disclaimer" class="disclaimer">
+            <h2>⚠️ Important Disclaimer</h2>
+            <p>This tool allows you to import, export, modify, and delete users in your PingOne environment. Please read and accept the following terms before proceeding:</p>
+            
+            <div class="checkbox-group">
+                <input type="checkbox" id="disclaimer-agreement" required>
+                <label for="disclaimer-agreement">
+                    I understand that this tool will make direct API calls to my PingOne environment and may modify user data.
+                </label>
+            </div>
+            
+            <div class="checkbox-group">
+                <input type="checkbox" id="risk-acceptance" required>
+                <label for="risk-acceptance">
+                    I accept all risks associated with using this tool and understand that I am responsible for any changes made.
+                </label>
+            </div>
+            
+            <button id="accept-disclaimer" class="btn btn-danger btn-lg" disabled>
+                I UNDERSTAND AND ACCEPT ALL RISKS
+            </button>
+        </div>
+
+        <div class="feature-cards">
+            <div class="card">
+                <h3>✅ Disclaimer Accepted</h3>
+                <p>The disclaimer has been accepted. You can now use the tool.</p>
+            </div>
+            <div class="card">
+                <h3>🔧 Test Controls</h3>
+                <button onclick="testButtonClick()" class="btn">Test Button Click</button>
+                <button onclick="testCheckboxChange()" class="btn">Test Checkbox Change</button>
+                <button onclick="resetDisclaimer()" class="btn">Reset Disclaimer</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function log(message) {
+            const debugOutput = document.getElementById('debug-output');
+            const timestamp = new Date().toLocaleTimeString();
+            debugOutput.innerHTML += `[${timestamp}] ${message}<br>`;
+            console.log(`[${timestamp}] ${message}`);
+        }
+
+        function testDisclaimerSetup() {
+            log('=== STARTING DISCLAIMER SETUP TEST ===');
+            
+            const acceptButton = document.getElementById('accept-disclaimer');
+            const agreementCheckboxes = [
+                document.getElementById('disclaimer-agreement'),
+                document.getElementById('risk-acceptance')
+            ];
+            
+            log(`Accept button found: ${!!acceptButton}`);
+            log(`Checkboxes found: ${agreementCheckboxes.map(cb => !!cb).join(', ')}`);
+            
+            if (!acceptButton) {
+                log('ERROR: Accept button not found!');
+                return false;
+            }
+            
+            if (agreementCheckboxes.every(cb => !cb)) {
+                log('ERROR: No checkboxes found!');
+                return false;
+            }
+            
+            // Always enable the button
+            acceptButton.disabled = false;
+            log('Button enabled');
+            
+            // Add event listeners to checkboxes for debugging
+            agreementCheckboxes.forEach(checkbox => {
+                if (checkbox) {
+                    checkbox.addEventListener('change', () => {
+                        log(`Checkbox changed: ${checkbox.id}, checked: ${checkbox.checked}`);
+                    });
+                }
+            });
+            
+            // Add event listener to accept button
+            acceptButton.addEventListener('click', () => {
+                log('DISCLAIMER ACCEPT BUTTON CLICKED!');
+                
+                // Store agreement in localStorage
+                localStorage.setItem('disclaimer-agreed', 'true');
+                localStorage.setItem('disclaimer-agreed-date', new Date().toISOString());
+                
+                // Hide disclaimer and show feature cards
+                const disclaimer = document.getElementById('disclaimer');
+                const featureCards = document.querySelector('.feature-cards');
+                
+                if (disclaimer) {
+                    disclaimer.style.display = 'none';
+                    log('Disclaimer hidden');
+                }
+                
+                if (featureCards) {
+                    featureCards.style.display = 'grid';
+                    log('Feature cards shown');
+                }
+                
+                // Make button green and keep it green
+                acceptButton.classList.add('btn-success');
+                acceptButton.classList.remove('btn-danger');
+                acceptButton.innerHTML = '<i class="fas fa-check-circle"></i> I UNDERSTAND AND ACCEPT ALL RISKS';
+                log('Button turned green');
+                
+                alert('Disclaimer accepted! You can now use the tool.');
+            });
+            
+            log('Event listeners attached');
+            
+            // Check if user has already agreed
+            const hasAgreed = localStorage.getItem('disclaimer-agreed');
+            const disclaimer = document.getElementById('disclaimer');
+            const featureCards = document.querySelector('.feature-cards');
+            
+            if (hasAgreed === 'true') {
+                log('User has already agreed, hiding disclaimer');
+                if (disclaimer) {
+                    disclaimer.style.display = 'none';
+                }
+                if (featureCards) {
+                    featureCards.style.display = 'grid';
+                }
+                // Make button green and keep it green
+                acceptButton.classList.add('btn-success');
+                acceptButton.classList.remove('btn-danger');
+                acceptButton.innerHTML = '<i class="fas fa-check-circle"></i> I UNDERSTAND AND ACCEPT ALL RISKS';
+            } else {
+                log('User has not agreed, showing disclaimer');
+                if (disclaimer) {
+                    disclaimer.style.display = 'block';
+                }
+                if (featureCards) {
+                    featureCards.style.display = 'none';
+                }
+            }
+            
+            log('=== DISCLAIMER SETUP COMPLETE ===');
+            return true;
+        }
+
+        function testButtonClick() {
+            log('Testing button click programmatically...');
+            const button = document.getElementById('accept-disclaimer');
+            if (button) {
+                button.click();
+            } else {
+                log('ERROR: Button not found for programmatic click');
+            }
+        }
+
+        function testCheckboxChange() {
+            log('Testing checkbox change...');
+            const checkboxes = [
+                document.getElementById('disclaimer-agreement'),
+                document.getElementById('risk-acceptance')
+            ];
+            
+            checkboxes.forEach((checkbox, index) => {
+                if (checkbox) {
+                    checkbox.checked = !checkbox.checked;
+                    log(`Toggled checkbox ${index + 1}: ${checkbox.checked}`);
+                    // Trigger change event
+                    const event = new Event('change', { bubbles: true });
+                    checkbox.dispatchEvent(event);
+                }
+            });
+        }
+
+        function resetDisclaimer() {
+            log('Resetting disclaimer...');
+            localStorage.removeItem('disclaimer-agreed');
+            localStorage.removeItem('disclaimer-agreed-date');
+            location.reload();
+        }
+
+        // Initialize when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            log('DOM loaded, starting disclaimer setup...');
+            testDisclaimerSetup();
+        });
+
+        // Also try immediate setup
+        if (document.readyState === 'loading') {
+            log('Document still loading, will setup when DOM is ready');
+        } else {
+            log('Document already loaded, setting up immediately');
+            testDisclaimerSetup();
+        }
+    </script>
+</body>
+</html> 

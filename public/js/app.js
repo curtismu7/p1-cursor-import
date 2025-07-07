@@ -3481,9 +3481,11 @@ class App {
         if (!populationSelect) return;
 
         try {
-            const populations = await this.pingOneClient.getPopulations();
+            const populationsResp = await this.pingOneClient.getPopulations();
+            const populations = populationsResp && populationsResp._embedded && populationsResp._embedded.populations
+                ? populationsResp._embedded.populations
+                : [];
             populationSelect.innerHTML = '<option value="">Select a population...</option>';
-            
             populations.forEach(population => {
                 const option = document.createElement('option');
                 option.value = population.id;
