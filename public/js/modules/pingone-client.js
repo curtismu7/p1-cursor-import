@@ -467,7 +467,7 @@ export class PingOneClient {
 
                     // Make the API request with retry logic
                     let result;
-                    let lastError;
+                    let lastError = null;
                     
                     for (let attempt = 1; attempt <= retryAttempts; attempt++) {
                         try {
@@ -521,19 +521,21 @@ export class PingOneClient {
                     }
                     
                     // If we get here, all attempts failed
-                    this.logger.error(`All ${retryAttempts} attempts failed for user ${currentUser.email || currentUser.username}: ${lastError.message}`, 'error');
-                    failedCount++;
-                    
-                    if (options.continueOnError) {
-                        results.push({ 
-                            success: false, 
-                            user: currentUser, 
-                            error: lastError.message,
-                            skipped: false
-                        });
-                        continue; // Continue to next user instead of throwing
+                    if (lastError) {
+                        this.logger.error(`All ${retryAttempts} attempts failed for user ${currentUser.email || currentUser.username}: ${lastError.message}`, 'error');
+                        failedCount++;
+                        
+                        if (options.continueOnError) {
+                            results.push({ 
+                                success: false, 
+                                user: currentUser, 
+                                error: lastError.message,
+                                skipped: false
+                            });
+                            continue; // Continue to next user instead of throwing
+                        }
+                        throw lastError;
                     }
-                    throw lastError;
                     
                 } catch (error) {
                     this.logger.error('Error importing user:', error);
