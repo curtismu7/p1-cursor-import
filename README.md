@@ -1,252 +1,322 @@
-# PingOne User Import Tool
+# PingOne User Management Tool
 
-A modern web application for importing users into PingOne using the PingOne Admin API.
+A comprehensive web application for managing users in PingOne Identity Platform. This tool provides import, export, modify, and delete functionality for PingOne users with a modern, responsive interface.
 
-## Features
+## 🚀 Features
 
-- Import users from CSV files into PingOne
-- Clean, responsive UI built with PingOne Nano CSS and PingOne Icons
-- Real-time CSV preview with validation
-- Secure server-side API calls to avoid CORS issues
-- Activity logging for all operations
-- Support for large file processing with streaming
-- Secure API key management using environment variables
+### Core Functionality
+- **Import Users**: Bulk import users from CSV files into PingOne
+- **Export Users**: Export users from PingOne to CSV format with customizable fields
+- **Modify Users**: Update existing users with CSV data, including "Create if not exists" option
+- **Delete Users**: Bulk delete users from PingOne using CSV files
+- **Real-time Progress**: Live progress tracking for all operations
+- **Batch Processing**: Intelligent batching to avoid API rate limits
+- **Error Handling**: Comprehensive error handling with detailed reporting
 
-## Prerequisites
+### User Interface
+- **Modern UI**: Clean, responsive interface with Bootstrap styling
+- **Progress Screens**: Non-auto-closing progress windows with manual close buttons
+- **Sequential Filenames**: Automatic sequential numbering for export files
+- **Settings Management**: Easy configuration of PingOne credentials
+- **Activity Logs**: Real-time logging of all operations
+- **Connection Status**: Live PingOne connection status indicator
 
-- Node.js 16.x or later
-- npm 8.x or later
-- Modern web browser (Chrome, Firefox, Safari, Edge)
-- PingOne account with Admin API access
-- API credentials (Client ID and Secret) with appropriate permissions
-- Environment ID where users will be imported
+### Advanced Features
+- **Rate Limiting**: Built-in rate limiting (50 requests/second) to respect PingOne API limits
+- **Retry Logic**: Automatic retry for transient failures
+- **Field Mapping**: Intelligent mapping between CSV fields and PingOne API fields
+- **Immutable Field Handling**: Proper handling of immutable fields (like `enabled`)
+- **Population Management**: Support for multiple populations
+- **Password Generation**: Optional automatic password generation for new users
 
-## Setup
+## 📋 Prerequisites
 
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/your-username/PingOne-import.git
-   cd PingOne-import
-   ```
+- **Node.js**: 16.x or later
+- **npm**: 8.x or later
+- **Modern Browser**: Chrome, Firefox, Safari, Edge
+- **PingOne Account**: With Admin API access
+- **API Credentials**: Client ID and Secret with appropriate permissions
+- **Environment ID**: Where users will be managed
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+## 🛠️ Setup
 
-3. Set up environment variables:
-   - Copy the example environment file:
-     ```bash
-     cp .env.example .env
-     ```
-   - Edit the `.env` file with your PingOne credentials:
-     ```bash
-     # Get these values from your PingOne Admin Console
-     # 1. Go to your environment
-     # 2. Navigate to Applications
-     # 3. Create or select an application with 'Client Credentials' grant type
-     # 4. Add 'PingOne API' scope to the application
-     PINGONE_CLIENT_ID=your_client_id_here
-     PINGONE_CLIENT_SECRET=your_client_secret_here
-     PINGONE_ENVIRONMENT_ID=your_environment_id_here  # Find this in the URL when viewing your environment
-     PINGONE_REGION=NorthAmerica  # Or your region (e.g., Europe, AsiaPacific)
-     
-     # Server Configuration
-     PORT=4000
-     NODE_ENV=development
-     
-     # Logging
-     LOG_LEVEL=info  # Set to 'debug' for more verbose logging
-     ```
-
-   **Security Note:** Never commit the `.env` file to version control. It's already included in `.gitignore`.
-
-4. Start the development server:
-   ```bash
-   npm run dev
-   ```
-
-5. Open your browser to [http://localhost:4000](http://localhost:4000)
-   Then edit the `.env` file and add your PingOne API credentials.
-
-4. Start the development server:
-   ```bash
-   npm run dev
-   ```
-
-5. Open `http://localhost:3000` in your web browser.
-
-## Usage
-
-1. **Configure Environment Variables**
-   - Copy `.env.example` to `.env`
-   - Add your PingOne API credentials to the `.env` file
-   - Set the appropriate region and environment ID
-
-2. **Start the Server**
-   ```bash
-   npm start
-   # or for development with auto-reload:
-   npm run dev
-   ```
-
-3. **Using the Web Interface**
-   - Open `http://localhost:3000` in your browser
-   - The application will now make all API calls through the server-side proxy
-   - No need to enter API credentials in the browser - they are managed server-side
-
-4. **Import Users**
-   - Go to the Import page
-   - Click "Choose CSV File" and select your CSV file
-   - Review the preview to ensure data is parsed correctly
-   - Click "Import Users" to start the import process
-
-## CSV Format
-
-The CSV file should have a header row with column names. Required columns are:
-
-- `email` - User's email address
-- `givenName` - User's first name
-- `surname` - User's last name
-
-Example CSV:
-
-```csv
-email,givenName,surname,phoneNumber
-test1@example.com,John,Doe,+1234567890
-test2@example.com,Jane,Smith,+1987654321
+### 1. Clone and Install
+```bash
+git clone https://github.com/your-username/PingOne-import.git
+cd PingOne-import
+npm install
 ```
 
-## API Configuration
+### 2. Configure Environment Variables
+Create a `.env` file in the root directory:
 
-To use this application, you'll need:
+```bash
+# PingOne Configuration
+PINGONE_CLIENT_ID=your_client_id_here
+PINGONE_CLIENT_SECRET=your_client_secret_here
+PINGONE_ENVIRONMENT_ID=your_environment_id_here
+PINGONE_REGION=NorthAmerica  # Or: Europe, AsiaPacific, Canada, Australia
 
-1. A PingOne environment ID
-2. API credentials (Client ID and Secret) with the following scopes:
-   - `users:read`
-   - `users:create`
-   - `users:update`
+# Server Configuration
+PORT=4000
+NODE_ENV=development
 
----
+# Logging
+LOG_LEVEL=info  # Set to 'debug' for verbose logging
+```
 
-## API Endpoints: Settings & Logs
+**Security Note:** Never commit the `.env` file to version control. It's already included in `.gitignore`.
 
-### Settings API (`/api/settings`)
+### 3. Get PingOne Credentials
+1. Log into your PingOne Admin Console
+2. Navigate to your environment
+3. Go to Applications → Create Application
+4. Choose "Client Credentials" grant type
+5. Add "PingOne API" scope to the application
+6. Copy the Client ID and Secret
 
-- **GET `/api/settings`**
-  - Returns the current settings (from `data/settings.json` or defaults).
-  - **Response:**
-    ```json
-    {
-      "success": true,
-      "data": {
-        "environmentId": "...",
-        "apiClientId": "...",
-        "populationId": "...",
-        "region": "NorthAmerica"
-      }
-    }
-    ```
+### 4. Start the Application
+```bash
+npm start
+# or for development with auto-reload:
+npm run dev
+```
 
-- **POST `/api/settings`**
-  - Updates the settings. Requires JSON body with at least `environmentId` and `apiClientId`.
-  - If `region` is missing, defaults to `NorthAmerica`. If `apiSecret` is omitted but exists, it is preserved.
-  - **Request Body Example:**
-    ```json
-    {
-      "environmentId": "env-123",
-      "apiClientId": "client-abc",
-      "apiSecret": "supersecret",
-      "populationId": "pop-xyz",
-      "region": "Europe"
-    }
-    ```
-  - **Response:**
-    ```json
-    {
-      "success": true,
-      "message": "Settings saved successfully",
-      "data": {
-        "environmentId": "env-123",
-        "apiClientId": "client-abc",
-        "populationId": "pop-xyz",
-        "region": "Europe"
-      }
-    }
-    ```
+### 5. Access the Application
+Open [http://localhost:4000](http://localhost:4000) in your browser.
 
----
+## 📖 Usage
 
-### Logs API (`/api/logs`)
+### Import Users
+1. **Prepare CSV File**: Create a CSV with user data
+2. **Upload File**: Use the Import page to upload your CSV
+3. **Review Preview**: Check the parsed data before importing
+4. **Configure Options**: Set population, enabled status, password generation
+5. **Start Import**: Click "Import Users" and monitor progress
 
-- **POST `/api/logs/ui`**
-  - Adds a UI log entry (kept in memory).
-  - **Body:** `{ "level": "info", "message": "...", "data": { ... } }`
-  - **Response:** `{ "success": true, "message": "UI log entry created", "id": "..." }`
+### Export Users
+1. **Select Population**: Choose which population to export from
+2. **Choose Fields**: Select basic, custom, or all fields
+3. **Export**: Click "Export Users" to download CSV
+4. **Sequential Files**: Files are automatically numbered (e.g., `pingone-users-export-2025-07-07-001.csv`)
 
-- **GET `/api/logs/ui`**
-  - Returns recent UI logs from memory.
-  - Query params: `limit`, `level`
-  - **Response:** `{ "success": true, "count": 1, "total": 1, "logs": [ ... ] }`
+### Modify Users
+1. **Prepare CSV**: Create CSV with user modifications
+2. **Upload File**: Use the Modify page to upload CSV
+3. **Configure Options**: 
+   - Enable "Create if not exists" to create missing users
+   - Set default population and enabled status
+   - Choose password generation for new users
+4. **Start Modification**: Click "Modify Users" and monitor progress
 
-- **POST `/api/logs/disk`**
-  - Appends a log entry to disk (`logs/client.log`).
-  - **Body:** `{ "level": "info", "message": "...", "data": { ... } }`
-  - **Response:** `{ "success": true, "message": "Disk log entry created", "id": "..." }`
+### Delete Users
+1. **Prepare CSV**: Create CSV with usernames or emails to delete
+2. **Upload File**: Use the Delete page to upload CSV
+3. **Confirm**: Review the users to be deleted
+4. **Start Deletion**: Click "Delete Users" and monitor progress
 
-- **GET `/api/logs/disk`**
-  - Reads logs from disk.
-  - Query params: `limit`, `level`
-  - **Response:** `{ "success": true, "count": 1, "total": 1, "logs": [ ... ] }`
+## 📄 CSV Formats
 
-- **Legacy Endpoints**
-  - `/api/logs/` (GET/POST): For backward compatibility, proxies to `/api/logs/disk`.
+### Import CSV Format
+Required columns:
+- `email` - User's email address
+- `firstName` or `givenName` - User's first name
+- `lastName` or `surname` - User's last name
 
----
+Optional columns:
+- `username` - Custom username (defaults to email)
+- `enabled` - Account status (true/false)
+- `populationId` - Population ID
+- `phoneNumber` - Phone number
+- `title` - Job title
+- `department` - Department
 
-## Security
+Example:
+```csv
+email,firstName,lastName,username,enabled,title,department
+john.doe@example.com,John,Doe,johndoe,true,Developer,Engineering
+jane.smith@example.com,Jane,Smith,janesmith,true,Manager,Product
+```
 
-- API credentials are stored in the browser's localStorage (encrypted in modern browsers)
-- No credentials are sent to any server other than PingOne's API endpoints
-- For production use, consider implementing server-side authentication and token management
+### Modify CSV Format
+Same as Import format, but only include fields you want to modify:
+```csv
+email,firstName,lastName,title,department
+john.doe@example.com,John,Updated,Senior Developer,Engineering
+jane.smith@example.com,Jane,Smith,Product Manager,Product
+```
 
-## Browser Support
+### Delete CSV Format
+Include either username or email:
+```csv
+username,email
+johndoe,john.doe@example.com
+janesmith,jane.smith@example.com
+```
 
-- Chrome (latest)
-- Firefox (latest)
-- Safari (latest)
-- Edge (latest)
+## 🔧 API Endpoints
 
-## Development
+### Core Endpoints
+- `GET /api/health` - Server health and PingOne connection status
+- `GET /api/settings` - Get current settings
+- `PUT /api/settings` - Update settings
+- `POST /api/import` - Import users from CSV
+- `POST /api/export-users` - Export users to CSV
+- `POST /api/modify` - Modify users from CSV
+- `POST /api/delete` - Delete users from CSV
 
-This is a client-side only application built with vanilla JavaScript. No build step is required.
+### PingOne Proxy Endpoints
+- `GET /api/pingone/environments/{envId}/users` - List users
+- `POST /api/pingone/environments/{envId}/users` - Create user
+- `PUT /api/pingone/environments/{envId}/users/{userId}` - Update user
+- `DELETE /api/pingone/environments/{envId}/users/{userId}` - Delete user
+- `GET /api/pingone/populations` - List populations
+
+### Logging Endpoints
+- `POST /api/logs/info` - Log info message
+- `POST /api/logs/error` - Log error message
+- `POST /api/logs/warning` - Log warning message
+- `GET /api/logs/ui` - Get UI logs
+- `GET /api/logs/disk` - Get disk logs
+
+## ⚙️ Configuration
+
+### Environment Variables
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `PINGONE_CLIENT_ID` | PingOne Client ID | Yes | - |
+| `PINGONE_CLIENT_SECRET` | PingOne Client Secret | Yes | - |
+| `PINGONE_ENVIRONMENT_ID` | PingOne Environment ID | Yes | - |
+| `PINGONE_REGION` | PingOne Region | No | NorthAmerica |
+| `PORT` | Server port | No | 4000 |
+| `NODE_ENV` | Environment | No | development |
+| `LOG_LEVEL` | Logging level | No | info |
+
+### Rate Limiting
+- **API Requests**: 50 requests/second (PingOne limit)
+- **Batch Size**: 10 users per batch (configurable)
+- **Delay Between Batches**: 1 second (configurable)
+
+## 🔒 Security Features
+
+- **Server-side API calls**: No credentials in browser
+- **Encrypted storage**: API secrets stored encrypted
+- **Environment variables**: Secure credential management
+- **CORS protection**: Proper CORS headers
+- **Input validation**: Comprehensive data validation
+- **Error sanitization**: No sensitive data in error messages
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**"Authentication Failed"**
+- Check your Client ID and Secret
+- Verify the API credentials have correct scopes
+- Ensure the Environment ID is correct
+
+**"Rate Limit Exceeded"**
+- The application automatically handles rate limiting
+- Wait a moment and try again
+- Check the progress logs for details
+
+**"User not found" during Modify**
+- Enable "Create if not exists" option
+- Check that usernames/emails exist in PingOne
+- Verify CSV format is correct
+
+**"Field is immutable"**
+- Some fields like `enabled` cannot be modified
+- The application will skip these fields and show warnings
+
+### Logs
+- **UI Logs**: Real-time logs in the browser
+- **Server Logs**: Check `logs/combined.log` and `logs/error.log`
+- **Debug Mode**: Set `LOG_LEVEL=debug` for verbose logging
+
+## 🧪 Testing
+
+Run the test suite:
+```bash
+npm test
+```
+
+Run specific tests:
+```bash
+npm run test:unit
+npm run test:integration
+npm run test:e2e
+```
+
+## 📝 Development
 
 ### Project Structure
-
 ```
-PingOne-import/
-├── index.html          # Main HTML file
-├── css/
-│   └── styles.css     # Custom styles
-├── js/
-│   ├── app.js         # Main application entry point
-│   └── modules/        # Application modules
-│       ├── file-handler.js  # CSV file processing
-│       ├── logger.js        # Logging functionality
-│       ├── pingone-api.js   # PingOne API client
-│       ├── settings-manager.js # Settings management
-│       └── ui-manager.js    # UI management
-└── README.md           # This file
+├── public/           # Frontend assets
+│   ├── js/          # JavaScript modules
+│   ├── css/         # Stylesheets
+│   └── index.html   # Main HTML file
+├── routes/          # API routes
+├── server/          # Server modules
+├── test/            # Test files
+├── logs/            # Log files
+└── data/            # Settings and data files
 ```
 
-## License
+### Key Technologies
+- **Backend**: Node.js, Express.js
+- **Frontend**: Vanilla JavaScript, Bootstrap
+- **File Processing**: Multer, CSV parsing
+- **Logging**: Winston
+- **Testing**: Jest, Supertest
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## 🤝 Contributing
 
-## Contributing
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Submit a pull request
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+## 📄 License
 
-## Support
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-For support, please open an issue in the GitHub repository.
+## 🆘 Support
+
+For issues and questions:
+1. Check the troubleshooting section above
+2. Review the logs for error details
+3. Create an issue on GitHub with:
+   - Description of the problem
+   - Steps to reproduce
+   - Log files (with sensitive data removed)
+   - Environment details
+
+## 🔄 Changelog
+
+### Version 4.1.0
+- ✅ Added Modify functionality with "Create if not exists" option
+- ✅ Fixed immutable field handling (enabled status)
+- ✅ Added sequential filename generation for exports
+- ✅ Improved progress screens with manual close buttons
+- ✅ Enhanced error handling and user feedback
+- ✅ Added comprehensive logging system
+- ✅ Fixed API secret encryption and decryption
+- ✅ Improved rate limiting and batch processing
+- ✅ Added population management support
+- ✅ Enhanced CSV validation and field mapping
+
+### Version 4.0.0
+- ✅ Complete rewrite with modern architecture
+- ✅ Server-side API proxy for security
+- ✅ Real-time progress tracking
+- ✅ Comprehensive error handling
+- ✅ Export functionality with customizable fields
+- ✅ Delete functionality with CSV support
+- ✅ Settings management interface
+- ✅ Activity logging system
+
+---
+
+**Note**: This tool is designed for PingOne Identity Platform. Ensure you have appropriate permissions and follow your organization's security policies when using this tool.

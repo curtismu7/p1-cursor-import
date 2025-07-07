@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PingOne User Import v1.1.1</title>
+    <title>PingOne User Import v4.1</title>
     <!-- Bootstrap CSS -->
     <link href="/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome -->
@@ -31,6 +31,14 @@
                     <i class="fas fa-trash"></i>
                     <span>Delete</span>
                 </li>
+                <li class="nav-item" data-view="modify">
+                    <i class="fas fa-edit"></i>
+                    <span>Modify</span>
+                </li>
+                <li class="nav-item" data-view="export">
+                    <i class="fas fa-download"></i>
+                    <span>Export</span>
+                </li>
                 <li class="nav-item" data-view="settings">
                     <i class="fas fa-cog"></i>
                     <span>Settings</span>
@@ -44,6 +52,11 @@
 
         <!-- Main Content -->
         <main class="main-content">
+            <!-- Version Badge -->
+            <div id="version-badge-top" class="version-badge-top">
+                <span id="version-text">v4.1</span>
+            </div>
+            
             <!-- Universal Disclaimer Banner -->
             <div id="universal-disclaimer" class="universal-disclaimer-banner">
                 <div class="disclaimer-content">
@@ -60,17 +73,94 @@
             <div id="home-view" class="view active">
                 <div class="home-header">
                     <h1>PingOne User Import Tool</h1>
+                    
+                    <!-- Enhanced Disclaimer with Required Agreement -->
                     <div id="disclaimer" class="disclaimer-box">
-                        <h3>⚠️ IMPORTANT DISCLAIMER</h3>
-                        <p><strong>This tool is unsupported and provided as-is. Use at your own risk. No warranty or support is provided by Ping Identity.</strong></p>
-                        <p>By using this tool, you acknowledge that:</p>
-                        <ul>
-                            <li>This is an unofficial, unsupported utility</li>
-                            <li>No guarantees are provided regarding data integrity or operation</li>
-                            <li>You are responsible for backing up your data before use</li>
-                            <li>Ping Identity is not liable for any damages or data loss</li>
-                        </ul>
-                        <button id="accept-disclaimer" class="btn btn-danger">I Understand and Accept the Risks</button>
+                        <div class="disclaimer-header">
+                            <h2>🚨 CRITICAL WARNING - UNSUPPORTED TOOL - USE AT YOUR OWN RISK 🚨</h2>
+                            <div class="disclaimer-alert">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <span>THIS TOOL IS COMPLETELY UNSUPPORTED AND PROVIDED AS-IS WITH ABSOLUTELY NO WARRANTY OR SUPPORT FROM PING IDENTITY.</span>
+                            </div>
+                        </div>
+                        
+                        <div class="warning-section">
+                            <h4>🚨 IMMEDIATE RISKS:</h4>
+                            <ul>
+                                <li><strong>DATA LOSS:</strong> This tool can permanently delete users and modify data</li>
+                                <li><strong>NO UNDO:</strong> Deleted users cannot be recovered</li>
+                                <li><strong>UNSUPPORTED:</strong> Ping Identity provides no support for this tool</li>
+                                <li><strong>NO WARRANTY:</strong> No guarantees regarding data integrity or operation</li>
+                                <li><strong>PRODUCTION RISK:</strong> Can cause service disruptions in production environments</li>
+                                <li><strong>UNOFFICIAL:</strong> This is not an official Ping Identity product</li>
+                                <li><strong>EXPERIMENTAL:</strong> This tool is experimental and may have bugs</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="warning-section">
+                            <h4>🔒 REQUIRED SAFEGUARDS:</h4>
+                            <ul>
+                                <li><strong>BACKUP FIRST:</strong> You MUST backup your PingOne account before use</li>
+                                <li><strong>TEST ENVIRONMENT:</strong> Test in non-production environments only</li>
+                                <li><strong>SMALL BATCHES:</strong> Start with small files to verify functionality</li>
+                                <li><strong>VERIFY DATA:</strong> Double-check all CSV data before processing</li>
+                                <li><strong>MONITOR LOGS:</strong> Watch logs carefully during operations</li>
+                                <li><strong>VALIDATE SETTINGS:</strong> Ensure all API credentials are correct</li>
+                                <li><strong>READ DOCUMENTATION:</strong> Understand the tool's limitations</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="warning-section">
+                            <h4>⚖️ LEGAL DISCLAIMER:</h4>
+                            <p>By using this tool, you acknowledge and accept that:</p>
+                            <ul>
+                                <li>This is an unofficial, unsupported utility created independently</li>
+                                <li>You are solely responsible for any data loss or damage</li>
+                                <li>Ping Identity is not liable for any damages or data loss</li>
+                                <li>You will not hold Ping Identity responsible for any issues</li>
+                                <li>You understand the risks and accept full responsibility</li>
+                                <li>This tool is not endorsed or supported by Ping Identity</li>
+                                <li>Use of this tool is at your own risk and discretion</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="warning-section">
+                            <h4>📋 UNSUPPORTED TOOL DISCLAIMER:</h4>
+                            <p><strong>This tool is NOT an official Ping Identity product and is provided without any warranty or support:</strong></p>
+                            <ul>
+                                <li>No technical support is available from Ping Identity</li>
+                                <li>No updates or bug fixes are guaranteed</li>
+                                <li>No compatibility with future PingOne versions is assured</li>
+                                <li>No documentation or training is provided by Ping Identity</li>
+                                <li>This tool may stop working at any time without notice</li>
+                                <li>Use of this tool is not recommended for production environments</li>
+                                <li>You are responsible for testing and validating all operations</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="acceptance-section">
+                            <div class="agreement-checkbox">
+                                <input type="checkbox" id="disclaimer-agreement" required>
+                                <label for="disclaimer-agreement">
+                                    <strong>I have read, understood, and agree to all terms and conditions above.</strong>
+                                </label>
+                            </div>
+                            <div class="agreement-checkbox">
+                                <input type="checkbox" id="risk-acceptance" required>
+                                <label for="risk-acceptance">
+                                    <strong>I understand this is an unsupported tool and accept full responsibility for any consequences.</strong>
+                                </label>
+                            </div>
+
+                            <button id="accept-disclaimer" class="btn btn-danger btn-lg" disabled>
+                                <i class="fas fa-exclamation-triangle"></i>
+                                I UNDERSTAND AND ACCEPT ALL RISKS
+                            </button>
+                            <p class="agreement-note">
+                                <i class="fas fa-info-circle"></i>
+                                <strong>Note:</strong> You must check all two boxes above to enable the tool.
+                            </p>
+                        </div>
                     </div>
                 </div>
                 <div class="feature-cards">
@@ -84,6 +174,16 @@
                         <h3>Delete Users</h3>
                         <p>Bulk delete users from CSV in PingOne.</p>
                     </div>
+                    <div class="feature-card" data-view="modify">
+                        <i class="fas fa-edit fa-2x"></i>
+                        <h3>Modify Users</h3>
+                        <p>Bulk modify existing users in PingOne.</p>
+                    </div>
+                    <div class="feature-card" data-view="export">
+                        <i class="fas fa-download fa-2x"></i>
+                        <h3>Export Users</h3>
+                        <p>Export all users from PingOne to CSV format.</p>
+                    </div>
                     <div class="feature-card" data-view="settings">
                         <i class="fas fa-cog fa-2x"></i>
                         <h3>Settings</h3>
@@ -92,7 +192,7 @@
                     <div class="feature-card" data-view="logs">
                         <i class="fas fa-list fa-2x"></i>
                         <h3>Logs</h3>
-                        <p>View import and delete logs.</p>
+                        <p>View import, delete, and modify logs.</p>
                     </div>
                 </div>
             </div>
@@ -124,9 +224,57 @@
                             <span>Choose CSV File</span>
                         </label>
                         
+                        <!-- Population Selection Options -->
+                        <div class="population-selection-container" style="margin-top: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;">
+                            <h4 style="margin-bottom: 15px; color: #333;">
+                                <i class="fas fa-users"></i> Population Selection
+                            </h4>
+                            
+                            <div class="form-group">
+                                <label for="import-population-select">Select Population from PingOne:</label>
+                                <select id="import-population-select" class="form-control">
+                                    <option value="">Loading populations...</option>
+                                </select>
+                                <small class="form-text text-muted">Choose a population from your PingOne environment where users will be imported.</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="use-csv-population-id">
+                                    <label class="form-check-label" for="use-csv-population-id">
+                                        <i class="fas fa-file-csv"></i> Use Population ID from CSV file
+                                    </label>
+                                </div>
+                                <small class="form-text text-muted">If checked, will use the population ID specified in each row of the CSV file. If a row doesn't have a population ID, the selected population above will be used as fallback.</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="use-default-population" checked>
+                                    <label class="form-check-label" for="use-default-population">
+                                        <i class="fas fa-cog"></i> Use default population from settings
+                                    </label>
+                                </div>
+                                <small class="form-text text-muted">If checked, will use the default population ID configured in your settings as fallback when no population is specified.</small>
+                            </div>
+                            
+                            <div class="alert alert-info" style="margin-top: 15px;">
+                                <i class="fas fa-info-circle"></i>
+                                <strong>Population Priority:</strong><br>
+                                1. CSV Population ID (if enabled and present in row)<br>
+                                2. Selected Population from dropdown<br>
+                                3. Default Population from settings (if enabled)
+                            </div>
+                        </div>
+                        
                         <!-- Import Status Section -->
                         <div id="import-status" class="import-status" style="display: none;">
-                            <h3>Import Progress</h3>
+                            <div class="progress-header">
+                                <h3>Import Progress</h3>
+                                <button id="close-import-status" class="close-progress-btn" type="button" aria-label="Close">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
                             <!-- Population ID Warning Area -->
                             <div id="population-warning" class="population-warning" style="display: none;">
                                 <div class="warning-message">
@@ -139,6 +287,11 @@
                                      aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
                                     <span id="import-progress-percent">0%</span>
                                 </div>
+                            </div>
+                            <div class="progress-actions">
+                                <button id="cancel-import-progress" class="btn btn-danger btn-sm">
+                                    <i class="fas fa-stop"></i> Cancel Import
+                                </button>
                             </div>
                             <div id="import-stats" class="import-stats">
                                 <div class="stat-item">
@@ -185,7 +338,12 @@
                     </div>
                     <div class="form-group">
                         <label for="api-secret">API Secret</label>
-                        <input type="password" id="api-secret" name="api-secret" class="form-control" autocomplete="current-password" required>
+                        <div class="input-group">
+                            <input type="password" id="api-secret" name="api-secret" class="form-control" autocomplete="current-password" required>
+                            <button type="button" class="btn btn-outline-secondary" id="toggle-api-secret-visibility" tabindex="-1" style="border: 1px solid #ced4da; background: #fff;">
+                                <i class="fas fa-eye" id="api-secret-eye"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="population-id">Population ID</label>
@@ -202,15 +360,33 @@
                             <option value="Canada">Canada</option>
                         </select>
                     </div>
+                    <div class="form-group">
+                        <label for="rate-limit">Rate Limit (requests per second)</label>
+                        <input type="number" id="rate-limit" name="rate-limit" class="form-control" 
+                               min="1" max="100" value="50" step="1" required>
+                        <small class="form-text text-muted">Maximum API requests per second. Range: 1-100. Default: 50</small>
+                    </div>
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary">
                             <i class="pi pi-save"></i> Save Settings
+                        </button>
+                        <button type="button" id="get-token-btn" class="btn btn-success">
+                            <i class="fas fa-key"></i> Get Token
+                        </button>
+                        <button type="button" id="refresh-token-btn" class="btn btn-secondary">
+                            <i class="fas fa-sync-alt"></i> Refresh Token
                         </button>
                     </div>
                     <div class="settings-status-container">
                         <div id="settings-connection-status" class="connection-status status-disconnected">
                             <span class="status-icon">⚠️</span>
                             <span class="status-message">Please save your API credentials and test the connection</span>
+                        </div>
+                        <div id="settings-save-status" class="settings-save-status" style="display: none;">
+                            <div class="status-details">
+                                <span class="status-icon">ℹ️</span>
+                                <span class="status-message">Settings save status will appear here</span>
+                            </div>
                         </div>
                     </div>
                 </form>
@@ -251,12 +427,22 @@
                             <span>Choose CSV File</span>
                         </label>
                         <div id="delete-csv-status" class="import-status" style="display: none;">
-                            <h3>Delete Progress (CSV Safe)</h3>
+                            <div class="progress-header">
+                                <h3>Delete Progress (CSV Safe)</h3>
+                                <button id="close-delete-csv-status" class="close-progress-btn" type="button" aria-label="Close">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
                             <div class="progress-container">
                                 <div id="delete-csv-progress" class="progress-bar bg-danger" role="progressbar" style="width: 0%"
                                      aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
                                     <span id="delete-csv-progress-percent">0%</span>
                                 </div>
+                            </div>
+                            <div class="progress-actions">
+                                <button id="cancel-delete-csv-progress" class="btn btn-danger btn-sm">
+                                    <i class="fas fa-stop"></i> Cancel Delete
+                                </button>
                             </div>
                             <div id="delete-csv-stats" class="import-stats">
                                 <div class="stat-item">
@@ -287,10 +473,371 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Modify View -->
+            <div id="modify-view" class="view">
+                <div class="import-header">
+                    <h1>Modify Users</h1>
+                    <div class="import-actions">
+                        <div class="import-buttons">
+                            <button id="start-modify-btn" class="btn btn-warning" disabled>
+                                <i class="fas fa-edit"></i> Modify Users
+                            </button>
+                            <button id="cancel-modify-btn" class="btn btn-secondary" style="display: none;">
+                                <i class="fas fa-times"></i> Cancel Modify
+                            </button>
+                        </div>
+                        <div id="modify-file-info" class="file-info">
+                            <!-- File info will be displayed here -->
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="import-content">
+                    <div class="file-upload-container">
+                        <input type="file" id="modify-csv-file" accept=".csv" class="file-input">
+                        <label for="modify-csv-file" class="file-label">
+                            <i class="fas fa-upload"></i>
+                            <span>Choose CSV File</span>
+                        </label>
+                        
+                        <!-- Modify Options Section -->
+                        <div class="modify-options-container" style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;">
+                            <h4 style="margin-bottom: 15px; color: #495057;">
+                                <i class="fas fa-cog"></i> Modify Options
+                            </h4>
+                            
+                            <div class="form-group">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="create-if-not-exists" checked>
+                                    <label class="form-check-label" for="create-if-not-exists">
+                                        <i class="fas fa-plus-circle"></i> Create users if they don't exist
+                                    </label>
+                                    <small class="form-text text-muted d-block mt-1">
+                                        When checked, users that don't exist in PingOne will be created instead of being skipped. 
+                                        This is useful for bulk user management where you want to ensure all users in your CSV exist in PingOne.
+                                    </small>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="update-user-status">
+                                    <label class="form-check-label" for="update-user-status">
+                                        <i class="fas fa-toggle-on"></i> Update user status (enabled/disabled)
+                                    </label>
+                                    <small class="form-text text-muted d-block mt-1">
+                                        When checked, the 'enabled' field from your CSV will be used to update user status. 
+                                        Users can be enabled (true) or disabled (false) based on the CSV data.
+                                    </small>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group" id="create-options" style="margin-top: 15px; padding-left: 20px; border-left: 3px solid #007bff;">
+                                <h5 style="color: #007bff; margin-bottom: 10px;">
+                                    <i class="fas fa-user-plus"></i> Creation Options
+                                </h5>
+                                
+                                <div class="form-group">
+                                    <label for="default-population-select">Default Population for New Users:</label>
+                                    <select id="default-population-select" class="form-control">
+                                        <option value="">Loading populations...</option>
+                                    </select>
+                                    <small class="form-text text-muted">Select the population where new users will be created if not specified in the CSV.</small>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="default-enabled-status">Default Enabled Status:</label>
+                                    <select id="default-enabled-status" class="form-control">
+                                        <option value="true">Enabled</option>
+                                        <option value="false">Disabled</option>
+                                    </select>
+                                    <small class="form-text text-muted">Set the default enabled status for new users if not specified in the CSV.</small>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="generate-passwords" checked>
+                                        <label class="form-check-label" for="generate-passwords">
+                                            <i class="fas fa-key"></i> Generate temporary passwords for new users
+                                        </label>
+                                        <small class="form-text text-muted">Automatically generate secure temporary passwords for new users.</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Modify Status Section -->
+                        <div id="modify-status" class="import-status" style="display: none;">
+                            <div class="progress-header">
+                                <h3>Modify Progress</h3>
+                                <button id="close-modify-status" class="close-progress-btn" type="button" aria-label="Close">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <div class="progress-container">
+                                <div id="modify-progress" class="progress-bar bg-warning" role="progressbar" style="width: 0%" 
+                                     aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                    <span id="modify-progress-percent">0%</span>
+                                </div>
+                            </div>
+                            <div class="progress-actions">
+                                <button id="cancel-modify-progress" class="btn btn-danger btn-sm">
+                                    <i class="fas fa-stop"></i> Cancel Modify
+                                </button>
+                            </div>
+                            <div id="modify-stats" class="import-stats">
+                                <div class="stat-item">
+                                    <span class="stat-label">Status:</span>
+                                    <span id="modify-progress-text" class="stat-value">Ready</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Progress:</span>
+                                    <span id="modify-progress-count" class="stat-value">0 of 0 users</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Modified:</span>
+                                    <span id="modify-success-count" class="stat-value success">0</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Created:</span>
+                                    <span id="modify-created-count" class="stat-value info">0</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Failed:</span>
+                                    <span id="modify-failed-count" class="stat-value error">0</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Skipped:</span>
+                                    <span id="modify-skipped-count" class="stat-value warning">0</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">No Changes:</span>
+                                    <span id="modify-no-changes-count" class="stat-value info">0</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="modify-preview-container" class="preview-container">
+                        <!-- CSV preview will be displayed here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Export View -->
+            <div id="export-view" class="view">
+                <div class="import-header">
+                    <h1>Export Users</h1>
+                    <div class="import-actions">
+                        <div class="import-buttons">
+                            <button id="start-export-btn" class="btn btn-success" disabled>
+                                <i class="fas fa-download"></i> Export Users
+                            </button>
+                            <button id="cancel-export-btn" class="btn btn-secondary" style="display: none;">
+                                <i class="fas fa-times"></i> Cancel Export
+                            </button>
+                        </div>
+                        <div id="export-info" class="file-info">
+                            <!-- Export info will be displayed here -->
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="import-content">
+                    <div class="export-options-container">
+                        <div class="form-group">
+                            <label for="export-population-select">Population to Export:</label>
+                            <div class="input-group">
+                                <select id="export-population-select" class="form-control">
+                                    <option value="">Loading populations...</option>
+                                </select>
+                                <div class="input-group-append">
+                                    <button type="button" id="refresh-export-populations" class="btn btn-outline-secondary" title="Refresh populations from PingOne">
+                                        <i class="fas fa-sync-alt"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <small class="form-text text-muted">Select a specific population or "All Populations" to export all users. Click the refresh button to reload populations from PingOne.</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="export-population-id">Or Enter Population ID Manually:</label>
+                            <input type="text" id="export-population-id" class="form-control" placeholder="e.g., 367bc5a0-7c0f-4ae3-95b6-2f045e9c48e3">
+                            <small class="form-text text-muted">If you know the population ID, you can enter it directly here. This will override the dropdown selection.</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="export-fields-select">Fields to Export:</label>
+                            <select id="export-fields-select" class="form-control">
+                                <option value="all">All Available Fields</option>
+                                <option value="basic">Basic Fields Only</option>
+                                <option value="custom">Custom Fields Only</option>
+                            </select>
+                            <small class="form-text text-muted">Choose which fields to include in the export.</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="export-format-select">Export Format:</label>
+                            <select id="export-format-select" class="form-control">
+                                <option value="csv">CSV (Comma Separated Values)</option>
+                                <option value="json">JSON (JavaScript Object Notation)</option>
+                            </select>
+                            <small class="form-text text-muted">Choose the format for the exported data.</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="ignore-disabled-users">
+                                <label class="form-check-label" for="ignore-disabled-users">
+                                    <i class="fas fa-user-slash"></i> Ignore disabled users
+                                </label>
+                            </div>
+                            <small class="form-text text-muted">Skip disabled users during export. Disabled users will be counted in the "Ignored" statistics.</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="open-after-export" checked>
+                                <label class="form-check-label" for="open-after-export">
+                                    <i class="fas fa-external-link-alt"></i> Open file after export
+                                </label>
+                            </div>
+                            <small class="form-text text-muted">Automatically open the exported file with your system's default application.</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="preferred-csv-app">Preferred CSV Application (Optional):</label>
+                            <select id="preferred-csv-app" class="form-control">
+                                <option value="">System Default</option>
+                                <option value="excel">Microsoft Excel</option>
+                                <option value="sheets">Google Sheets</option>
+                                <option value="calc">LibreOffice Calc</option>
+                                <option value="numbers">Apple Numbers</option>
+                                <option value="notepad">Text Editor (Notepad/TextEdit)</option>
+                                <option value="custom">Custom Application</option>
+                            </select>
+                            <small class="form-text text-muted">Choose your preferred application for opening CSV files. Some options may require additional setup.</small>
+                        </div>
+                        
+                        <div class="form-group" id="custom-app-path-group" style="display: none;">
+                            <label for="custom-app-path">Custom Application Path:</label>
+                            <input type="text" id="custom-app-path" class="form-control" placeholder="e.g., /Applications/MyApp.app or C:\Program Files\MyApp\MyApp.exe">
+                            <small class="form-text text-muted">Enter the full path to your preferred application.</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle"></i>
+                                <strong>File Save & Open:</strong> When you export, you'll be prompted to choose where to save the file on your computer. 
+                                If "Open file after export" is checked, the system will attempt to open the file with your preferred application.
+                                In modern browsers, you can select the exact folder and filename. In older browsers, the file will be downloaded to your default downloads folder.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Export Status Section -->
+                    <div id="export-status" class="import-status" style="display: none;">
+                        <div class="progress-header">
+                            <h3>Export Progress</h3>
+                            <button id="close-export-status" class="close-progress-btn" type="button" aria-label="Close">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="progress-container">
+                            <div id="export-progress" class="progress-bar bg-success" role="progressbar" style="width: 0%" 
+                                 aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                <span id="export-progress-percent">0%</span>
+                            </div>
+                        </div>
+                        <div class="progress-actions">
+                            <button id="cancel-export-progress" class="btn btn-danger btn-sm">
+                                <i class="fas fa-stop"></i> Cancel Export
+                            </button>
+                        </div>
+                        <div id="export-stats" class="import-stats">
+                            <div class="stat-item">
+                                <span class="stat-label">Status:</span>
+                                <span id="export-progress-text" class="stat-value">Ready</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Progress:</span>
+                                <span id="export-progress-count" class="stat-value">0 of 0 users</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Exported:</span>
+                                <span id="export-success-count" class="stat-value success">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Failed:</span>
+                                <span id="export-failed-count" class="stat-value error">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Skipped:</span>
+                                <span id="export-skipped-count" class="stat-value warning">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Ignored (Disabled):</span>
+                                <span id="export-ignored-count" class="stat-value warning">0</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="export-preview-container" class="preview-container">
+                        <!-- Export preview will be displayed here -->
+                    </div>
+                </div>
+            </div>
         </main>
+        
+        <!-- PingIdentity Footer -->
+        <footer class="pingidentity-footer">
+            <div class="footer-content">
+                <div class="footer-logo">
+                    <img src="https://raw.githubusercontent.com/curtismu7/CDN/fd81b602d8c3635a8ca40aab169c83b86eae2dc0/Ping%20Identity_idEzgMTpXK_1.svg" alt="Ping Identity" class="footer-logo-img">
+                </div>
+                <div class="footer-text">
+                    <p>&copy; 2024 Ping Identity. All rights reserved.</p>
+                    <p>This tool is unsupported and provided as-is. Use at your own risk.</p>
+                </div>
+            </div>
+        </footer>
+        
+        <!-- Population ID Missing Modal -->
+        <div id="population-id-modal" class="modal fade" tabindex="-1" role="dialog">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="fas fa-exclamation-triangle text-warning"></i>
+                            Population ID Missing
+                        </h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <p>The CSV file does not contain a <code>populationId</code> column, but you have enabled "Use Population ID from CSV file".</p>
+                        <p>What would you like to do?</p>
+                        <ul>
+                            <li><strong>Continue with fallback:</strong> Use the selected population from the dropdown or default population from settings</li>
+                            <li><strong>Go back:</strong> Return to the import screen to select a different population</li>
+                        </ul>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" id="population-modal-back">
+                            <i class="fas fa-arrow-left"></i> Go Back
+                        </button>
+                        <button type="button" class="btn btn-primary" id="population-modal-continue">
+                            <i class="fas fa-play"></i> Continue with Fallback
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <script src="/js/bundle.js?v=3.2"></script>
+    <script src="/js/bundle.js?v=3.7"></script>
     <script src="/setup-settings.js"></script>
     <script src="/setup-settings.js"></script>
 </body>

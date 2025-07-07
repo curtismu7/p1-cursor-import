@@ -97,41 +97,111 @@ class FileHandler {
         this.fileInput.addEventListener('change', (event) => this.handleFileSelect(event));
     }
     
-    handleFileSelect(event) {
+    /**
+     * Handle file selection
+     * @param {Event} event - File input change event
+     */
+    async handleFileSelect(event) {
+        const file = event.target.files[0];
+        if (!file) {
+            this.logger.warn('No file selected');
+            return;
+        }
+
+        // Validate file type
+        if (!file.name.toLowerCase().endsWith('.csv')) {
+            this.logger.error('Invalid file type. Please select a CSV file.');
+            this.uiManager.showNotification('Please select a CSV file.', 'error');
+            return;
+        }
+
+        // Validate file size (max 10MB)
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (file.size > maxSize) {
+            this.logger.error('File too large. Maximum size is 10MB.');
+            this.uiManager.showNotification('File too large. Maximum size is 10MB.', 'error');
+            return;
+        }
+
         try {
-            const fileInput = event.target;
-            if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
-                this.logger.error('No file selected or invalid file input');
-                return;
+            this.logger.info('Processing CSV file', {
+                fileName: file.name,
+                fileSize: file.size,
+                lastModified: file.lastModified
+            });
+
+            // Show loading state
+            this.uiManager.showNotification('Processing CSV file...', 'info');
+
+            // Parse CSV file with robust validation
+            const parseResults = await this.parseCSVFile(file);
+            
+            this.logger.info('CSV parsing completed', {
+                totalRows: parseResults.totalRows,
+                validUsers: parseResults.validUsers,
+                invalidUsers: parseResults.invalidUsers,
+                errorCount: parseResults.errors.length,
+                headers: parseResults.headers
+            });
+
+            // Store the parsed results
+            this.currentFile = file;
+            this.parsedUsers = parseResults.users;
+            this.lastParsedUsers = parseResults.users; // Also store in lastParsedUsers for compatibility
+            this.parseResults = parseResults;
+
+            // Show results to user
+            let message = `CSV file processed successfully! Found ${parseResults.validUsers} valid users.`;
+            
+            if (parseResults.invalidUsers > 0) {
+                message += ` ${parseResults.invalidUsers} users had validation errors and will be skipped.`;
             }
             
-            const file = fileInput.files[0];
-            this.logger.log(`Handling file selection: ${file.name} (${file.size} bytes)`, 'debug');
-            
-            // Update file info in UI first
-            this.saveFileInfo(file);
-            this.updateFileInfo(file);
-            
-            this.processCSV(file)
-                .then(({ headers, rows }) => {
-                    this.lastParsedUsers = rows;
-                    this.showPreview(rows);
-                    this.logger.log(`Successfully processed ${rows.length} users from ${file.name}`, 'success');
-                })
-                .catch(error => {
-                    this.logger.error(`Error processing file: ${error.message}`, 'error', error);
-                    this.clearFileInfo();
-                    // Reset the file input to allow re-upload
-                    if (this.fileInput) {
-                        this.fileInput.value = '';
-                    }
+            if (parseResults.errors.length > 0) {
+                message += ` ${parseResults.errors.length} rows had parsing errors.`;
+            }
+
+            this.uiManager.showNotification(message, parseResults.invalidUsers > 0 ? 'warning' : 'success');
+
+            // Update UI with file info
+            this.uiManager.updateFileInfo({
+                fileName: file.name,
+                totalRows: parseResults.totalRows,
+                validUsers: parseResults.validUsers,
+                invalidUsers: parseResults.invalidUsers,
+                errorCount: parseResults.errors.length,
+                sample: parseResults.sample
+            });
+
+            // Log detailed errors for debugging
+            if (parseResults.errors.length > 0) {
+                this.logger.warn('CSV parsing errors', {
+                    errorCount: parseResults.errors.length,
+                    errors: parseResults.errors.slice(0, 10) // Log first 10 errors
                 });
-        } catch (error) {
-            this.logger.error('Unexpected error in handleFileSelect:', 'error', error);
-            this.clearFileInfo();
-            if (this.fileInput) {
-                this.fileInput.value = '';
             }
+
+        } catch (error) {
+            this.logger.error('Failed to process CSV file', {
+                error: error.message,
+                fileName: file.name
+            });
+
+            let errorMessage = 'Failed to process CSV file. ';
+            if (error.message.includes('Missing required headers')) {
+                errorMessage += error.message;
+            } else if (error.message.includes('Invalid file type')) {
+                errorMessage += 'Please select a valid CSV file.';
+            } else if (error.message.includes('File too large')) {
+                errorMessage += 'Please select a smaller file (max 10MB).';
+            } else {
+                errorMessage += error.message;
+            }
+
+            this.uiManager.showNotification(errorMessage, 'error');
+            
+            // Clear file input
+            event.target.value = '';
         }
     }
     
@@ -281,6 +351,284 @@ class FileHandler {
         return result.map(field => field.trim());
     }
     
+    /**
+     * Parse CSV file and extract users
+     * @param {File} file - CSV file to parse
+     * @returns {Promise<Object>} Parsed users with validation results
+     */
+    async parseCSVFile(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            
+            reader.onload = (event) => {
+                try {
+                    const csvContent = event.target.result;
+                    const lines = csvContent.split('\n').filter(line => line.trim());
+                    
+                    if (lines.length < 2) {
+                        reject(new Error('CSV file must contain at least a header row and one data row'));
+                        return;
+                    }
+                    
+                    // Parse header row
+                    const headers = this.parseCSVRow(lines[0]);
+                    const requiredHeaders = ['firstName', 'lastName', 'email'];
+                    const missingHeaders = requiredHeaders.filter(header => 
+                        !headers.some(h => h.toLowerCase() === header.toLowerCase())
+                    );
+                    
+                    if (missingHeaders.length > 0) {
+                        reject(new Error(`Missing required headers: ${missingHeaders.join(', ')}. Required headers are: ${requiredHeaders.join(', ')}`));
+                        return;
+                    }
+                    
+                    // Parse data rows
+                    const users = [];
+                    const errors = [];
+                    
+                    for (let i = 1; i < lines.length; i++) {
+                        try {
+                            const user = this.parseUserRow(lines[i], headers, i + 1);
+                            if (user) {
+                                users.push(user);
+                            }
+                        } catch (error) {
+                            errors.push({
+                                row: i + 1,
+                                error: error.message,
+                                line: lines[i]
+                            });
+                        }
+                    }
+                    
+                    // Validate parsed users
+                    const validationResults = this.validateParsedUsers(users);
+                    
+                    resolve({
+                        users: validationResults.validUsers,
+                        totalRows: lines.length - 1,
+                        validUsers: validationResults.validUsers.length,
+                        invalidUsers: validationResults.invalidUsers.length,
+                        errors: [...errors, ...validationResults.errors],
+                        headers: headers,
+                        sample: users.slice(0, 5) // First 5 users for preview
+                    });
+                    
+                } catch (error) {
+                    reject(new Error(`Failed to parse CSV file: ${error.message}`));
+                }
+            };
+            
+            reader.onerror = () => {
+                reject(new Error('Failed to read file'));
+            };
+            
+            reader.readAsText(file);
+        });
+    }
+
+    /**
+     * Parse a single CSV row
+     * @param {string} line - CSV line to parse
+     * @returns {Array<string>} Array of header values
+     * @private
+     */
+    parseCSVRow(line) {
+        // Handle quoted fields and commas within quotes
+        const headers = [];
+        let current = '';
+        let inQuotes = false;
+        
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            
+            if (char === '"') {
+                inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+                headers.push(current.trim());
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+        
+        // Add the last field
+        headers.push(current.trim());
+        
+        return headers;
+    }
+
+    /**
+     * Parse a user row from CSV
+     * @param {string} line - CSV line to parse
+     * @param {Array<string>} headers - Header row
+     * @param {number} rowNumber - Row number for error reporting
+     * @returns {Object|null} Parsed user object or null if invalid
+     * @private
+     */
+    parseUserRow(line, headers, rowNumber) {
+        if (!line.trim()) {
+            return null; // Skip empty lines
+        }
+        
+        const values = this.parseCSVRow(line);
+        
+        if (values.length !== headers.length) {
+            throw new Error(`Row ${rowNumber}: Number of columns (${values.length}) doesn't match headers (${headers.length})`);
+        }
+        
+        const user = {};
+        
+        for (let i = 0; i < headers.length; i++) {
+            const header = headers[i].toLowerCase().trim();
+            let value = values[i].trim();
+            
+            // Handle boolean values
+            if (header === 'enabled') {
+                if (value === 'true' || value === '1') {
+                    value = true;
+                } else if (value === 'false' || value === '0') {
+                    value = false;
+                } else if (value === '') {
+                    value = true; // Default to enabled
+                } else {
+                    throw new Error(`Row ${rowNumber}: Invalid enabled value '${value}'. Must be true/false or 1/0`);
+                }
+            }
+            
+            // Map common header variations
+            const headerMap = {
+                'firstname': 'firstName',
+                'first_name': 'firstName',
+                'givenname': 'firstName',
+                'given_name': 'firstName',
+                'lastname': 'lastName',
+                'last_name': 'lastName',
+                'familyname': 'lastName',
+                'family_name': 'lastName',
+                'surname': 'lastName',
+                'emailaddress': 'email',
+                'email_address': 'email',
+                'userid': 'username',
+                'user_id': 'username',
+                'login': 'username',
+                'user': 'username',
+                'populationid': 'populationId',
+                'population_id': 'populationId',
+                'popid': 'populationId',
+                'pop_id': 'populationId'
+            };
+            
+            const mappedHeader = headerMap[header] || header;
+            user[mappedHeader] = value;
+        }
+        
+        // Validate required fields
+        if (!user.email && !user.username) {
+            throw new Error(`Row ${rowNumber}: User must have either email or username`);
+        }
+        
+        // Set default username if not provided
+        if (!user.username && user.email) {
+            user.username = user.email;
+        }
+        
+        return user;
+    }
+
+    /**
+     * Validate parsed users
+     * @param {Array<Object>} users - Users to validate
+     * @returns {Object} Validation results
+     * @private
+     */
+    validateParsedUsers(users) {
+        const validUsers = [];
+        const invalidUsers = [];
+        const errors = [];
+        const seenEmails = new Set();
+        const seenUsernames = new Set();
+        
+        for (let i = 0; i < users.length; i++) {
+            const user = users[i];
+            const rowNumber = i + 1;
+            let isValid = true;
+            let errorMessage = '';
+            
+            // Check for duplicate emails
+            if (user.email) {
+                if (seenEmails.has(user.email.toLowerCase())) {
+                    errorMessage = `Duplicate email '${user.email}' found in row ${rowNumber}`;
+                    isValid = false;
+                } else {
+                    seenEmails.add(user.email.toLowerCase());
+                }
+                
+                // Validate email format
+                if (!this.isValidEmail(user.email)) {
+                    errorMessage = `Invalid email format '${user.email}' in row ${rowNumber}`;
+                    isValid = false;
+                }
+            }
+            
+            // Check for duplicate usernames
+            if (user.username) {
+                if (seenUsernames.has(user.username.toLowerCase())) {
+                    errorMessage = `Duplicate username '${user.username}' found in row ${rowNumber}`;
+                    isValid = false;
+                } else {
+                    seenUsernames.add(user.username.toLowerCase());
+                }
+                
+                // Validate username format
+                if (!this.isValidUsername(user.username)) {
+                    errorMessage = `Invalid username format '${user.username}' in row ${rowNumber} (no spaces or special characters)`;
+                    isValid = false;
+                }
+            }
+            
+            if (isValid) {
+                validUsers.push(user);
+            } else {
+                invalidUsers.push(user);
+                errors.push({
+                    row: rowNumber,
+                    user: user.email || user.username || `Row ${rowNumber}`,
+                    error: errorMessage
+                });
+            }
+        }
+        
+        return {
+            validUsers,
+            invalidUsers,
+            errors
+        };
+    }
+
+    /**
+     * Check if email is valid
+     * @param {string} email - Email to validate
+     * @returns {boolean} True if valid
+     * @private
+     */
+    isValidEmail(email) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return emailRegex.test(email);
+    }
+
+    /**
+     * Check if username is valid
+     * @param {string} username - Username to validate
+     * @returns {boolean} True if valid
+     * @private
+     */
+    isValidUsername(username) {
+        // Username should not contain spaces or special characters
+        const usernameRegex = /^[a-zA-Z0-9._-]+$/;
+        return usernameRegex.test(username);
+    }
+    
     // ======================
     // UI Updates
     // ======================
@@ -392,6 +740,41 @@ class FileHandler {
         
         // Shuffle the password
         return password.split('').sort(() => Math.random() - 0.5).join('');
+    }
+
+    /**
+     * Get parsed users for import
+     * @returns {Array<Object>} Array of validated user objects
+     */
+    getParsedUsers() {
+        this.logger.info('getParsedUsers called', {
+            hasParsedUsers: !!this.parsedUsers,
+            parsedUsersType: typeof this.parsedUsers,
+            parsedUsersLength: this.parsedUsers ? this.parsedUsers.length : 0,
+            hasLastParsedUsers: !!this.lastParsedUsers,
+            lastParsedUsersType: typeof this.lastParsedUsers,
+            lastParsedUsersLength: this.lastParsedUsers ? this.lastParsedUsers.length : 0
+        });
+        
+        if (!this.parsedUsers || !Array.isArray(this.parsedUsers)) {
+            this.logger.warn('No parsed users available');
+            return [];
+        }
+        
+        this.logger.info('Retrieving parsed users for import', {
+            userCount: this.parsedUsers.length,
+            hasUsers: this.parsedUsers.length > 0
+        });
+        
+        return this.parsedUsers;
+    }
+
+    /**
+     * Get parsing results for debugging
+     * @returns {Object|null} Parsing results or null if not available
+     */
+    getParseResults() {
+        return this.parseResults || null;
     }
 }
 

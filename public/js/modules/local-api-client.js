@@ -24,45 +24,118 @@ export class LocalAPIClient {
      */
     async request(method, endpoint, data = null, options = {}) {
         const url = `${this.baseUrl}${endpoint}`;
-        
-        // Prepare headers
-        const headers = {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            ...options.headers
+        const startTime = Date.now();
+
+        // Enhanced options with retry logic
+        const requestOptions = {
+            ...options,
+            retries: options.retries || 3,
+            retryDelay: options.retryDelay || 1000 // 1 second base delay
         };
 
-        // Log the request
-        this.logger.debug('Local API Request:', {
+        // Prepare headers
+        const headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        };
+
+        // Add authorization if available
+        if (this.accessToken) {
+            headers.Authorization = `Bearer ${this.accessToken}`;
+        }
+
+        // Prepare request body
+        let body = null;
+        if (data && method !== 'GET') {
+            body = JSON.stringify(data);
+        }
+
+        // Log the request with minimal details to avoid rate limiting
+        const requestLog = {
+            type: 'api_request',
             method,
             url,
-            headers: { ...headers, 'Authorization': headers.Authorization ? '***REDACTED***' : 'Not set' },
-            data
-        });
+            timestamp: new Date().toISOString(),
+            source: 'local-api-client'
+        };
+        this.logger.debug('🔄 Local API Request:', requestLog);
 
-        try {
-            const response = await fetch(url, {
-                method,
-                headers,
-                credentials: 'include', // Include cookies for session management
-                body: data ? JSON.stringify(data) : undefined,
-                signal: options.signal
-            });
+        // Retry logic
+        let lastError = null;
+        for (let attempt = 1; attempt <= requestOptions.retries; attempt++) {
+            try {
+                const response = await fetch(url, {
+                    method,
+                    headers,
+                    body
+                });
 
-            const responseData = await this._handleResponse(response);
-            
-            // Log successful response
-            this.logger.debug('Local API Response:', {
-                status: response.status,
-                url,
-                data: responseData
-            });
+                const responseData = await this._handleResponse(response);
 
-            return responseData;
-        } catch (error) {
-            this.logger.error('Local API Error:', error);
-            throw error;
+                // Log successful response with minimal details
+                const responseLog = {
+                    type: 'api_response',
+                    status: response.status,
+                    method,
+                    duration: Date.now() - startTime,
+                    attempt: attempt,
+                    source: 'local-api-client'
+                };
+                this.logger.debug('✅ Local API Response:', responseLog);
+
+                return responseData;
+            } catch (error) {
+                lastError = error;
+                this.logger.error(`Local API Error (attempt ${attempt}/${requestOptions.retries}):`, error);
+
+                // Get the friendly error message if available
+                const friendlyMessage = error.friendlyMessage || error.message;
+                const isRateLimit = error.status === 429;
+
+                // Calculate baseDelay and delay here, before using them
+                const baseDelay = isRateLimit ? (requestOptions.retryDelay * 2) : requestOptions.retryDelay;
+                const delay = baseDelay * Math.pow(2, attempt - 1);
+
+                // Show appropriate UI messages based on error type
+                if (window.app && window.app.uiManager) {
+                    if (isRateLimit) {
+                        if (attempt < requestOptions.retries) {
+                            // Use enhanced rate limit warning with retry information
+                            window.app.uiManager.showRateLimitWarning(friendlyMessage, {
+                                isRetrying: true,
+                                retryAttempt: attempt,
+                                maxRetries: requestOptions.retries,
+                                retryDelay: delay
+                            });
+                        } else {
+                            window.app.uiManager.showError(friendlyMessage);
+                        }
+                    } else if (attempt === requestOptions.retries) {
+                        // For other errors, show friendly message on final attempt
+                        window.app.uiManager.showError(friendlyMessage);
+                    }
+                }
+
+                // If this is the last attempt, throw with friendly message
+                if (attempt === requestOptions.retries) {
+                    throw error;
+                }
+
+                // Only retry for rate limits (429) and server errors (5xx)
+                const shouldRetry = isRateLimit || error.status >= 500 || !error.status;
+                if (!shouldRetry) {
+                    // Don't retry for client errors (4xx except 429), throw immediately
+                    throw error;
+                }
+
+                // Use the delay calculated above
+                this.logger.info(`Retrying request in ${delay}ms... (attempt ${attempt + 1}/${requestOptions.retries})`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
         }
+
+        // If all retries fail, throw the last error
+        throw lastError;
     }
 
     /**
@@ -80,13 +153,143 @@ export class LocalAPIClient {
         }
 
         if (!response.ok) {
-            const error = new Error(data.message || `API request failed with status ${response.status}`);
+            let errorMessage;
+            
+            // Provide user-friendly error messages based on status code
+            switch (response.status) {
+                case 400:
+                    errorMessage = this._getBadRequestMessage(data, response.url);
+                    break;
+                case 401:
+                    errorMessage = this._getUnauthorizedMessage();
+                    break;
+                case 403:
+                    errorMessage = this._getForbiddenMessage(data, response.url);
+                    break;
+                case 404:
+                    errorMessage = this._getNotFoundMessage(data, response.url);
+                    break;
+                case 429:
+                    errorMessage = this._getRateLimitMessage();
+                    break;
+                case 500:
+                case 501:
+                case 502:
+                case 503:
+                case 504:
+                    errorMessage = this._getServerErrorMessage(response.status);
+                    break;
+                default:
+                    errorMessage = data.message || `Request failed with status ${response.status}`;
+            }
+            
+            const error = new Error(errorMessage);
             error.status = response.status;
             error.details = data;
+            error.friendlyMessage = errorMessage;
             throw error;
         }
 
         return data;
+    }
+
+    /**
+     * Get user-friendly error message for 400 Bad Request errors
+     * @private
+     */
+    _getBadRequestMessage(data, url) {
+        // Check if it's a user modification endpoint
+        if (url.includes('/users/') && url.includes('PUT')) {
+            return '🔍 User data validation failed. Please check the user information and try again.';
+        }
+        
+        // Check if it's a user creation endpoint
+        if (url.includes('/users') && url.includes('POST')) {
+            return '🔍 User creation failed due to invalid data. Please check required fields and try again.';
+        }
+        
+        // Check if it's a population-related error
+        if (url.includes('/populations')) {
+            return '🔍 Population data is invalid. Please check your population settings.';
+        }
+        
+        // Generic 400 error
+        return '🔍 Request data is invalid. Please check your input and try again.';
+    }
+
+    /**
+     * Get user-friendly error message for 401 Unauthorized errors
+     * @private
+     */
+    _getUnauthorizedMessage() {
+        return '🔑 Authentication failed. Please check your PingOne credentials and try again.';
+    }
+
+    /**
+     * Get user-friendly error message for 403 Forbidden errors
+     * @private
+     */
+    _getForbiddenMessage(data, url) {
+        // Check if it's a user modification endpoint
+        if (url.includes('/users/') && url.includes('PUT')) {
+            return '🚫 Permission denied. Your PingOne application may not have permission to modify users.';
+        }
+        
+        // Check if it's a user creation endpoint
+        if (url.includes('/users') && url.includes('POST')) {
+            return '🚫 Permission denied. Your PingOne application may not have permission to create users.';
+        }
+        
+        // Check if it's a user deletion endpoint
+        if (url.includes('/users/') && url.includes('DELETE')) {
+            return '🚫 Permission denied. Your PingOne application may not have permission to delete users.';
+        }
+        
+        // Generic 403 error
+        return '🚫 Access denied. Your PingOne application may not have the required permissions for this operation.';
+    }
+
+    /**
+     * Get user-friendly error message for 404 Not Found errors
+     * @private
+     */
+    _getNotFoundMessage(data, url) {
+        // Check if it's a user-related endpoint
+        if (url.includes('/users/')) {
+            return '🔍 User not found. The user may have been deleted or the ID is incorrect.';
+        }
+        
+        // Check if it's a population-related endpoint
+        if (url.includes('/populations')) {
+            return '🔍 Population not found. Please check your population settings.';
+        }
+        
+        // Check if it's an environment-related endpoint
+        if (url.includes('/environments/')) {
+            return '🔍 PingOne environment not found. Please check your environment ID.';
+        }
+        
+        // Generic 404 error
+        return '🔍 Resource not found. Please check the ID or settings and try again.';
+    }
+
+    /**
+     * Get user-friendly error message for 429 Too Many Requests errors
+     * @private
+     */
+    _getRateLimitMessage() {
+        return '⏰ You are sending requests too quickly. Please wait a moment and try again.';
+    }
+
+    /**
+     * Get user-friendly error message for 500+ server errors
+     * @private
+     */
+    _getServerErrorMessage(status) {
+        if (status >= 500) {
+            return '🔧 PingOne service is experiencing issues. Please try again in a few minutes.';
+        }
+        return '🔧 An unexpected error occurred. Please try again.';
     }
 
     // Convenience methods for common HTTP methods

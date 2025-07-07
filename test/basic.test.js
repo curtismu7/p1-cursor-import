@@ -1,5 +1,17 @@
 // Simple test to verify Jest setup
-import { test, expect } from '@jest/globals';
+
+jest.setTimeout(30000);
+
+global.console = {
+  ...console,
+  log: jest.fn(),
+  debug: jest.fn(),
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+};
+
+global.fetch = jest.fn();
 
 // Basic test to verify Jest is working
 test('1 + 1 equals 2', () => {

@@ -47,6 +47,218 @@ const router = express.Router();
 
 // Path to settings file
 const SETTINGS_PATH = join(__dirname, "../data/settings.json");
+const ENV_FILE_PATH = join(__dirname, "../.env");
+
+// Helper function to update environment variables
+async function updateEnvironmentVariables(settings) {
+    if (settings.environmentId) {
+        process.env.PINGONE_ENVIRONMENT_ID = settings.environmentId;
+    }
+    if (settings.apiClientId) {
+        process.env.PINGONE_CLIENT_ID = settings.apiClientId;
+    }
+    if (settings.apiSecret) {
+        // Handle encrypted API secret
+        if (settings.apiSecret.startsWith('enc:')) {
+            // This is an encrypted value from the frontend
+            // We need to decrypt it before setting in environment
+            try {
+                // Import crypto utils for decryption
+                const { CryptoUtils } = await import('../public/js/modules/crypto-utils.js');
+                
+                // For now, we'll skip setting the environment variable for encrypted values
+                // The token manager should handle this by reading from settings file directly
+                logger.info('API secret is encrypted, skipping environment variable update');
+                logger.info('Token manager will read API secret from settings file');
+            } catch (error) {
+                logger.warn('Failed to handle encrypted API secret for environment variables', error);
+            }
+        } else {
+            // This is an unencrypted value, use it directly
+            process.env.PINGONE_CLIENT_SECRET = settings.apiSecret;
+            logger.info('Updated API secret in environment variables');
+        }
+    }
+    if (settings.populationId) {
+        process.env.PINGONE_POPULATION_ID = settings.populationId;
+    }
+    if (settings.region) {
+        process.env.PINGONE_REGION = settings.region;
+    }
+    if (settings.rateLimit) {
+        process.env.RATE_LIMIT = settings.rateLimit.toString();
+    }
+}
+
+// Helper function to update .env file
+async function updateEnvFile(settings) {
+    try {
+        let envContent = '';
+        
+        // Read existing .env file if it exists
+        try {
+            envContent = await fs.readFile(ENV_FILE_PATH, 'utf8');
+        } catch (error) {
+            if (error.code !== 'ENOENT') {
+                throw error;
+            }
+            // File doesn't exist, start with empty content
+        }
+        
+        // Parse existing content
+        const envLines = envContent.split('\n');
+        const envMap = new Map();
+        
+        // Parse existing environment variables
+        for (const line of envLines) {
+            const trimmed = line.trim();
+            if (trimmed && !trimmed.startsWith('#')) {
+                const equalIndex = trimmed.indexOf('=');
+                if (equalIndex > 0) {
+                    const key = trimmed.substring(0, equalIndex);
+                    const value = trimmed.substring(equalIndex + 1);
+                    envMap.set(key, value);
+                }
+            }
+        }
+        
+        // Update with new settings
+        if (settings.environmentId) {
+            envMap.set('PINGONE_ENVIRONMENT_ID', settings.environmentId);
+        }
+        if (settings.apiClientId) {
+            envMap.set('PINGONE_CLIENT_ID', settings.apiClientId);
+        }
+        if (settings.apiSecret) {
+            // For .env file, we want to store the original unencrypted value
+            // The frontend sends encrypted values, but we should store the original
+            // Check if this is a new API secret (not encrypted) or if we need to handle it differently
+            if (settings.apiSecret.startsWith('enc:')) {
+                // This is an encrypted value from the frontend
+                // We can't decrypt it without the encryption key, so we'll skip updating the .env file
+                // The .env file will keep its current value
+                logger.info('Skipping encrypted API secret for .env file (keeping existing value)');
+            } else {
+                // This is an unencrypted value, store it directly
+                envMap.set('PINGONE_CLIENT_SECRET', settings.apiSecret);
+                logger.info('Stored unencrypted API secret in .env file');
+            }
+        }
+        if (settings.populationId) {
+            envMap.set('PINGONE_POPULATION_ID', settings.populationId);
+        }
+        if (settings.region) {
+            envMap.set('PINGONE_REGION', settings.region);
+        }
+        if (settings.rateLimit) {
+            envMap.set('RATE_LIMIT', settings.rateLimit.toString());
+        }
+        
+        // Write back to .env file
+        const newEnvContent = Array.from(envMap.entries())
+            .map(([key, value]) => `${key}=${value}`)
+            .join('\n') + '\n';
+        
+        await fs.writeFile(ENV_FILE_PATH, newEnvContent, 'utf8');
+        logger.info('Updated .env file with new settings');
+        
+    } catch (error) {
+        logger.warn('Failed to update .env file', { error: error.message });
+        // Don't fail the entire operation if .env update fails
+    }
+}
+
+// Helper function to fetch default population from PingOne
+async function fetchDefaultPopulation(environmentId, clientId, clientSecret) {
+    try {
+        const https = await import('https');
+        const { URLSearchParams } = await import('url');
+        
+        // Get access token
+        const tokenUrl = `https://auth.pingone.com/${environmentId}/as/token`;
+        const postData = new URLSearchParams({
+            'grant_type': 'client_credentials'
+        }).toString();
+        
+        const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+        
+        const token = await new Promise((resolve, reject) => {
+            const options = {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Authorization': `Basic ${credentials}`,
+                    'Content-Length': Buffer.byteLength(postData)
+                }
+            };
+
+            const req = https.request(tokenUrl, options, (res) => {
+                let data = '';
+                res.on('data', (chunk) => data += chunk);
+                res.on('end', () => {
+                    try {
+                        const response = JSON.parse(data);
+                        if (response.access_token) {
+                            resolve(response.access_token);
+                        } else {
+                            reject(new Error(`Token request failed: ${data}`));
+                        }
+                    } catch (error) {
+                        reject(new Error(`Invalid JSON response: ${data}`));
+                    }
+                });
+            });
+
+            req.on('error', reject);
+            req.write(postData);
+            req.end();
+        });
+
+        // Get populations
+        const apiUrl = `https://api.pingone.com/v1/environments/${environmentId}/populations`;
+        
+        const populations = await new Promise((resolve, reject) => {
+            const options = {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            };
+
+            const req = https.request(apiUrl, options, (res) => {
+                let data = '';
+                res.on('data', (chunk) => data += chunk);
+                res.on('end', () => {
+                    try {
+                        const response = JSON.parse(data);
+                        resolve(response);
+                    } catch (error) {
+                        reject(new Error(`Invalid JSON response: ${data}`));
+                    }
+                });
+            });
+
+            req.on('error', reject);
+            req.end();
+        });
+
+        if (populations._embedded && populations._embedded.populations && populations._embedded.populations.length > 0) {
+            const defaultPopulation = populations._embedded.populations[0];
+            logger.info('Auto-detected default population', {
+                populationId: '***' + defaultPopulation.id.slice(-4),
+                name: defaultPopulation.name,
+                userCount: defaultPopulation.userCount || 0
+            });
+            return defaultPopulation.id;
+        }
+        
+        return null;
+    } catch (error) {
+        logger.warn('Failed to fetch default population', { error: error.message });
+        return null;
+    }
+}
 
 // Helper function to read settings
 async function readSettings() {
@@ -55,17 +267,44 @@ async function readSettings() {
         environmentId: process.env.PINGONE_ENVIRONMENT_ID || "",
         apiClientId: process.env.PINGONE_CLIENT_ID || "",
         apiSecret: process.env.PINGONE_CLIENT_SECRET ? `enc:${Buffer.from(process.env.PINGONE_CLIENT_SECRET).toString('base64')}` : "",
-        populationId: process.env.PINGONE_POPULATION_ID || "",
-        region: process.env.PINGONE_REGION || "NorthAmerica"
+        populationId: process.env.PINGONE_POPULATION_ID || "not set",
+        region: process.env.PINGONE_REGION || "NorthAmerica",
+        rateLimit: parseInt(process.env.RATE_LIMIT) || 50
     };
 
     try {
         // Then try to read from settings file
         const data = await fs.readFile(SETTINGS_PATH, "utf8");
         const fileSettings = JSON.parse(data);
+        // File settings take precedence; only use env if file is missing a value
+        const settings = { ...envSettings, ...fileSettings };
         
-        // Merge with environment variables (env vars take precedence)
-        return { ...fileSettings, ...envSettings };
+        // Only auto-detect population ID if it's specifically set to "not set" (initial setup)
+        // Empty string ("") means intentionally blank, so we respect that choice
+        if (settings.populationId === "not set" && settings.environmentId && settings.apiClientId && process.env.PINGONE_CLIENT_SECRET) {
+            const defaultPopulationId = await fetchDefaultPopulation(
+                settings.environmentId,
+                settings.apiClientId,
+                process.env.PINGONE_CLIENT_SECRET
+            );
+            
+            if (defaultPopulationId) {
+                settings.populationId = defaultPopulationId;
+                
+                // Update the settings file with the new population ID
+                try {
+                    await fs.writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2), "utf8");
+                    logger.info('Updated settings file with auto-detected population ID');
+                } catch (error) {
+                    logger.warn('Failed to update settings file with population ID', { error: error.message });
+                }
+                
+                // Update environment variable
+                process.env.PINGONE_POPULATION_ID = defaultPopulationId;
+            }
+        }
+        
+        return settings;
     } catch (error) {
         if (error.code === "ENOENT") {
             // Return environment-based settings if file doesn't exist
@@ -165,8 +404,26 @@ router.post("/", express.json(), async (req, res) => {
         const settingsDir = dirname(SETTINGS_PATH);
         await fs.mkdir(settingsDir, { recursive: true });
         
-        // Save settings
+        // Save settings to file
         await fs.writeFile(SETTINGS_PATH, JSON.stringify(newSettings, null, 2), "utf8");
+        
+        // Update environment variables (but skip encrypted API secret)
+        await updateEnvironmentVariables(newSettings);
+
+        // Update .env file
+        await updateEnvFile(newSettings);
+        
+        // Update rate limiter if rate limit changed
+        if (newSettings.rateLimit) {
+            // Get the app instance to call updateRateLimiter
+            const app = req.app;
+            if (app && typeof app.get === 'function') {
+                const updateRateLimiter = app.get('updateRateLimiter');
+                if (updateRateLimiter && typeof updateRateLimiter === 'function') {
+                    updateRateLimiter(newSettings.rateLimit);
+                }
+            }
+        }
         
         // Log successful settings save
         logger.info('Settings saved successfully', {
@@ -174,7 +431,8 @@ router.post("/", express.json(), async (req, res) => {
             region: newSettings.region,
             apiClientId: newSettings.apiClientId ? '***' + newSettings.apiClientId.slice(-4) : 'not set',
             populationId: newSettings.populationId ? '***' + newSettings.populationId.slice(-4) : 'not set',
-            hasApiSecret: !!newSettings.apiSecret
+            hasApiSecret: !!newSettings.apiSecret,
+            apiSecretEncrypted: newSettings.apiSecret ? newSettings.apiSecret.startsWith('enc:') : false
         });
         
         // Don't send the API secret back in the response

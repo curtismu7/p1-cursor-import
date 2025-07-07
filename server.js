@@ -5,10 +5,13 @@ import cors from 'cors';
 import winston from 'winston';
 import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
+import rateLimit from 'express-rate-limit';
 import TokenManager from './server/token-manager.js';
 import logsRouter from './routes/logs.js';
 import settingsRouter from './routes/settings.js';
 import pingoneProxyRouter from './routes/pingone-proxy.js';
+import apiRouter from './routes/api/index.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -19,6 +22,216 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// Function to create rate limiter with configurable settings
+function createRateLimiter(maxRequests = 50) {
+    return rateLimit({
+        windowMs: 1000, // 1 second
+        max: maxRequests, // limit each IP to maxRequests per second
+        message: {
+            error: 'Too many requests',
+            message: 'Rate limit exceeded. Please try again later.',
+            retryAfter: 1
+        },
+        standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+        legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+        handler: (req, res) => {
+            res.status(429).json({
+                error: 'Rate limit exceeded',
+                message: 'Too many requests. Please try again later.',
+                retryAfter: 1
+            });
+        },
+        // Burst handling configuration
+        skipSuccessfulRequests: false, // Count all requests
+        skipFailedRequests: false, // Count failed requests too
+        // Allow burst of up to 4x maxRequests in first 1000ms, then enforce maxRequests/sec
+        burstLimit: maxRequests * 4,
+        burstWindowMs: 1000,
+        // Queue configuration for handling bursts
+        queue: {
+            enabled: true,
+            maxQueueSize: 300, // Maximum number of requests to queue (increased from 100)
+            maxQueueTime: 30000, // Maximum time to wait in queue (30 seconds, increased from 10)
+            retryAfter: 2 // Time to wait before retry
+        }
+    });
+}
+
+// Get rate limit from environment or use default
+const getRateLimit = () => {
+    const envRateLimit = parseInt(process.env.RATE_LIMIT);
+    if (envRateLimit && envRateLimit >= 1 && envRateLimit <= 100) {
+        return envRateLimit;
+    }
+    return 50; // Default rate limit (increased to 50 for bulk operations)
+};
+
+// Create rate limiter with current settings
+const limiter = createRateLimiter(getRateLimit());
+
+// Function to update rate limiter when settings change
+function updateRateLimiter(newRateLimit) {
+    if (newRateLimit && newRateLimit >= 1 && newRateLimit <= 100) {
+        // Remove the old rate limiter middleware
+        app._router.stack = app._router.stack.filter(layer => {
+            return !(layer.name === 'rateLimit' && layer.regexp && layer.regexp.source.includes('/api'));
+        });
+        
+        // Create new rate limiter with updated settings
+        const newLimiter = createRateLimiter(newRateLimit);
+        
+        // Apply the new rate limiter to API routes
+        app.use('/api', newLimiter);
+        
+        console.log(`Rate limiter updated to ${newRateLimit} requests per second`);
+    }
+}
+
+// Create a more lenient rate limiter specifically for logs
+const logsRateLimiter = rateLimit({
+    windowMs: 1000, // 1 second
+    max: 100, // Allow more requests for logs (100 per second)
+    message: {
+        error: 'Logs API rate limit exceeded',
+        message: 'Too many log requests. Please wait before trying again.',
+        retryAfter: 1
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req, res) => {
+        res.status(429).json({
+            error: 'Logs API rate limit exceeded',
+            message: 'Too many log requests. Please wait before trying again.',
+            retryAfter: 1
+        });
+    },
+    // Burst handling configuration for logs
+    skipSuccessfulRequests: false,
+    skipFailedRequests: false,
+    // Allow large burst for logs (logs are mostly read operations)
+    burstLimit: 500,
+    burstWindowMs: 1000,
+    // Queue configuration for logs
+    queue: {
+        enabled: true,
+        maxQueueSize: 200,
+        maxQueueTime: 10000, // 10 seconds
+        retryAfter: 1
+    }
+});
+
+// Create a very lenient rate limiter specifically for health checks
+const healthRateLimiter = rateLimit({
+    windowMs: 1000, // 1 second
+    max: 200, // Allow many health checks (200 per second)
+    message: {
+        error: 'Health API rate limit exceeded',
+        message: 'Too many health check requests. Please wait before trying again.',
+        retryAfter: 1
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req, res) => {
+        res.status(429).json({
+            error: 'Health API rate limit exceeded',
+            message: 'Too many health check requests. Please wait before trying again.',
+            retryAfter: 1
+        });
+    },
+    // Burst handling configuration for health checks
+    skipSuccessfulRequests: false,
+    skipFailedRequests: false,
+    // Allow very large burst for health checks during initialization
+    burstLimit: 1000,
+    burstWindowMs: 1000,
+    // Queue configuration for health checks
+    queue: {
+        enabled: true,
+        maxQueueSize: 100,
+        maxQueueTime: 5000, // 5 seconds
+        retryAfter: 1
+    }
+});
+
+// Apply rate limiting to all API routes (except logs which has its own limiter)
+app.use('/api', limiter);
+
+// API request/response logging middleware
+app.use('/api', (req, res, next) => {
+    const startTime = Date.now();
+    const requestId = `api-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Add request metadata
+    req.requestId = requestId;
+    req.startTime = startTime;
+    
+    // Log the incoming request
+    const requestLog = {
+        type: 'api_request',
+        method: req.method,
+        url: req.originalUrl,
+        headers: {
+            ...req.headers,
+            'authorization': req.headers.authorization ? '***REDACTED***' : 'None'
+        },
+        body: req.method !== 'GET' ? req.body : undefined,
+        timestamp: new Date().toISOString(),
+        requestId: requestId,
+        clientIp: req.ip,
+        userAgent: req.get('user-agent'),
+        source: 'server-api'
+    };
+    
+    logger.info('🔄 Server API Request:', requestLog);
+    
+    // Capture the original res.json and res.send methods to log responses
+    const originalJson = res.json.bind(res);
+    const originalSend = res.send.bind(res);
+    
+    res.json = function(data) {
+        const responseLog = {
+            type: 'api_response',
+            status: res.statusCode,
+            statusMessage: res.statusMessage,
+            url: req.originalUrl,
+            method: req.method,
+            headers: res.getHeaders(),
+            data: data,
+            timestamp: new Date().toISOString(),
+            duration: Date.now() - startTime,
+            requestId: requestId,
+            source: 'server-api'
+        };
+        
+        logger.info('✅ Server API Response:', responseLog);
+        return originalJson(data);
+    };
+    
+    res.send = function(data) {
+        const responseLog = {
+            type: 'api_response',
+            status: res.statusCode,
+            statusMessage: res.statusMessage,
+            url: req.originalUrl,
+            method: req.method,
+            headers: res.getHeaders(),
+            data: typeof data === 'string' ? data : data,
+            timestamp: new Date().toISOString(),
+            duration: Date.now() - startTime,
+            requestId: requestId,
+            source: 'server-api'
+        };
+        
+        logger.info('✅ Server API Response:', responseLog);
+        return originalSend(data);
+    };
+    
+    next();
+});
+
+// Make updateRateLimiter available to routes
+app.set('updateRateLimiter', updateRateLimiter);
+
 // --- Middleware (must come BEFORE routers) ---
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -27,21 +240,24 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // This file uses ES modules (import/export syntax)
 // (imports moved to the top of the file)
 
-app.use('/api/logs', logsRouter);
+// Apply specific rate limiter to logs endpoints
+app.use('/api/logs', logsRateLimiter, logsRouter);
+
+// Apply specific rate limiter to health endpoints
+app.use('/api/health', healthRateLimiter);
+
 app.use('/api/settings', settingsRouter);
+app.use('/api', apiRouter);
 
 // Test PingOne connection endpoint (must be before pingone-proxy router)
 app.post('/api/pingone/test-connection', async (req, res) => {
-    // Use environment variables instead of request body
-    const apiClientId = process.env.PINGONE_CLIENT_ID;
-    const apiSecret = process.env.PINGONE_CLIENT_SECRET;
-    const environmentId = process.env.PINGONE_ENVIRONMENT_ID;
-    const region = process.env.PINGONE_REGION || 'NorthAmerica';
+    // Use request body for settings
+    const { apiClientId, apiSecret, environmentId, region = 'NorthAmerica', populationId } = req.body;
     
     if (!apiClientId || !apiSecret || !environmentId) {
         return res.status(400).json({
             success: false,
-            message: 'Missing required environment variables: PINGONE_CLIENT_ID, PINGONE_CLIENT_SECRET, and PINGONE_ENVIRONMENT_ID are required'
+            message: 'Missing required settings: apiClientId, apiSecret, and environmentId are required'
         });
     }
     
@@ -52,19 +268,81 @@ app.post('/api/pingone/test-connection', async (req, res) => {
             throw new Error('Token manager not available');
         }
         
-        const token = await tokenManager.getAccessToken();
+        // Pass custom settings to the token manager
+        const customSettings = {
+            apiClientId: apiClientId,
+            apiSecret: apiSecret,
+            environmentId: environmentId,
+            region: region
+        };
         
-        if (token) {
-            return res.json({
-                success: true,
-                message: 'Successfully connected to PingOne API'
-            });
-        } else {
+        const token = await tokenManager.getAccessToken(customSettings);
+        
+        if (!token) {
             return res.status(401).json({
                 success: false,
                 message: 'Failed to authenticate with PingOne API: No token received'
             });
         }
+        
+        // If populationId is provided and not empty, validate it exists in the environment
+        let populationValidationMessage = '';
+        if (populationId && populationId.trim() !== '' && populationId !== 'not set') {
+            try {
+                const axios = require('axios');
+                const apiBaseUrl = region === 'Europe' ? 'https://api.pingone.eu' : 
+                                 region === 'AsiaPacific' ? 'https://api.pingone.asia' : 
+                                 'https://api.pingone.com';
+                
+                // Use the correct Management API endpoint
+                const populationsUrl = `${apiBaseUrl}/v1/environments/${environmentId}/populations`;
+                
+                const response = await axios.get(populationsUrl, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: 10000 // 10 second timeout
+                });
+                
+                if (response.data && response.data._embedded && response.data._embedded.populations) {
+                    const populations = response.data._embedded.populations;
+                    const populationExists = populations.some(pop => pop.id === populationId);
+                    
+                    if (!populationExists) {
+                        const availableIds = populations.map(p => `${p.name} (${p.id.slice(-8)})`).join(', ');
+                        populationValidationMessage = `⚠️ Warning: Population ID '${populationId}' not found in environment. Available populations: ${availableIds}`;
+                    } else {
+                        const foundPop = populations.find(pop => pop.id === populationId);
+                        populationValidationMessage = `✅ Population ID validated successfully: ${foundPop.name} (${populationId.slice(-8)})`;
+                    }
+                } else {
+                    populationValidationMessage = `⚠️ Warning: No populations found in environment`;
+                }
+            } catch (popError) {
+                // Never let population validation failure break the connection test
+                console.warn('Population validation failed (non-fatal):', popError.message);
+                
+                // Provide user-friendly warning based on error type
+                if (popError.response && popError.response.status === 404) {
+                    populationValidationMessage = `⚠️ Warning: Population ID '${populationId}' not found in environment. Please check if the ID is correct.`;
+                } else if (popError.response && popError.response.status === 403) {
+                    populationValidationMessage = `⚠️ Warning: Unable to validate Population ID '${populationId}' - insufficient permissions to access populations.`;
+                } else if (popError.code === 'ECONNABORTED' || popError.code === 'ETIMEDOUT') {
+                    populationValidationMessage = `⚠️ Warning: Population ID validation timed out. Population ID '${populationId}' may be invalid.`;
+                } else {
+                    populationValidationMessage = `⚠️ Warning: Unable to validate Population ID '${populationId}'. Please verify the ID is correct.`;
+                }
+            }
+        }
+        
+        return res.json({
+            success: true,
+            message: populationId ? 
+                `Successfully connected to PingOne API. ${populationValidationMessage}` :
+                'Successfully connected to PingOne API'
+        });
+        
     } catch (error) {
         console.error('PingOne connection test failed:', error);
         return res.status(401).json({
@@ -95,6 +373,83 @@ app.post('/api/pingone/get-token', async (req, res) => {
         logger.error('Error getting token for frontend:', error);
         res.status(500).json({ 
             error: 'Failed to get token',
+            message: error.message
+        });
+    }
+});
+
+// Dedicated token refresh endpoint that bypasses all validation
+app.post('/api/pingone/refresh-token', async (req, res) => {
+    try {
+        const tokenManager = req.app.get('tokenManager');
+        if (!tokenManager) {
+            return res.status(500).json({ 
+                success: false,
+                error: 'Token manager not available',
+                message: 'Server token manager is not initialized'
+            });
+        }
+
+        // Force clear any cached token and get a fresh one
+        tokenManager.clearCache?.();
+        
+        const token = await tokenManager.getAccessToken();
+        
+        res.json({ 
+            success: true,
+            message: '✅ Token refreshed successfully',
+            token_info: {
+                access_token: token,
+                token_type: 'Bearer',
+                expires_in: 3600,
+                preview: token.slice(0, 20) + '...'
+            }
+        });
+    } catch (error) {
+        logger.error('Error refreshing token:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to refresh token',
+            message: error.message
+        });
+    }
+});
+
+// Debug endpoint to show token details
+app.get('/api/debug/token', async (req, res) => {
+    try {
+        const tokenManager = req.app.get('tokenManager');
+        if (!tokenManager) {
+            return res.status(500).json({ 
+                error: 'Token manager not available'
+            });
+        }
+
+        const token = await tokenManager.getAccessToken();
+        
+        // Check if token is valid JWT format
+        const parts = token.split('.');
+        const isValidJWT = parts.length === 3;
+        
+        res.json({
+            tokenLength: token.length,
+            tokenPreview: token.slice(0, 20) + '...',
+            isValidJWT: isValidJWT,
+            jwtParts: parts.length,
+            authHeader: `Bearer ${token}`,
+            authHeaderLength: `Bearer ${token}`.length,
+            hasSpecialChars: /[^A-Za-z0-9+/=.-]/.test(token),
+            environment: {
+                hasClientId: !!process.env.PINGONE_CLIENT_ID,
+                hasClientSecret: !!process.env.PINGONE_CLIENT_SECRET,
+                hasEnvironmentId: !!process.env.PINGONE_ENVIRONMENT_ID,
+                clientIdEnding: process.env.PINGONE_CLIENT_ID ? process.env.PINGONE_CLIENT_ID.slice(-4) : 'NOT SET',
+                secretEnding: process.env.PINGONE_CLIENT_SECRET ? process.env.PINGONE_CLIENT_SECRET.slice(-4) : 'NOT SET'
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ 
+            error: 'Failed to get token debug info',
             message: error.message
         });
     }
@@ -203,13 +558,44 @@ const logger = winston.createLogger({
         pid: process.pid
     },
     transports: [
-        // Console transport for info+ only
+        // Console transport with cleaner format
         new winston.transports.Console({
             format: winston.format.combine(
                 winston.format.colorize(),
                 winston.format.printf(({ timestamp, level, message, ...meta }) => {
-                    const metaString = Object.keys(meta).length ? `\n${JSON.stringify(meta, null, 2)}` : '';
-                    return `[${timestamp}] ${level}: ${message}${metaString}\n${'*'.repeat(80)}`;
+                    // Clean up the message for better readability
+                    let cleanMessage = message;
+                    
+                    // Remove common verbose prefixes
+                    cleanMessage = cleanMessage.replace(/^\[.*?\]\s*/, '');
+                    
+                    // Format meta data more concisely
+                    let metaString = '';
+                    if (Object.keys(meta).length > 0) {
+                        // Filter out common verbose fields
+                        const filteredMeta = { ...meta };
+                        delete filteredMeta.service;
+                        delete filteredMeta.env;
+                        delete filteredMeta.pid;
+                        delete filteredMeta.timestamp;
+                        
+                        if (Object.keys(filteredMeta).length > 0) {
+                            // Only show key fields for readability
+                            const keyFields = ['error', 'code', 'url', 'method', 'status', 'endpoint'];
+                            const importantMeta = {};
+                            keyFields.forEach(field => {
+                                if (filteredMeta[field]) {
+                                    importantMeta[field] = filteredMeta[field];
+                                }
+                            });
+                            
+                            if (Object.keys(importantMeta).length > 0) {
+                                metaString = ` | ${JSON.stringify(importantMeta)}`;
+                            }
+                        }
+                    }
+                    
+                    return `${timestamp} [${level.toUpperCase()}] ${cleanMessage}${metaString}`;
                 })
             ),
             handleExceptions: true,
@@ -237,8 +623,35 @@ if (process.env.NODE_ENV !== 'test') {
                 format: 'YYYY-MM-DD HH:mm:ss.SSS'
             }),
             winston.format.printf(({ timestamp, level, message, ...meta }) => {
-                const metaString = Object.keys(meta).length ? `\n${JSON.stringify(meta, null, 2)}` : '';
-                return `[${timestamp}] ${level}: ${message}${metaString}\n${'*'.repeat(80)}`;
+                // Clean up the message for better readability
+                let cleanMessage = message;
+                cleanMessage = cleanMessage.replace(/^\[.*?\]\s*/, '');
+                
+                // Format meta data more concisely
+                let metaString = '';
+                if (Object.keys(meta).length > 0) {
+                    const filteredMeta = { ...meta };
+                    delete filteredMeta.service;
+                    delete filteredMeta.env;
+                    delete filteredMeta.pid;
+                    delete filteredMeta.timestamp;
+                    
+                    if (Object.keys(filteredMeta).length > 0) {
+                        const keyFields = ['error', 'code', 'url', 'method', 'status', 'endpoint'];
+                        const importantMeta = {};
+                        keyFields.forEach(field => {
+                            if (filteredMeta[field]) {
+                                importantMeta[field] = filteredMeta[field];
+                            }
+                        });
+                        
+                        if (Object.keys(importantMeta).length > 0) {
+                            metaString = ` | ${JSON.stringify(importantMeta)}`;
+                        }
+                    }
+                }
+                
+                return `[${timestamp}] ${level}: ${cleanMessage}${metaString}`;
             })
         )
     }));
@@ -310,80 +723,6 @@ if (process.env.NODE_ENV !== 'test') {
 // Initialize TokenManager and attach to app
 const tokenManager = new TokenManager(logger);
 app.set('tokenManager', tokenManager);
-
-
-// Add file transports only if not in test environment
-if (process.env.NODE_ENV !== 'test') {
-    // Error logs (errors only)
-    logger.add(new winston.transports.File({ 
-        filename: path.join(__dirname, 'logs/error.log'),
-        level: 'error',
-        maxsize: 10 * 1024 * 1024, // 10MB
-        maxFiles: 5,
-        tailable: true,
-        zippedArchive: true,
-        handleExceptions: true,
-        handleRejections: true,
-        format: winston.format.combine(
-            winston.format.timestamp({
-                format: 'YYYY-MM-DD HH:mm:ss.SSS'
-            }),
-            winston.format.printf(({ timestamp, level, message, ...meta }) => {
-                const metaString = Object.keys(meta).length ? `\n${JSON.stringify(meta, null, 2)}` : '';
-                return `[${timestamp}] ${level}: ${message}${metaString}\n${'*'.repeat(80)}`;
-            })
-        )
-    }));
-    
-    // Combined logs (all levels)
-    logger.add(new winston.transports.File({
-        filename: path.join(__dirname, 'logs/combined.log'),
-        level: 'info',
-        maxsize: 20 * 1024 * 1024, // 20MB
-        maxFiles: 5,
-        tailable: true,
-        zippedArchive: true,
-        format: winston.format.combine(
-            winston.format.timestamp({
-                format: 'YYYY-MM-DD HH:mm:ss.SSS'
-            }),
-            winston.format.printf(({ timestamp, level, message, ...meta }) => {
-                const metaString = Object.keys(meta).length ? `\n${JSON.stringify(meta, null, 2)}` : '';
-                return `[${timestamp}] ${level}: ${message}${metaString}\n${'*'.repeat(80)}`;
-            })
-        )
-    }));
-    
-    // Client logs (from browser)
-    const clientLogger = winston.createLogger({
-        level: 'info',
-        format: winston.format.combine(
-            winston.format.timestamp({
-                format: 'YYYY-MM-DD HH:mm:ss.SSS'
-            }),
-            winston.format.printf(({ timestamp, level, message, ...meta }) => {
-                const metaString = Object.keys(meta).length ? `\n${JSON.stringify(meta, null, 2)}` : '';
-                return `[${timestamp}] ${level}: ${message}${metaString}\n${'*'.repeat(80)}`;
-            })
-        ),
-        defaultMeta: { 
-            service: 'pingone-import-client',
-            env: process.env.NODE_ENV || 'development'
-        },
-        transports: [
-            new winston.transports.File({
-                filename: path.join(__dirname, 'logs/client.log'),
-                maxsize: 10 * 1024 * 1024, // 10MB
-                maxFiles: 5,
-                tailable: true,
-                zippedArchive: true
-            })
-        ]
-    });
-    
-    // Add client logger to the main logger
-    logger.client = clientLogger;
-}
 
 // Log to console in development
 if (process.env.NODE_ENV !== 'production') {
@@ -855,6 +1194,12 @@ app.get('/api/health', async (req, res) => {
                 storage: 'ok',
                 logging: 'ok'
             },
+            // Add queue system information
+            queues: {
+                export: exportQueue.getStats(),
+                import: importQueue.getStats(),
+                api: apiQueue.getStats()
+            },
             // Add any additional non-critical information
             info: {
                 nodeEnv: process.env.NODE_ENV || 'development',
@@ -864,11 +1209,15 @@ app.get('/api/health', async (req, res) => {
         };
         
         // Determine overall status based on critical checks
+        // Note: PingOne connection is not critical - the tool can work without it
         const criticalChecks = {
-            pingOneConfigured: status.checks.pingOneConfigured,
-            pingOneConnected: hasRequiredPingOneVars ? status.checks.pingOneConnected : 'ok',
             memory: status.checks.memory
         };
+        
+        // Only consider PingOne configuration as critical, not connection
+        if (status.checks.pingOneConfigured === 'error') {
+            criticalChecks.pingOneConfigured = 'error';
+        }
         
         const hasCriticalErrors = Object.values(criticalChecks).some(check => check === 'error');
         const hasWarnings = Object.values(status.checks).some(check => check === 'warn');
@@ -980,6 +1329,48 @@ app.use(express.json());
 
 // Settings endpoints
 const SETTINGS_FILE = path.join(__dirname, 'data', 'settings.json');
+
+// Queue status endpoints (must be before catch-all route)
+app.get('/api/queue/status', (req, res) => {
+    res.json({
+        export: exportQueue.getStats(),
+        import: importQueue.getStats(),
+        api: apiQueue.getStats(),
+        timestamp: new Date().toISOString()
+    });
+});
+
+// Queue health endpoint
+app.get('/api/queue/health', (req, res) => {
+    const exportStats = exportQueue.getStats();
+    const importStats = importQueue.getStats();
+    const apiStats = apiQueue.getStats();
+    
+    const isHealthy = 
+        exportStats.queueLength < exportStats.maxQueueSize * 0.8 &&
+        importStats.queueLength < importStats.maxQueueSize * 0.8 &&
+        apiStats.queueLength < apiStats.maxQueueSize * 0.8;
+    
+    res.json({
+        status: isHealthy ? 'healthy' : 'warning',
+        message: isHealthy ? 'All queues are operating normally' : 'Some queues are approaching capacity',
+        queues: {
+            export: {
+                ...exportStats,
+                health: exportStats.queueLength < exportStats.maxQueueSize * 0.8 ? 'healthy' : 'warning'
+            },
+            import: {
+                ...importStats,
+                health: importStats.queueLength < importStats.maxQueueSize * 0.8 ? 'healthy' : 'warning'
+            },
+            api: {
+                ...apiStats,
+                health: apiStats.queueLength < apiStats.maxQueueSize * 0.8 ? 'healthy' : 'warning'
+            }
+        },
+        timestamp: new Date().toISOString()
+    });
+});
 
 // Serve the main application for all other routes (must be last)
 app.get('*', (req, res) => {
@@ -1311,6 +1702,43 @@ const startServer = async () => {
         
         // Continue with server startup but log the error
         logTime('⚠️  Continuing despite logging system initialization error');
+    }
+    
+    // Load settings from file and set environment variables
+    try {
+        const settingsPath = path.join(__dirname, 'data', 'settings.json');
+        const settingsData = await fs.readFile(settingsPath, 'utf8');
+        const settings = JSON.parse(settingsData);
+        
+        // Set environment variables from settings file
+        if (settings.apiClientId) {
+            process.env.PINGONE_CLIENT_ID = settings.apiClientId;
+        }
+        if (settings.environmentId) {
+            process.env.PINGONE_ENVIRONMENT_ID = settings.environmentId;
+        }
+        if (settings.region) {
+            process.env.PINGONE_REGION = settings.region;
+        }
+        
+        // Handle API secret - prioritize environment variable over file settings
+        if (!process.env.PINGONE_CLIENT_SECRET && settings.apiSecret) {
+            if (settings.apiSecret.startsWith('enc:')) {
+                // This is an encrypted secret, we need to decrypt it
+                // For now, we'll skip setting it and let the user know
+                console.warn('⚠️  API secret is encrypted. Please update settings to use unencrypted secret.');
+            } else {
+                // This is an unencrypted secret, use it directly
+                process.env.PINGONE_CLIENT_SECRET = settings.apiSecret;
+            }
+        } else if (process.env.PINGONE_CLIENT_SECRET) {
+            console.log('✅ Using API secret from environment variable');
+        }
+        
+        console.log('✅ Loaded settings from file and set environment variables');
+    } catch (error) {
+        console.warn('⚠️  Could not load settings from file:', error.message);
+        // Continue with existing environment variables
     }
     
     // Log environment variables (masking sensitive data)
@@ -1995,6 +2423,86 @@ const postWarningToUI = async (message, details = {}, source = 'server') => {
     }
 };
 
+// --- Custom Queue Manager for Export/Import Operations ---
+class RequestQueue {
+    constructor(maxConcurrent = 5, maxQueueSize = 100) {
+        this.maxConcurrent = maxConcurrent;
+        this.maxQueueSize = maxQueueSize;
+        this.queue = [];
+        this.running = 0;
+        this.processing = false;
+    }
+
+    async add(task, priority = 0) {
+        return new Promise((resolve, reject) => {
+            if (this.queue.length >= this.maxQueueSize) {
+                reject(new Error('Queue is full'));
+                return;
+            }
+
+            const queueItem = {
+                task,
+                priority,
+                resolve,
+                reject,
+                timestamp: Date.now()
+            };
+
+            // Insert based on priority (higher priority first)
+            let inserted = false;
+            for (let i = 0; i < this.queue.length; i++) {
+                if (this.queue[i].priority < priority) {
+                    this.queue.splice(i, 0, queueItem);
+                    inserted = true;
+                    break;
+                }
+            }
+            if (!inserted) {
+                this.queue.push(queueItem);
+            }
+
+            this.process();
+        });
+    }
+
+    async process() {
+        if (this.processing || this.running >= this.maxConcurrent) {
+            return;
+        }
+
+        this.processing = true;
+
+        while (this.queue.length > 0 && this.running < this.maxConcurrent) {
+            const item = this.queue.shift();
+            this.running++;
+
+            try {
+                const result = await item.task();
+                item.resolve(result);
+            } catch (error) {
+                item.reject(error);
+            } finally {
+                this.running--;
+            }
+        }
+
+        this.processing = false;
+    }
+
+    getStats() {
+        return {
+            queueLength: this.queue.length,
+            running: this.running,
+            maxConcurrent: this.maxConcurrent,
+            maxQueueSize: this.maxQueueSize
+        };
+    }
+}
+
+// Create queue instances
+const exportQueue = new RequestQueue(3, 50); // 3 concurrent exports, max 50 queued
+const importQueue = new RequestQueue(2, 30); // 2 concurrent imports, max 30 queued
+const apiQueue = new RequestQueue(10, 100); // 10 concurrent API calls, max 100 queued
 
 
 // List all registered routes before starting the server

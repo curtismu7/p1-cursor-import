@@ -1,0 +1,4 @@
+firstName,lastName,email,username,enabled
+John,Doe,john.doe@example.com,johndoe,true
+Jane,Smith,jane.smith@example.com,janesmith,true
+Bob,Johnson,bob.johnson@example.com,bobjohnson,false 

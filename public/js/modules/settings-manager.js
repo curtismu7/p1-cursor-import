@@ -125,8 +125,11 @@ class SettingsManager {
             apiClientId: '',
             apiSecret: '',
             environmentId: '',
-            populationId: '',
+            populationId: 'not set',
             region: 'NorthAmerica',
+            
+            // Rate limiting
+            rateLimit: 50,
             
             // Connection status
             connectionStatus: 'disconnected',

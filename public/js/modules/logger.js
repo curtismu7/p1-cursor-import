@@ -443,23 +443,23 @@ class Logger {
     }
     
     debug(message, data = {}) {
-        return this.log(message, 'debug', data);
+        return this.log('debug', message, data);
     }
     
     info(message, data = {}) {
-        return this.log(message, 'info', data);
+        return this.log('info', message, data);
     }
     
     success(message, data = {}) {
-        return this.log(message, 'success', data);
+        return this.log('success', message, data);
     }
     
     warn(message, data = {}) {
-        return this.log(message, 'warn', data);
+        return this.log('warn', message, data);
     }
     
     error(message, data = {}) {
-        return this.log(message, 'error', data);
+        return this.log('error', message, data);
     }
 }
 

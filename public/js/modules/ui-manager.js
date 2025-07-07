@@ -2,12 +2,25 @@ export class UIManager {
     constructor(logger) {
         this.logger = logger;
         this.currentView = 'import';
+        
+        // Status tracking for all views
+        this.lastRunStatus = {
+            import: { operation: 'None', status: 'Ready', timestamp: null, details: null, results: null },
+            export: { operation: 'None', status: 'Ready', timestamp: null, details: null, results: null },
+            'delete-csv': { operation: 'None', status: 'Ready', timestamp: null, details: null, results: null },
+            modify: { operation: 'None', status: 'Ready', timestamp: null, details: null, results: null },
+            settings: { operation: 'None', status: 'Ready', timestamp: null, details: null, results: null },
+            logs: { operation: 'None', status: 'Ready', timestamp: null, details: null, results: null }
+        };
+        
         // Initialize UI elements
         this.views = {
             'import': document.getElementById('import-view'),
             'settings': document.getElementById('settings-view'),
             'logs': document.getElementById('logs-view'),
-            'delete-csv': document.getElementById('delete-csv-view')
+            'delete-csv': document.getElementById('delete-csv-view'),
+            'modify': document.getElementById('modify-view'),
+            'export': document.getElementById('export-view')
         };
         // Navigation elements
         this.navItems = document.querySelectorAll('.nav-item');
@@ -25,6 +38,317 @@ export class UIManager {
                     this.showView(view);
                 }
             });
+        });
+        
+        // Load persisted status from localStorage
+        this.loadPersistedStatus();
+        
+        // Set up progress close button handlers
+        this.setupProgressCloseButtons();
+    }
+
+    /**
+     * Hide a progress screen with a delay
+     * @param {string} statusElementId - The ID of the status element to hide
+     * @param {number} delay - Delay in milliseconds (default: 5000)
+     */
+    hideProgressScreenWithDelay(statusElementId, delay = 5000) {
+        const statusElement = document.getElementById(statusElementId);
+        if (!statusElement) return;
+        
+        // Clear any existing timeout for this element
+        const timeoutKey = `hideTimeout_${statusElementId}`;
+        if (this[timeoutKey]) {
+            clearTimeout(this[timeoutKey]);
+        }
+        
+        // Set new timeout to hide the progress screen
+        this[timeoutKey] = setTimeout(() => {
+            statusElement.style.display = 'none';
+            delete this[timeoutKey]; // Clean up the timeout reference
+            this.logger?.info(`Progress screen auto-hidden after delay: ${statusElementId}`);
+        }, delay);
+        
+        this.logger?.info(`Progress screen will be hidden in ${delay}ms: ${statusElementId}`);
+    }
+
+    /**
+     * Set up event handlers for progress screen close buttons
+     */
+    setupProgressCloseButtons() {
+        const progressScreens = [
+            { buttonId: 'close-import-status', statusId: 'import-status', viewName: 'import' },
+            { buttonId: 'close-export-status', statusId: 'export-status', viewName: 'export' },
+            { buttonId: 'close-delete-csv-status', statusId: 'delete-csv-status', viewName: 'delete-csv' },
+            { buttonId: 'close-modify-status', statusId: 'modify-status', viewName: 'modify' }
+        ];
+
+        progressScreens.forEach(({ buttonId, statusId, viewName }) => {
+            const closeButton = document.getElementById(buttonId);
+            const statusElement = document.getElementById(statusId);
+            
+            if (closeButton && statusElement) {
+                closeButton.addEventListener('click', () => {
+                    // Clear any pending hide timeout
+                    const timeoutKey = `hideTimeout_${statusId}`;
+                    if (this[timeoutKey]) {
+                        clearTimeout(this[timeoutKey]);
+                        delete this[timeoutKey];
+                    }
+                    
+                    // Hide the progress screen
+                    statusElement.style.display = 'none';
+                    
+                    // Reset the status to prevent it from showing again on page reload
+                    const currentStatus = this.lastRunStatus[viewName];
+                    if (currentStatus && currentStatus.status === 'In Progress') {
+                        this.updateLastRunStatus(viewName, currentStatus.operation || 'Operation', 'Ready', 'Operation stopped by user');
+                    }
+                    
+                    this.logger?.info(`Progress screen closed: ${statusId}`);
+                    this.showNotification(`${viewName.charAt(0).toUpperCase() + viewName.slice(1)} progress screen closed`, 'info');
+                });
+            }
+        });
+    }
+
+    /**
+     * Load persisted status from localStorage
+     */
+    loadPersistedStatus() {
+        try {
+            const saved = localStorage.getItem('pingone-import-last-status');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                this.lastRunStatus = { ...this.lastRunStatus, ...parsed };
+            }
+        } catch (error) {
+            this.logger.error('Failed to load persisted status:', error);
+        }
+    }
+
+    /**
+     * Save status to localStorage
+     */
+    savePersistedStatus() {
+        try {
+            localStorage.setItem('pingone-import-last-status', JSON.stringify(this.lastRunStatus));
+        } catch (error) {
+            this.logger.error('Failed to save persisted status:', error);
+        }
+    }
+
+    /**
+     * Update the last run status for a view
+     * @param {string} viewName - The view name (import, export, delete-csv, modify, settings, logs)
+     * @param {string} operation - The operation performed
+     * @param {string} status - The status (Ready, In Progress, Completed, Failed, Error)
+     * @param {string} details - Additional details about the operation
+     * @param {Object} results - Results object with counts/data
+     */
+    updateLastRunStatus(viewName, operation, status, details = null, results = null) {
+        if (!this.lastRunStatus[viewName]) {
+            this.lastRunStatus[viewName] = {};
+        }
+        
+        this.lastRunStatus[viewName] = {
+            operation,
+            status,
+            timestamp: new Date().toISOString(),
+            details,
+            results
+        };
+        
+        // Save to localStorage
+        this.savePersistedStatus();
+        
+        // Update the UI if this view is currently active or always show persistent status
+        this.displayLastRunStatus(viewName);
+    }
+
+    /**
+     * Display the last run status for a specific view
+     * @param {string} viewName - The view name
+     */
+    displayLastRunStatus(viewName) {
+        const status = this.lastRunStatus[viewName];
+        if (!status || status.operation === 'None') return;
+
+        // For operation views (import, export, delete-csv, modify), 
+        // show the progress section if the operation is currently "In Progress" OR if it was recently completed
+        if (['import', 'export', 'delete-csv', 'modify'].includes(viewName)) {
+            const statusElement = document.getElementById(`${viewName}-status`);
+            
+            // Show the progress screen if the operation is currently in progress OR if it was completed recently
+            if (statusElement) {
+                if (status.status === 'In Progress') {
+                    statusElement.style.display = 'block';
+                    this.updateOperationStatus(viewName, status);
+                } else if (status.status === 'Completed' || status.status === 'Ready') {
+                    // Keep the progress screen open even after completion so users can see results
+                    statusElement.style.display = 'block';
+                    this.updateOperationStatus(viewName, status);
+                }
+                // For other statuses (Failed, Cancelled, etc.), keep the screen open to show error details
+                else {
+                    statusElement.style.display = 'block';
+                    this.updateOperationStatus(viewName, status);
+                }
+            }
+        } else {
+            // For logs and settings, always show status
+            const statusElement = document.getElementById(`${viewName}-status`);
+            if (!statusElement) return;
+
+            statusElement.style.display = 'block';
+            
+            if (viewName === 'logs') {
+                this.updateLogsStatus(status);
+            } else if (viewName === 'settings') {
+                this.updateSettingsLastRunStatus(status);
+            }
+        }
+    }
+
+    /**
+     * Update logs view status
+     */
+    updateLogsStatus(status) {
+        const elements = {
+            operation: document.getElementById('logs-last-operation'),
+            status: document.getElementById('logs-operation-status'),
+            timestamp: document.getElementById('logs-operation-timestamp'),
+            details: document.getElementById('logs-operation-details')
+        };
+
+        if (elements.operation) elements.operation.textContent = status.operation;
+        if (elements.status) {
+            elements.status.textContent = status.status;
+            elements.status.className = `stat-value ${this.getStatusClass(status.status)}`;
+        }
+        if (elements.timestamp) {
+            elements.timestamp.textContent = status.timestamp ? 
+                new Date(status.timestamp).toLocaleString() : '-';
+        }
+        if (elements.details) elements.details.textContent = status.details || '-';
+    }
+
+    /**
+     * Update settings view last run status
+     */
+    updateSettingsLastRunStatus(status) {
+        // Add a last operation status to settings if it doesn't exist
+        let lastOpElement = document.getElementById('settings-last-operation-status');
+        if (!lastOpElement) {
+            const container = document.querySelector('.settings-status-container');
+            if (container) {
+                lastOpElement = document.createElement('div');
+                lastOpElement.id = 'settings-last-operation-status';
+                lastOpElement.className = 'settings-last-operation-status';
+                lastOpElement.innerHTML = `
+                    <div class="status-details">
+                        <span class="status-icon">📋</span>
+                        <span class="status-message">
+                            <strong>Last Operation:</strong> <span id="settings-last-op-text">${status.operation}</span> - 
+                            <span id="settings-last-op-status" class="${this.getStatusClass(status.status)}">${status.status}</span>
+                            <small class="timestamp">${status.timestamp ? new Date(status.timestamp).toLocaleString() : ''}</small>
+                        </span>
+                    </div>
+                `;
+                container.appendChild(lastOpElement);
+            }
+        } else {
+            // Update existing elements
+            const opText = document.getElementById('settings-last-op-text');
+            const opStatus = document.getElementById('settings-last-op-status');
+            const timestamp = lastOpElement.querySelector('.timestamp');
+            
+            if (opText) opText.textContent = status.operation;
+            if (opStatus) {
+                opStatus.textContent = status.status;
+                opStatus.className = this.getStatusClass(status.status);
+            }
+            if (timestamp) {
+                timestamp.textContent = status.timestamp ? new Date(status.timestamp).toLocaleString() : '';
+            }
+        }
+    }
+
+    /**
+     * Update operation status for import/export/delete/modify views
+     */
+    updateOperationStatus(viewName, status) {
+        // Update the main status text
+        const statusTextElement = document.getElementById(`${viewName}-progress-text`);
+        if (statusTextElement) {
+            statusTextElement.textContent = `${status.operation} - ${status.status}`;
+            statusTextElement.className = `stat-value ${this.getStatusClass(status.status)}`;
+        }
+
+        // If we have results, update the counters
+        if (status.results) {
+            const counters = ['success', 'failed', 'skipped'];
+            counters.forEach(counter => {
+                const element = document.getElementById(`${viewName}-${counter}-count`);
+                if (element && status.results[counter] !== undefined) {
+                    element.textContent = status.results[counter];
+                }
+            });
+
+            // Update progress count if available
+            const progressCountElement = document.getElementById(`${viewName}-progress-count`);
+            if (progressCountElement && status.results.total !== undefined) {
+                const processed = (status.results.success || 0) + (status.results.failed || 0) + (status.results.skipped || 0);
+                progressCountElement.textContent = `${processed} of ${status.results.total} users`;
+            }
+        }
+
+        // Add timestamp info
+        const timestampElement = document.getElementById(`${viewName}-timestamp`);
+        if (!timestampElement && status.timestamp) {
+            const statsContainer = document.getElementById(`${viewName}-stats`);
+            if (statsContainer) {
+                const timestampDiv = document.createElement('div');
+                timestampDiv.className = 'stat-item';
+                timestampDiv.innerHTML = `
+                    <span class="stat-label">Last Run:</span>
+                    <span id="${viewName}-timestamp" class="stat-value">${new Date(status.timestamp).toLocaleString()}</span>
+                `;
+                statsContainer.appendChild(timestampDiv);
+            }
+        } else if (timestampElement) {
+            timestampElement.textContent = status.timestamp ? new Date(status.timestamp).toLocaleString() : '-';
+        }
+    }
+
+    /**
+     * Get CSS class for status
+     */
+    getStatusClass(status) {
+        switch (status.toLowerCase()) {
+            case 'completed':
+            case 'success':
+                return 'success';
+            case 'failed':
+            case 'error':
+                return 'error';
+            case 'in progress':
+            case 'running':
+                return 'info';
+            case 'cancelled':
+            case 'skipped':
+                return 'warning';
+            default:
+                return '';
+        }
+    }
+
+    /**
+     * Show all persisted status sections when switching views
+     */
+    showPersistedStatus() {
+        Object.keys(this.lastRunStatus).forEach(viewName => {
+            this.displayLastRunStatus(viewName);
         });
     }
 
@@ -56,6 +380,7 @@ export class UIManager {
             this.currentView = viewName;
             const navItem = document.querySelector(`[data-view="${viewName}"]`);
             if (navItem) navItem.classList.add('active');
+            
             // Special handling for logs/settings
             switch(viewName) {
                 case 'logs':
@@ -72,6 +397,10 @@ export class UIManager {
                     this.updateSettingsConnectionStatus(currentStatus, currentMessage);
                     break;
             }
+            
+            // Always display persisted status for the current view
+            this.displayLastRunStatus(viewName);
+            
             return true;
         } else {
             console.warn(`View '${viewName}' not found`);
@@ -464,36 +793,45 @@ export class UIManager {
                             const level = log.level ? log.level.toUpperCase() : 'INFO';
                             const message = log.message || 'No message';
                             
+                            // Create the main log content with expand icon
                             logElement.innerHTML = `
-                                <span class="log-timestamp">[${timestamp}]</span>
-                                <span class="log-level">${level}</span>
-                                <span class="log-message">${message}</span>
+                                <div class="log-content">
+                                    <span class="log-timestamp">[${timestamp}]</span>
+                                    <span class="log-level">${level}</span>
+                                    <span class="log-message">${message}</span>
+                                    <span class="log-expand-icon">
+                                        <i class="fas fa-chevron-right"></i>
+                                    </span>
+                                </div>
                             `;
 
-                            // Add data if present (collapsed by default)
-                            let detailsElement = null;
-                            if (log.data && Object.keys(log.data).length > 0) {
-                                detailsElement = document.createElement('pre');
-                                detailsElement.className = 'log-details';
-                                detailsElement.style.display = 'none';
-                                detailsElement.textContent = JSON.stringify(log, null, 2);
-                                logElement.appendChild(detailsElement);
-                            } else {
-                                // Always allow expansion for full log object
-                                detailsElement = document.createElement('pre');
-                                detailsElement.className = 'log-details';
-                                detailsElement.style.display = 'none';
-                                detailsElement.textContent = JSON.stringify(log, null, 2);
-                                logElement.appendChild(detailsElement);
-                            }
+                            // Add expandable details section
+                            const detailsElement = document.createElement('div');
+                            detailsElement.className = 'log-details';
+                            detailsElement.style.display = 'none';
+                            detailsElement.innerHTML = `
+                                <div class="log-details-content">
+                                    <pre class="log-detail-json">${JSON.stringify(log, null, 2)}</pre>
+                                </div>
+                            `;
+                            logElement.appendChild(detailsElement);
 
-                            // Toggle expand/collapse on click
-                            logElement.addEventListener('click', function (e) {
+                            // Add click handler for expand/collapse
+                            const logContent = logElement.querySelector('.log-content');
+                            const expandIcon = logElement.querySelector('.log-expand-icon i');
+                            
+                            logContent.addEventListener('click', function (e) {
                                 // Only toggle if not clicking a link or button inside
                                 if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
+                                
                                 const expanded = logElement.classList.toggle('expanded');
                                 if (detailsElement) {
                                     detailsElement.style.display = expanded ? 'block' : 'none';
+                                }
+                                
+                                // Update expand icon
+                                if (expandIcon) {
+                                    expandIcon.className = expanded ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
                                 }
                             });
 
@@ -524,12 +862,72 @@ export class UIManager {
                 }
             });
             
-            // Show error message in the UI
-            const errorElement = document.createElement('div');
-            errorElement.className = 'log-entry error';
-            errorElement.textContent = `Error loading logs: ${error.message}`;
+            // Fallback: show in-memory logs from logger
             logEntries.innerHTML = '';
-            logEntries.appendChild(errorElement);
+            let fallbackLogs = [];
+            if (this.logger && typeof this.logger.getLogs === 'function') {
+                fallbackLogs = this.logger.getLogs();
+            }
+            if (fallbackLogs.length > 0) {
+                fallbackLogs.slice(-200).reverse().forEach((log, index) => {
+                    const logElement = document.createElement('div');
+                    const logLevel = (log.level || 'info').toLowerCase();
+                    logElement.className = `log-entry log-${logLevel}`;
+                    logElement.style.cursor = 'pointer';
+                    const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+                    const level = log.level ? log.level.toUpperCase() : 'INFO';
+                    const message = log.message || 'No message';
+                    
+                    // Create the main log content with expand icon
+                    logElement.innerHTML = `
+                        <div class="log-content">
+                            <span class="log-timestamp">[${timestamp}]</span>
+                            <span class="log-level">${level}</span>
+                            <span class="log-message">${message}</span>
+                            <span class="log-expand-icon">
+                                <i class="fas fa-chevron-right"></i>
+                            </span>
+                        </div>
+                    `;
+                    
+                    // Add expandable details section
+                    const detailsElement = document.createElement('div');
+                    detailsElement.className = 'log-details';
+                    detailsElement.style.display = 'none';
+                    detailsElement.innerHTML = `
+                        <div class="log-details-content">
+                            <pre class="log-detail-json">${JSON.stringify(log, null, 2)}</pre>
+                        </div>
+                    `;
+                    logElement.appendChild(detailsElement);
+                    
+                    // Add click handler for expand/collapse
+                    const logContent = logElement.querySelector('.log-content');
+                    const expandIcon = logElement.querySelector('.log-expand-icon i');
+                    
+                    logContent.addEventListener('click', function (e) {
+                        if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
+                        
+                        const expanded = logElement.classList.toggle('expanded');
+                        if (detailsElement) {
+                            detailsElement.style.display = expanded ? 'block' : 'none';
+                        }
+                        
+                        // Update expand icon
+                        if (expandIcon) {
+                            expandIcon.className = expanded ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
+                        }
+                    });
+                    
+                    logEntries.appendChild(logElement);
+                });
+                this.scrollLogsToBottom();
+            } else {
+                const errorElement = document.createElement('div');
+                errorElement.className = 'log-entry error';
+                errorElement.textContent = `Error loading logs: ${error.message} (No logs available)`;
+                logEntries.appendChild(errorElement);
+            }
         } finally {
             // Remove loading indicator
             const loadingElement = document.getElementById('logs-loading');
@@ -571,6 +969,9 @@ export class UIManager {
             importStatus.style.display = 'block';
         }
         
+        // Update last run status
+        this.updateLastRunStatus('import', 'User Import', 'In Progress', `Importing ${totalUsers} users`, { total: totalUsers, success: 0, failed: 0, skipped: 0 });
+        
         // Reset all counters
         this.updateImportProgress(0, totalUsers, 'Starting import...', {
             success: 0,
@@ -580,61 +981,62 @@ export class UIManager {
     }
 
     /**
-     * Update the import progress
-     * @param {number} current - Number of users processed so far
-     * @param {number} total - Total number of users to process
-     * @param {string} message - Status message to display
-     * @param {Object} [counts] - Optional object containing success, failed, and skipped counts
+     * Update import progress
+     * @param {number} current - Current progress
+     * @param {number} total - Total items
+     * @param {string} status - Status message
+     * @param {Object} results - Results object
      */
-    updateImportProgress(current, total, message, counts = {}) {
+    updateImportProgress(current, total, status, results) {
+        // Update progress bar
         const progressBar = document.getElementById('import-progress');
         const progressPercent = document.getElementById('import-progress-percent');
         const progressText = document.getElementById('import-progress-text');
         const progressCount = document.getElementById('import-progress-count');
         
-        if (progressBar) {
-            const percent = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
+        if (progressBar && total > 0) {
+            const percent = Math.round((current / total) * 100);
             progressBar.style.width = `${percent}%`;
             progressBar.setAttribute('aria-valuenow', percent);
+            if (progressPercent) progressPercent.textContent = `${percent}%`;
         }
         
-        if (progressPercent) {
-            progressPercent.textContent = `${total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0}%`;
+        if (progressText) progressText.textContent = status;
+        if (progressCount) progressCount.textContent = `${current} of ${total} users`;
+        
+        // Update result counters
+        if (results) {
+            const successElement = document.getElementById('import-success-count');
+            const failedElement = document.getElementById('import-failed-count');
+            const skippedElement = document.getElementById('import-skipped-count');
+            
+            if (successElement) successElement.textContent = results.success || 0;
+            if (failedElement) failedElement.textContent = results.failed || 0;
+            if (skippedElement) skippedElement.textContent = results.skipped || 0;
         }
         
-        if (progressText) {
-            progressText.textContent = message || '';
-        }
-        
-        if (progressCount) {
-            progressCount.textContent = `${current} of ${total} users`;
-        }
-        
-        // Update success, failed, and skipped counts if provided
-        if (counts.success !== undefined) {
-            const successCount = document.getElementById('import-success-count');
-            if (successCount) successCount.textContent = counts.success;
-        }
-        
-        if (counts.failed !== undefined) {
-            const failedCount = document.getElementById('import-failed-count');
-            if (failedCount) failedCount.textContent = counts.failed;
-        }
-        
-        if (counts.skipped !== undefined) {
-            const skippedCount = document.getElementById('import-skipped-count');
-            if (skippedCount) skippedCount.textContent = counts.skipped;
-        }
+        // Update persistent status
+        const operationStatus = current >= total ? 'Completed' : 'In Progress';
+        this.updateLastRunStatus('import', 'User Import', operationStatus, status, { 
+            total, 
+            success: results?.success || 0, 
+            failed: results?.failed || 0, 
+            skipped: results?.skipped || 0 
+        });
     }
     
     /**
      * Reset the import state
      */
     resetImportState() {
-        const importStatus = document.getElementById('import-status');
-        if (importStatus) {
-            importStatus.style.display = 'none';
+        // Clear the "In Progress" status to prevent progress screen from showing on future page loads
+        const currentStatus = this.lastRunStatus['import'];
+        if (currentStatus && currentStatus.status === 'In Progress') {
+            this.updateLastRunStatus('import', currentStatus.operation || 'Import', 'Ready', 'Import stopped or completed');
         }
+        
+        // Progress screen will stay open until user manually closes it with X button
+        // No automatic hiding
     }
     
     /**
@@ -684,7 +1086,9 @@ export class UIManager {
      * @param {string} message - The message to display
      */
     showSuccess(message) {
-        this.showNotification(message, 'success');
+        // Add green checkmark if not already present
+        const messageWithCheckmark = message.startsWith('✅') ? message : `✅ ${message}`;
+        this.showNotification(messageWithCheckmark, 'success');
     }
     
     /**
@@ -702,6 +1106,35 @@ export class UIManager {
     showError(message) {
         this.showNotification(message, 'error');
     }
+
+    /**
+     * Show a specialized rate limit warning with enhanced information
+     * @param {string} message - The basic rate limit message
+     * @param {Object} [options] - Additional options for the rate limit warning
+     * @param {boolean} [options.isRetrying=false] - Whether the request is being retried automatically
+     * @param {number} [options.retryAttempt] - Current retry attempt number
+     * @param {number} [options.maxRetries] - Maximum number of retry attempts
+     * @param {number} [options.retryDelay] - Delay before next retry (in milliseconds)
+     */
+    showRateLimitWarning(message, options = {}) {
+        const { isRetrying = false, retryAttempt, maxRetries, retryDelay } = options;
+        
+        let enhancedMessage = message;
+        
+        // Add retry information if available
+        if (isRetrying && retryAttempt && maxRetries) {
+            enhancedMessage += ` (Retry ${retryAttempt}/${maxRetries})`;
+            if (retryDelay) {
+                const delaySeconds = Math.ceil(retryDelay / 1000);
+                enhancedMessage += ` - Waiting ${delaySeconds}s before retry`;
+            }
+        }
+        
+        // Add helpful context
+        enhancedMessage += ' 💡 The system has automatically increased rate limits to handle more requests.';
+        
+        this.showNotification(enhancedMessage, 'warning');
+    }
     
     /**
      * Show a notification
@@ -709,7 +1142,13 @@ export class UIManager {
      * @param {string} type - The type of notification ('success', 'warning', 'error')
      */
     showNotification(message, type = 'info') {
-        console.log(`[${type}] ${message}`);
+        // Add green checkmark to success messages if not already present
+        let displayMessage = message;
+        if (type === 'success' && !message.startsWith('✅')) {
+            displayMessage = `✅ ${message}`;
+        }
+        
+        console.log(`[${type}] ${displayMessage}`);
         
         // Get or create notification container
         let notificationArea = document.getElementById('notification-area');
@@ -731,7 +1170,7 @@ export class UIManager {
         notification.className = `notification notification-${type}`;
         notification.innerHTML = `
             <div class="notification-content">
-                <span class="notification-message">${message}</span>
+                <span class="notification-message">${displayMessage}</span>
                 <button class="notification-close">&times;</button>
             </div>
         `;
@@ -771,7 +1210,8 @@ export class UIManager {
             'environmentId': 'environment-id',
             'apiClientId': 'api-client-id',
             'apiSecret': 'api-secret',
-            'populationId': 'population-id'
+            'populationId': 'population-id',
+            'rateLimit': 'rate-limit'
         };
 
         // Update each form field with the corresponding setting value
@@ -786,6 +1226,9 @@ export class UIManager {
     init(callbacks = {}) {
         // Store callbacks
         this.callbacks = callbacks;
+        
+        // Setup progress close buttons
+        this.setupProgressCloseButtons();
         
         // Initialize navigation event listeners
         this.navItems.forEach(item => {
@@ -828,15 +1271,21 @@ export class UIManager {
             clearLogsBtn.addEventListener('click', async (e) => {
                 e.preventDefault();
                 try {
+                    this.updateLogsOperationStatus('Clear Logs', true, 'Clearing log entries...');
+                    
                     const response = await fetch('/api/logs/ui', { method: 'DELETE' });
                     const data = await response.json();
+                    
                     if (data.success) {
+                        this.updateLogsOperationStatus('Clear Logs', true, 'Logs cleared successfully');
                         this.showNotification('Logs cleared. Only UI logs are cleared. Server logs are not affected.', 'info');
                         await this.loadAndDisplayLogs();
                     } else {
+                        this.updateLogsOperationStatus('Clear Logs', false, `Failed to clear logs: ${data.error || 'Unknown error'}`);
                         this.showNotification('Failed to clear logs: ' + (data.error || 'Unknown error'), 'error');
                     }
                 } catch (error) {
+                    this.updateLogsOperationStatus('Clear Logs', false, `Error clearing logs: ${error.message}`);
                     this.showNotification('Error clearing logs: ' + error.message, 'error');
                 }
             });
@@ -930,235 +1379,7 @@ export class UIManager {
         }
     }
     
-    /**
-     * Load and display logs in the logs view
-     */
-    async loadAndDisplayLogs() {
-        const logsView = document.getElementById('logs-view');
-        if (!logsView) {
-            console.error('Logs view element not found');
-            return;
-        }
-        
-        // Show loading indicator
-        let loadingElement = document.getElementById('logs-loading');
-        if (!loadingElement) {
-            loadingElement = document.createElement('div');
-            loadingElement.id = 'logs-loading';
-            loadingElement.textContent = 'Loading logs...';
-            logsView.appendChild(loadingElement);
-        } else {
-            loadingElement.textContent = 'Loading logs...';
-            loadingElement.style.display = 'block';
-        }
-        
-        // Clear existing logs
-        let logEntriesContainer = logsView.querySelector('.log-entries');
-        if (!logEntriesContainer) {
-            logEntriesContainer = document.createElement('div');
-            logEntriesContainer.className = 'log-entries';
-            logsView.appendChild(logEntriesContainer);
-        } else {
-            logEntriesContainer.innerHTML = '';
-        }
-        
-        try {
-            const response = await fetch('/api/logs/ui?limit=200');
-            const data = await response.json();
-            
-            if (data.success && Array.isArray(data.logs)) {
-                // Hide loading indicator
-                loadingElement.style.display = 'none';
-                
-                // Process and display logs in chronological order (oldest first, newest last)
-                // Reverse the array since server returns newest first, but we want oldest first
-                const logsToProcess = [...data.logs].reverse();
-                
-                logsToProcess.forEach((log, index) => {
-                    if (!log) {
-                        console.warn('Skipping null log entry');
-                        return;
-                    }
-                    
-                    // Create expandable log entry element
-                    const logEntry = document.createElement('div');
-                    logEntry.className = `log-entry log-${log.level || 'info'}`;
-                    logEntry.setAttribute('data-log-index', index);
-                    
-                    // Create the main log content (always visible)
-                    const logContent = document.createElement('div');
-                    logContent.className = 'log-content';
-                    
-                    // Format the log message
-                    const timestamp = log.timestamp ? new Date(log.timestamp).toISOString() : new Date().toISOString();
-                    const level = (log.level || 'info').toUpperCase();
-                    const message = log.message || '';
-                    
-                    // Create timestamp element
-                    const timestampElement = document.createElement('span');
-                    timestampElement.className = 'log-timestamp';
-                    timestampElement.textContent = `[${timestamp}]`;
-                    
-                    // Create level element
-                    const levelElement = document.createElement('span');
-                    levelElement.className = `log-level ${log.level || 'info'}`;
-                    levelElement.textContent = level;
-                    
-                    // Create message element
-                    const messageElement = document.createElement('span');
-                    messageElement.className = 'log-message';
-                    messageElement.textContent = message;
-                    
-                    // Create expand/collapse indicator
-                    const expandIcon = document.createElement('span');
-                    expandIcon.className = 'log-expand-icon';
-                    expandIcon.innerHTML = '<i class="fas fa-chevron-right"></i>';
-                    
-                    // Add click handler for expand/collapse
-                    logContent.addEventListener('click', () => {
-                        const detailsElement = logEntry.querySelector('.log-details');
-                        const icon = logContent.querySelector('.log-expand-icon i');
-                        
-                        if (detailsElement) {
-                            if (detailsElement.style.display === 'none' || !detailsElement.style.display) {
-                                detailsElement.style.display = 'block';
-                                logEntry.classList.add('expanded');
-                                icon.className = 'fas fa-chevron-down';
-                            } else {
-                                detailsElement.style.display = 'none';
-                                logEntry.classList.remove('expanded');
-                                icon.className = 'fas fa-chevron-right';
-                            }
-                        }
-                    });
-                    
-                    // Add cursor pointer to indicate clickable
-                    logContent.style.cursor = 'pointer';
-                    
-                    // Assemble the main log content
-                    logContent.appendChild(timestampElement);
-                    logContent.appendChild(levelElement);
-                    logContent.appendChild(messageElement);
-                    logContent.appendChild(expandIcon);
-                    
-                    logEntry.appendChild(logContent);
-                    
-                    // Create expandable details section
-                    const detailsElement = document.createElement('div');
-                    detailsElement.className = 'log-details';
-                    detailsElement.style.display = 'none';
-                    
-                    // Add detailed information
-                    const detailsContent = document.createElement('div');
-                    detailsContent.className = 'log-details-content';
-                    
-                    // Create details sections
-                    const detailsSections = [];
-                    
-                    // Add meta information if available
-                    if (log.meta && Object.keys(log.meta).length > 0) {
-                        const metaSection = document.createElement('div');
-                        metaSection.className = 'log-detail-section';
-                        metaSection.innerHTML = `
-                            <h4>Additional Information</h4>
-                            <pre class="log-detail-json">${JSON.stringify(log.meta, null, 2)}</pre>
-                        `;
-                        detailsSections.push(metaSection);
-                    }
-                    
-                    // Add error details if available
-                    if (log.error) {
-                        const errorSection = document.createElement('div');
-                        errorSection.className = 'log-detail-section';
-                        errorSection.innerHTML = `
-                            <h4>Error Details</h4>
-                            <pre class="log-detail-error">${JSON.stringify(log.error, null, 2)}</pre>
-                        `;
-                        detailsSections.push(errorSection);
-                    }
-                    
-                    // Add stack trace if available
-                    if (log.stack) {
-                        const stackSection = document.createElement('div');
-                        stackSection.className = 'log-detail-section';
-                        stackSection.innerHTML = `
-                            <h4>Stack Trace</h4>
-                            <pre class="log-detail-stack">${log.stack}</pre>
-                        `;
-                        detailsSections.push(stackSection);
-                    }
-                    
-                    // Add request/response details if available
-                    if (log.request || log.response) {
-                        const requestSection = document.createElement('div');
-                        requestSection.className = 'log-detail-section';
-                        
-                        let requestContent = '<h4>Request/Response Details</h4>';
-                        if (log.request) {
-                            requestContent += `<h5>Request</h5><pre class="log-detail-json">${JSON.stringify(log.request, null, 2)}</pre>`;
-                        }
-                        if (log.response) {
-                            requestContent += `<h5>Response</h5><pre class="log-detail-json">${JSON.stringify(log.response, null, 2)}</pre>`;
-                        }
-                        
-                        requestSection.innerHTML = requestContent;
-                        detailsSections.push(requestSection);
-                    }
-                    
-                    // Add raw log data if no other details are available
-                    if (detailsSections.length === 0) {
-                        const rawSection = document.createElement('div');
-                        rawSection.className = 'log-detail-section';
-                        rawSection.innerHTML = `
-                            <h4>Raw Log Data</h4>
-                            <pre class="log-detail-json">${JSON.stringify(log, null, 2)}</pre>
-                        `;
-                        detailsSections.push(rawSection);
-                    }
-                    
-                    // Add all sections to details content
-                    detailsSections.forEach(section => {
-                        detailsContent.appendChild(section);
-                    });
-                    
-                    detailsElement.appendChild(detailsContent);
-                    logEntry.appendChild(detailsElement);
-                    
-                    // Append to container
-                    logEntriesContainer.appendChild(logEntry);
-                    
-                    // Log the entry using the logger (for testing purposes)
-                    if (this.logger && typeof this.logger._log === 'function') {
-                        this.logger._log(log.level || 'info', log.message || '', log.meta || {});
-                    }
-                });
-                
-                // Scroll to bottom
-                logEntriesContainer.scrollTop = logEntriesContainer.scrollHeight;
-            } else {
-                const errorMsg = data.error || 'Failed to load logs';
-                logEntriesContainer.innerHTML = `<div class="error">${errorMsg}</div>`;
-                console.error('Failed to load logs:', errorMsg);
-                
-                if (this.logger && typeof this.logger.error === 'function') {
-                    this.logger.error('Failed to load logs:', errorMsg);
-                }
-            }
-        } catch (error) {
-            const errorMsg = error.message || 'Error loading logs';
-            logEntriesContainer.innerHTML = `<div class="error">${errorMsg}</div>`;
-            console.error('Error loading logs:', error);
-            
-            if (this.logger && typeof this.logger.error === 'function') {
-                this.logger.error('Error loading logs:', error);
-            }
-        } finally {
-            // Ensure loading indicator is hidden
-            if (loadingElement) {
-                loadingElement.style.display = 'none';
-            }
-        }
-    }
+
     
     /**
      * Add a form with submission handling
@@ -1261,6 +1482,16 @@ export class UIManager {
         }
     }
 
+    setDeleteCsvButtonState(enabled, text) {
+        const deleteButton = document.getElementById('start-delete-csv-btn');
+        if (deleteButton) {
+            deleteButton.disabled = !enabled;
+            if (text) {
+                deleteButton.textContent = text;
+            }
+        }
+    }
+
     showDeleteCsvStatus(totalUsers) {
         const deleteStatus = document.getElementById('delete-csv-status');
         if (deleteStatus) {
@@ -1307,10 +1538,8 @@ export class UIManager {
     }
 
     resetDeleteCsvState() {
-        const deleteStatus = document.getElementById('delete-csv-status');
-        if (deleteStatus) {
-            deleteStatus.style.display = 'none';
-        }
+        // Progress screen will stay open until user manually closes it with X button
+        // No automatic hiding
     }
 
     resetDeleteCsvProgress() {
@@ -1331,6 +1560,282 @@ export class UIManager {
         if (failedCount) failedCount.textContent = '0';
         const skippedCount = document.getElementById('delete-csv-skipped-count');
         if (skippedCount) skippedCount.textContent = '0';
+    }
+
+    setModifying(isModifying) {
+        const modifyButton = document.getElementById('start-modify-btn');
+        const cancelButton = document.getElementById('cancel-modify-btn');
+        if (modifyButton) {
+            modifyButton.disabled = isModifying;
+            modifyButton.textContent = isModifying ? 'Modifying...' : 'Modify Users';
+        }
+        if (cancelButton) {
+            cancelButton.style.display = isModifying ? 'inline-block' : 'none';
+        }
+    }
+
+    setModifyCsvButtonState(enabled, text) {
+        const modifyButton = document.getElementById('start-modify-btn');
+        if (modifyButton) {
+            modifyButton.disabled = !enabled;
+            if (text) {
+                modifyButton.textContent = text;
+            }
+        }
+    }
+
+    showModifyStatus(totalUsers) {
+        const modifyStatus = document.getElementById('modify-status');
+        if (modifyStatus) {
+            modifyStatus.style.display = 'block';
+        }
+        this.updateModifyProgress(0, totalUsers, 'Starting modify operation...');
+        this.resetModifyStats();
+    }
+
+    updateModifyProgress(current, total, status, progress = null) {
+        const progressBar = document.getElementById('modify-progress');
+        const progressPercent = document.getElementById('modify-progress-percent');
+        const progressText = document.getElementById('modify-progress-text');
+        const progressCount = document.getElementById('modify-progress-count');
+
+        if (progressBar && progressPercent) {
+            const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
+            progressBar.style.width = `${percentage}%`;
+            progressBar.setAttribute('aria-valuenow', percentage);
+            progressPercent.textContent = `${percentage}%`;
+        }
+
+        if (progressText) {
+            progressText.textContent = status || 'Processing...';
+            console.log('Updated modify progress text:', status);
+        } else {
+            console.warn('modify-progress-text element not found');
+        }
+
+        if (progressCount) {
+            progressCount.textContent = `${current} of ${total} users`;
+        }
+
+        // Also update stats if progress object is provided
+        if (progress && typeof progress === 'object') {
+            this.updateModifyStats(progress);
+        }
+    }
+
+    updateModifyStats(stats) {
+        const successCount = document.getElementById('modify-success-count');
+        const createdCount = document.getElementById('modify-created-count');
+        const failedCount = document.getElementById('modify-failed-count');
+        const skippedCount = document.getElementById('modify-skipped-count');
+        const noChangesCount = document.getElementById('modify-no-changes-count');
+
+        if (successCount) successCount.textContent = stats.modified || 0;
+        if (createdCount) createdCount.textContent = stats.created || 0;
+        if (failedCount) failedCount.textContent = stats.failed || 0;
+        if (skippedCount) skippedCount.textContent = stats.skipped || 0;
+        if (noChangesCount) noChangesCount.textContent = stats.noChanges || 0;
+    }
+
+    resetModifyStats() {
+        const successCount = document.getElementById('modify-success-count');
+        const createdCount = document.getElementById('modify-created-count');
+        const failedCount = document.getElementById('modify-failed-count');
+        const skippedCount = document.getElementById('modify-skipped-count');
+        const noChangesCount = document.getElementById('modify-no-changes-count');
+
+        if (successCount) successCount.textContent = '0';
+        if (createdCount) createdCount.textContent = '0';
+        if (failedCount) failedCount.textContent = '0';
+        if (skippedCount) skippedCount.textContent = '0';
+        if (noChangesCount) noChangesCount.textContent = '0';
+    }
+
+    resetModifyProgress() {
+        const progressBar = document.getElementById('modify-progress');
+        const progressPercent = document.getElementById('modify-progress-percent');
+        const progressText = document.getElementById('modify-progress-text');
+        const progressCount = document.getElementById('modify-progress-count');
+
+        if (progressBar) {
+            progressBar.style.width = '0%';
+            progressBar.setAttribute('aria-valuenow', 0);
+        }
+        if (progressPercent) progressPercent.textContent = '0%';
+        if (progressText) progressText.textContent = 'Ready';
+        if (progressCount) progressCount.textContent = '0 of 0 users';
+    }
+
+    resetModifyState() {
+        this.setModifying(false);
+        this.resetModifyProgress();
+        this.resetModifyStats();
+        
+        // Progress screen will stay open until user manually closes it with X button
+        // No automatic hiding
+    }
+    
+    /**
+     * Update the settings save status message
+     * @param {string} message - The status message to display
+     * @param {string} type - The type of status (success, error, warning, info)
+     * @param {boolean} show - Whether to show or hide the status
+     */
+    updateSettingsSaveStatus(message, type = 'info', show = true) {
+        const statusElement = document.getElementById('settings-save-status');
+        const statusIcon = statusElement?.querySelector('.status-icon');
+        const statusMessage = statusElement?.querySelector('.status-message');
+        
+        if (statusElement && statusIcon && statusMessage) {
+            // Update the message
+            statusMessage.textContent = message;
+            
+            // Update the icon based on type
+            const icons = {
+                success: '✅',
+                error: '❌',
+                warning: '⚠️',
+                info: 'ℹ️'
+            };
+            statusIcon.textContent = icons[type] || icons.info;
+            
+            // Update the styling
+            statusElement.className = `settings-save-status ${type}`;
+            
+            // Show or hide the status
+            if (show) {
+                statusElement.classList.add('show');
+                statusElement.style.display = 'block';
+            } else {
+                statusElement.classList.remove('show');
+                statusElement.style.display = 'none';
+            }
+        }
+    }
+    
+    /**
+     * Clear the settings save status
+     */
+    clearSettingsSaveStatus() {
+        this.updateSettingsSaveStatus('', 'info', false);
+    }
+
+    // Export functionality UI methods
+    showExportStatus() {
+        const statusElement = document.getElementById('export-status');
+        const startBtn = document.getElementById('start-export-btn');
+        const cancelBtn = document.getElementById('cancel-export-btn');
+        
+        if (statusElement) statusElement.style.display = 'block';
+        if (startBtn) startBtn.style.display = 'none';
+        if (cancelBtn) cancelBtn.style.display = 'inline-block';
+    }
+
+    /**
+     * Set the export button state and text
+     * @param {boolean} isExporting - Whether export is in progress
+     */
+    setExporting(isExporting) {
+        const exportButton = document.getElementById('start-export-btn');
+        const cancelButton = document.getElementById('cancel-export-btn');
+        
+        if (exportButton) {
+            exportButton.disabled = isExporting;
+            // Update button text with icon
+            exportButton.innerHTML = isExporting ? 
+                '<i class="fas fa-spinner fa-spin"></i> Exporting...' : 
+                '<i class="fas fa-download"></i> Export Users';
+        }
+        
+        if (cancelButton) {
+            cancelButton.style.display = isExporting ? 'inline-block' : 'none';
+        }
+    }
+
+    hideExportStatus() {
+        const startBtn = document.getElementById('start-export-btn');
+        const cancelBtn = document.getElementById('cancel-export-btn');
+        
+        if (startBtn) startBtn.style.display = 'inline-block';
+        if (cancelBtn) cancelBtn.style.display = 'none';
+        
+        // Progress screen will stay open until user manually closes it with X button
+        // No automatic hiding
+    }
+
+    showExportButton() {
+        const startBtn = document.getElementById('start-export-btn');
+        const cancelBtn = document.getElementById('cancel-export-btn');
+        
+        if (startBtn) startBtn.style.display = 'inline-block';
+        if (cancelBtn) cancelBtn.style.display = 'none';
+    }
+
+    updateExportProgress(current, total, message) {
+        const progressElement = document.getElementById('export-progress');
+        const progressPercent = document.getElementById('export-progress-percent');
+        const progressText = document.getElementById('export-progress-text');
+        const progressCount = document.getElementById('export-progress-count');
+        
+        if (progressElement && total > 0) {
+            const percentage = Math.round((current / total) * 100);
+            progressElement.style.width = `${percentage}%`;
+            progressElement.setAttribute('aria-valuenow', current);
+            progressElement.setAttribute('aria-valuemax', total);
+        }
+        
+        if (progressPercent) {
+            progressPercent.textContent = total > 0 ? `${Math.round((current / total) * 100)}%` : '0%';
+        }
+        
+        if (progressText) {
+            progressText.textContent = message || 'Exporting...';
+        }
+        
+        if (progressCount) {
+            progressCount.textContent = `${current} of ${total} users`;
+        }
+    }
+
+    updateExportStats(stats) {
+        const successCount = document.getElementById('export-success-count');
+        const failedCount = document.getElementById('export-failed-count');
+        const skippedCount = document.getElementById('export-skipped-count');
+        const ignoredCount = document.getElementById('export-ignored-count');
+        
+        if (successCount) successCount.textContent = stats.exported || 0;
+        if (failedCount) failedCount.textContent = stats.failed || 0;
+        if (skippedCount) skippedCount.textContent = stats.skipped || 0;
+        if (ignoredCount) ignoredCount.textContent = stats.ignored || 0;
+    }
+
+    showSuccess(message) {
+        this.showNotification(message, 'success');
+    }
+
+    showInfo(message) {
+        this.showNotification(message, 'info');
+    }
+
+    /**
+     * Update logs operation status
+     * @param {string} operation - The operation being performed
+     * @param {boolean} success - Whether the operation was successful
+     * @param {string} message - Status message
+     */
+    updateLogsOperationStatus(operation, success, message) {
+        const status = success ? 'Completed' : 'Failed';
+        this.updateLastRunStatus('logs', operation, status, message);
+    }
+
+    /**
+     * Update file info in the UI (stub for compatibility)
+     * @param {Object} fileInfo - File info object
+     */
+    updateFileInfo(fileInfo) {
+        // Optionally implement UI update for file info, or leave as a no-op
+        // Example: update an element with file name/size
+        // console.log('updateFileInfo called', fileInfo);
     }
 }
 
