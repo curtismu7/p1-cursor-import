@@ -13,5 +13,10 @@
   "theme": "light",
   "pageSize": 50,
   "showNotifications": true,
-  "test": "value"
+  "test": "value",
+  "environment-id": "b9817c16-9910-4415-b67e-4ac687da74d9",
+  "api-client-id": "26e7f07c-11a4-402a-b064-07b55aee189e",
+  "api-secret": "enc:BbobDJLF0UHcPfDecTsVm1rO2IsYc26zgmx1I1rWZY7gdlV5onwrLZiga0UmBzkpHe+ZYRgqIhLqBLoofVM+pDgD8H+qDZebKC0X8m0Aw++fF5f5olESyhxGHKw=",
+  "population-id": "6fe3f6ea-39c5-4ad7-990b-53802bbcda49",
+  "rate-limit": "90"
 }
