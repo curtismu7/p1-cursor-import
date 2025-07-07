@@ -2360,6 +2360,35 @@ export class UIManager {
         if (failedCount) failedCount.textContent = counts.failed || 0;
         if (skippedCount) skippedCount.textContent = counts.skipped || 0;
     }
+
+    /**
+     * Reset import state - called when import is cancelled or completed
+     */
+    resetImportState() {
+        // Reset importing flag
+        this.isImporting = false;
+        
+        // Hide modal overlay
+        const overlay = document.getElementById('import-progress-modal-overlay');
+        if (overlay) overlay.style.display = 'none';
+        
+        // Reset progress display
+        this.resetImportProgress();
+        
+        // Reset import button state
+        this.setImporting(false);
+        
+        // Clear any loading states
+        this.showLoading(false);
+        
+        // Reset icon to idle
+        this.setImportProgressIcon('idle');
+        
+        // Clear progress log
+        this.clearProgressLog();
+        
+        this.logger?.info('Import state reset');
+    }
 }
 
 // No need for module.exports with ES modules
