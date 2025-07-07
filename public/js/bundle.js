@@ -1074,6 +1074,9 @@ class App {
     if (this.isImporting) return;
     this.isImporting = true;
     this.uiManager.setImporting(true);
+
+    // Create AbortController for cancellation
+    this.currentImportAbortController = new AbortController();
     try {
       // Get the parsed users from the file handler
       const users = this.fileHandler.getParsedUsers();
@@ -1148,9 +1151,13 @@ class App {
         throw new Error('No valid users found in CSV file. Please check your data and try again.');
       }
 
-      // Start the import process with improved options
+      // Start the import process with improved options and AbortController
       const pingOneImportOptions = {
         onProgress: (current, total, user, counts) => {
+          // Check if import was cancelled
+          if (this.currentImportAbortController.signal.aborted) {
+            throw new Error('Import cancelled by user');
+          }
           this.uiManager.updateImportProgress(current, total, "Importing user ".concat(current, "/").concat(total, "..."), counts);
 
           // Log progress for debugging
@@ -1168,7 +1175,9 @@ class App {
         retryAttempts: 3,
         delayBetweenRetries: 1000,
         continueOnError: true,
-        importOptions // Pass population selection options
+        importOptions,
+        // Pass population selection options
+        abortController: this.currentImportAbortController // Pass AbortController for cancellation
       };
       this.logger.fileLogger.info('Starting PingOne import', {
         totalUsers: validUsers.length,
@@ -1219,6 +1228,17 @@ class App {
         }
       }
     } catch (error) {
+      // Check if this was a cancellation
+      if (error.message === 'Import cancelled by user' || error.name === 'AbortError') {
+        this.logger.fileLogger.info('Import cancelled by user');
+        this.uiManager.updateImportProgress(0, 0, 'Import cancelled', {
+          success: 0,
+          failed: 0,
+          skipped: 0
+        });
+        this.uiManager.showNotification('Import cancelled by user', 'warning');
+        return;
+      }
       this.logger.fileLogger.error('Import failed', {
         error: error.message,
         stack: error.stack
@@ -5862,7 +5882,8 @@ class PingOneClient {
       onProgress,
       retryAttempts = 3,
       delayBetweenRetries = 1000,
-      importOptions = {}
+      importOptions = {},
+      abortController
     } = options;
     const results = [];
     const totalUsers = users.length;
@@ -5951,6 +5972,12 @@ class PingOneClient {
     const batchSize = 10; // Increased from 5 to 10 for better throughput
 
     for (let i = 0; i < totalUsers; i += batchSize) {
+      // Check for cancellation before processing each batch
+      if (abortController && abortController.signal.aborted) {
+        this.logger.info('Import cancelled by user during batch processing');
+        throw new Error('Import cancelled by user');
+      }
+
       // Process current batch
       const batch = users.slice(i, i + batchSize);
 
@@ -5958,6 +5985,12 @@ class PingOneClient {
       for (let batchIndex = 0; batchIndex < batch.length; batchIndex++) {
         const currentIndex = i + batchIndex;
         const currentUser = users[currentIndex];
+
+        // Check for cancellation before processing each user
+        if (abortController && abortController.signal.aborted) {
+          this.logger.info('Import cancelled by user during user processing');
+          throw new Error('Import cancelled by user');
+        }
         try {
           // Call progress callback before processing each user
           if (onProgress) {
@@ -6024,6 +6057,11 @@ class PingOneClient {
           let result;
           let lastError = null;
           for (let attempt = 1; attempt <= retryAttempts; attempt++) {
+            // Check for cancellation before each retry attempt
+            if (abortController && abortController.signal.aborted) {
+              this.logger.info('Import cancelled by user during retry attempt');
+              throw new Error('Import cancelled by user');
+            }
             try {
               result = await this.request('POST', endpoint, userData);
 
@@ -6092,6 +6130,11 @@ class PingOneClient {
             throw lastError;
           }
         } catch (error) {
+          // Check if this was a cancellation
+          if (error.message === 'Import cancelled by user' || error.name === 'AbortError') {
+            this.logger.info('Import cancelled by user during user processing');
+            throw error; // Re-throw to be caught by the main try-catch
+          }
           this.logger.error('Error importing user:', error);
           failedCount++;
           if (options.continueOnError) {
@@ -6130,12 +6173,22 @@ class PingOneClient {
 
         // Add small delay between individual user operations to prevent rate limiting
         if (batchIndex < batch.length - 1) {
+          // Check for cancellation before delay
+          if (abortController && abortController.signal.aborted) {
+            this.logger.info('Import cancelled by user during delay');
+            throw new Error('Import cancelled by user');
+          }
           await new Promise(resolve => setTimeout(resolve, 100)); // 100ms delay between users
         }
       }
 
       // Add delay between batches to avoid rate limiting
       if (i + batchSize < totalUsers) {
+        // Check for cancellation before batch delay
+        if (abortController && abortController.signal.aborted) {
+          this.logger.info('Import cancelled by user during batch delay');
+          throw new Error('Import cancelled by user');
+        }
         await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay between batches
       }
 
