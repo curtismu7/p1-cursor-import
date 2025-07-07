@@ -2,6 +2,10 @@
 
 A comprehensive web application for managing users in PingOne Identity Platform. This tool provides import, export, modify, and delete functionality for PingOne users with a modern, responsive interface.
 
+## 📚 Quick Setup
+
+**New to this application?** Start with our comprehensive [Setup Guide](SETUP.md) for detailed installation and configuration instructions.
+
 ## 🚀 Features
 
 ### Core Functionality

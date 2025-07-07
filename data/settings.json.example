@@ -1,0 +1,13 @@
+{
+  "environmentId": "your-environment-id-here",
+  "apiClientId": "your-client-id-here",
+  "apiSecret": "your-client-secret-here",
+  "region": "NorthAmerica",
+  "populationId": "",
+  "rateLimit": 50,
+  "autoSave": true,
+  "theme": "light",
+  "pageSize": 50,
+  "showNotifications": true,
+  "lastUsedDirectory": ""
+} 
