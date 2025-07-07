@@ -9815,13 +9815,13 @@ class UIManager {
     let iconHtml = '';
     switch (status) {
       case 'importing':
-        iconHtml = '<i class="fas fa-spinner fa-spin" title="Importing..."></i>';
+        iconHtml = '<span class="modern-spinner" title="Importing..."><span class="modern-spinner-circle"></span></span>';
         break;
       case 'complete':
-        iconHtml = '<i class="fas fa-check-circle text-success" title="Import Complete"></i>';
+        iconHtml = '<i class="fas fa-check-circle" title="Import Complete"></i>';
         break;
       case 'error':
-        iconHtml = '<i class="fas fa-exclamation-circle text-danger" title="Import Failed"></i>';
+        iconHtml = '<i class="fas fa-exclamation-circle" title="Import Failed"></i>';
         break;
       default:
         iconHtml = '<i class="fas fa-arrow-rotate-right" title="Idle"></i>';

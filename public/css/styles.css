@@ -2762,3 +2762,32 @@ label {
         justify-content: center;
     }
 }
+
+/* Modern circular spinner for import progress */
+.modern-spinner {
+  display: inline-block;
+  width: 1.2em;
+  height: 1.2em;
+  vertical-align: middle;
+}
+.modern-spinner-circle {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 2.5px solid #1976d2;
+  border-radius: 50%;
+  border-top-color: transparent;
+  animation: modern-spin 0.7s linear infinite;
+}
+@keyframes modern-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Success and error icons for progress header */
+.import-progress-icon .fa-check-circle {
+  color: #43a047;
+}
+.import-progress-icon .fa-exclamation-circle {
+  color: #e53935;
+}
