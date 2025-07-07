@@ -2770,6 +2770,72 @@ class App {
             }
         });
     }
+
+    async handleDeleteCsvFileSelect(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        try {
+            this.logger.fileLogger.info('Processing delete CSV file', { fileName: file.name, fileSize: file.size });
+            
+            // Show loading state
+            this.uiManager.showLoading(true, 'Processing delete file...');
+            
+            // Parse the CSV file
+            const users = await this.parseCsvFile(file, 'delete-csv-preview-container');
+            
+            // Store the users for deletion
+            this.deleteCsvUsers = users;
+            
+            // Show file info
+            this.showDeleteCsvFileInfo(file);
+            
+            // Update button state
+            this.updateDeleteCsvButtonState();
+            
+            // Show success message
+            this.uiManager.showNotification(`✅ Successfully processed ${users.length} users for deletion`, 'success');
+            
+        } catch (error) {
+            this.logger.fileLogger.error('Error processing delete CSV file', { error: error.message });
+            this.uiManager.showNotification(`Error processing file: ${error.message}`, 'error');
+        } finally {
+            this.uiManager.showLoading(false);
+        }
+    }
+
+    async handleModifyCsvFileSelect(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        try {
+            this.logger.fileLogger.info('Processing modify CSV file', { fileName: file.name, fileSize: file.size });
+            
+            // Show loading state
+            this.uiManager.showLoading(true, 'Processing modify file...');
+            
+            // Parse the CSV file
+            const users = await this.parseCsvFile(file, 'modify-csv-preview-container');
+            
+            // Store the users for modification
+            this.modifyCsvUsers = users;
+            
+            // Show file info
+            this.showModifyCsvFileInfo(file);
+            
+            // Update button state
+            this.updateModifyCsvButtonState();
+            
+            // Show success message
+            this.uiManager.showNotification(`✅ Successfully processed ${users.length} users for modification`, 'success');
+            
+        } catch (error) {
+            this.logger.fileLogger.error('Error processing modify CSV file', { error: error.message });
+            this.uiManager.showNotification(`Error processing file: ${error.message}`, 'error');
+        } finally {
+            this.uiManager.showLoading(false);
+        }
+    }
 }
 
 // Initialize the application when the DOM is fully loaded
