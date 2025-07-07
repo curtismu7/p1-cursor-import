@@ -9764,6 +9764,68 @@ class UIManager {
     }
     iconContainer.innerHTML = iconHtml;
   }
+
+  /**
+   * Update import progress
+   * @param {number} current - Current progress
+   * @param {number} total - Total items
+   * @param {string} status - Status message
+   * @param {Object} results - Results object
+   * @param {string} populationName - Population name
+   */
+  updateImportProgress(current, total, status, results) {
+    let populationName = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : '';
+    // Update progress bar
+    const progressBar = document.getElementById('import-progress');
+    const progressPercent = document.getElementById('import-progress-percent');
+    const progressText = document.getElementById('import-progress-text');
+    const progressCount = document.getElementById('import-progress-count');
+    const populationNameElement = document.getElementById('import-population-name');
+    if (progressBar) {
+      const percentage = total > 0 ? Math.round(current / total * 100) : 0;
+      progressBar.style.width = `${percentage}%`;
+      progressBar.setAttribute('aria-valuenow', current);
+    }
+    if (progressPercent) {
+      const percentage = total > 0 ? Math.round(current / total * 100) : 0;
+      progressPercent.textContent = `${percentage}%`;
+    }
+    if (progressText) {
+      progressText.textContent = status;
+    }
+    if (progressCount) {
+      progressCount.textContent = `${current} of ${total} users`;
+    }
+
+    // Update population name
+    if (populationNameElement) {
+      populationNameElement.textContent = populationName || 'Not selected';
+    }
+
+    // Update stats
+    if (results) {
+      const successCount = document.getElementById('import-success-count');
+      const failedCount = document.getElementById('import-failed-count');
+      const skippedCount = document.getElementById('import-skipped-count');
+      if (successCount) successCount.textContent = results.success || 0;
+      if (failedCount) failedCount.textContent = results.failed || 0;
+      if (skippedCount) skippedCount.textContent = results.skipped || 0;
+    }
+
+    // Update icon based on status
+    if (status.includes('completed') || status.includes('finished')) {
+      this.setImportProgressIcon('complete');
+    } else if (status.includes('failed') || status.includes('error')) {
+      this.setImportProgressIcon('error');
+    } else if (status.includes('cancelled') || status.includes('cancelled')) {
+      this.setImportProgressIcon('error');
+    } else {
+      this.setImportProgressIcon('importing');
+    }
+
+    // Add progress log entry
+    this.addProgressLogEntry(status, 'info', results);
+  }
 }
 
 // No need for module.exports with ES modules
