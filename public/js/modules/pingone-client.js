@@ -402,7 +402,12 @@ export class PingOneClient {
                 try {
                     // Call progress callback before processing each user
                     if (onProgress) {
-                        onProgress(currentIndex, totalUsers, currentUser);
+                        onProgress(currentIndex, totalUsers, currentUser, {
+                            success: successCount,
+                            failed: failedCount,
+                            skipped: skippedCount,
+                            retries: retryCount
+                        });
                     }
                     
                     // Validate user data before creating
@@ -1207,5 +1212,57 @@ export class PingOneClient {
         }
         
         return results;
+    }
+
+    /**
+     * Fetch all users in a specific population (paginated)
+     * @param {string} populationId - The population ID
+     * @returns {Promise<Array>} Array of user objects
+     */
+    async getAllUsersInPopulation(populationId) {
+        const settings = this.getSettings();
+        const users = [];
+        let page = 1;
+        const pageSize = 100;
+        let total = 0;
+        let fetched = 0;
+        do {
+            const resp = await this.request('GET', `/environments/${settings.environmentId}/populations/${populationId}/users?limit=${pageSize}&page=${page}`);
+            if (resp._embedded && resp._embedded.users) {
+                users.push(...resp._embedded.users);
+                fetched = resp._embedded.users.length;
+                total = resp._embedded.users.length;
+            } else {
+                total = 0;
+            }
+            page++;
+        } while (fetched === pageSize && total > 0);
+        
+        return users;
+    }
+
+    /**
+     * Fetch all users in the environment (paginated)
+     * @returns {Promise<Array>} Array of user objects
+     */
+    async getAllUsersInEnvironment() {
+        const settings = this.getSettings();
+        const users = [];
+        let page = 1;
+        const pageSize = 100;
+        let total = 0;
+        let fetched = 0;
+        do {
+            const resp = await this.request('GET', `/environments/${settings.environmentId}/users?limit=${pageSize}&page=${page}`);
+            if (resp._embedded && resp._embedded.users) {
+                users.push(...resp._embedded.users);
+                fetched = resp._embedded.users.length;
+                total = resp.page && resp.page.totalElements ? resp.page.totalElements : users.length;
+            } else {
+                break;
+            }
+            page++;
+        } while (users.length < total && fetched > 0);
+        return users;
     }
 }

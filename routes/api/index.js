@@ -53,6 +53,17 @@ router.put('/settings', async (req, res, next) => {
     }
 });
 
+// POST endpoint for settings (same as PUT for compatibility)
+router.post('/settings', async (req, res, next) => {
+    try {
+        await ensureSettingsDir();
+        await fs.writeFile(SETTINGS_PATH, JSON.stringify(req.body, null, 2));
+        res.json({ success: true });
+    } catch (error) {
+        next(error);
+    }
+});
+
 // Note: Health endpoint is handled by the main server at /api/health
 // This provides comprehensive server status including PingOne connection state
 
@@ -601,8 +612,15 @@ router.post('/modify', upload.single('file'), async (req, res, next) => {
 // Dedicated endpoint to return populations as an array
 router.get('/pingone/populations', async (req, res, next) => {
     try {
+        // Read environmentId from settings.json
+        const settingsData = await fs.readFile(SETTINGS_PATH, 'utf8').catch(() => '{}');
+        const settings = JSON.parse(settingsData);
+        const environmentId = settings.environmentId;
+        if (!environmentId) {
+            return res.status(400).json({ error: 'Missing environment ID in settings' });
+        }
         // Fetch from the proxy (which handles auth)
-        const response = await fetch('http://127.0.0.1:4000/api/pingone/environments/' + process.env.PINGONE_ENVIRONMENT_ID + '/populations', {
+        const response = await fetch('http://127.0.0.1:4000/api/pingone/environments/' + environmentId + '/populations', {
             method: 'GET',
             headers: { 'Accept': 'application/json' }
         });

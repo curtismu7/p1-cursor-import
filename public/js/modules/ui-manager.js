@@ -44,8 +44,294 @@ export class UIManager {
         // Load persisted status from localStorage
         this.loadPersistedStatus();
         
+        // Rate limit warning tracking
+        this.lastRateLimitWarning = null;
+        this.rateLimitWarningCooldown = 30000; // 30 seconds cooldown
+        
+        // Progress log tracking
+        this.progressLog = [];
+        this.maxProgressLogEntries = 100; // Keep last 100 entries
+        
+        // Import state tracking
+        this.isImporting = false;
+        
+        // Log pagination tracking
+        this.logsPagination = {
+            currentPage: 1,
+            pageSize: 25,
+            totalRecords: 0,
+            totalPages: 0,
+            allLogs: [], // Store all logs for pagination
+            isLoading: false
+        };
+        
         // Set up progress close button handlers
         this.setupProgressCloseButtons();
+        
+        // Set up log navigation handlers
+        this.setupLogNavigation();
+    }
+
+    /**
+     * Set up event handlers for log navigation buttons
+     */
+    setupLogNavigation() {
+        const logNavButtons = [
+            { id: 'scroll-logs-top', action: 'scrollToTop' },
+            { id: 'scroll-logs-up', action: 'scrollUp' },
+            { id: 'scroll-logs-down', action: 'scrollDown' },
+            { id: 'scroll-logs-bottom', action: 'scrollToBottom' }
+        ];
+
+        logNavButtons.forEach(({ id, action }) => {
+            const button = document.getElementById(id);
+            if (button) {
+                button.addEventListener('click', () => {
+                    this[action]();
+                    this.logger?.info(`Log navigation: ${action}`);
+                });
+            }
+        });
+    }
+
+    /**
+     * Scroll logs to the top
+     */
+    scrollToTop() {
+        const logsContainer = document.getElementById('log-entries');
+        if (logsContainer) {
+            logsContainer.scrollTop = 0;
+            this.showNotification('Scrolled to top of logs', 'info');
+        }
+    }
+
+    /**
+     * Scroll logs up by one page
+     */
+    scrollUp() {
+        const logsContainer = document.getElementById('log-entries');
+        if (logsContainer) {
+            const scrollAmount = logsContainer.clientHeight * 0.8;
+            logsContainer.scrollTop = Math.max(0, logsContainer.scrollTop - scrollAmount);
+            this.showNotification('Scrolled up in logs', 'info');
+        }
+    }
+
+    /**
+     * Scroll logs down by one page
+     */
+    scrollDown() {
+        const logsContainer = document.getElementById('log-entries');
+        if (logsContainer) {
+            const scrollAmount = logsContainer.clientHeight * 0.8;
+            logsContainer.scrollTop = Math.min(
+                logsContainer.scrollHeight - logsContainer.clientHeight,
+                logsContainer.scrollTop + scrollAmount
+            );
+            this.showNotification('Scrolled down in logs', 'info');
+        }
+    }
+
+    /**
+     * Scroll logs to the bottom
+     */
+    scrollToBottom() {
+        const logsContainer = document.getElementById('log-entries');
+        if (logsContainer) {
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+            this.showNotification('Scrolled to bottom of logs', 'info');
+        }
+    }
+
+    /**
+     * Update pagination controls and display
+     */
+    updatePaginationControls() {
+        const counter = document.getElementById('logs-counter');
+        const pageInput = document.getElementById('logs-page-input');
+        const totalPages = document.getElementById('logs-total-pages');
+        const firstBtn = document.getElementById('logs-first-page');
+        const prevBtn = document.getElementById('logs-prev-page');
+        const nextBtn = document.getElementById('logs-next-page');
+        const lastBtn = document.getElementById('logs-last-page');
+        const pageSizeSelect = document.getElementById('logs-page-size');
+
+        if (!counter || !pageInput || !totalPages) return;
+
+        const { currentPage, pageSize, totalRecords, totalPages: total } = this.logsPagination;
+        
+        // Update counter
+        const startRecord = (currentPage - 1) * pageSize + 1;
+        const endRecord = Math.min(currentPage * pageSize, totalRecords);
+        counter.textContent = `${startRecord}-${endRecord} of ${totalRecords} records shown`;
+
+        // Update page input and total pages
+        pageInput.value = currentPage;
+        totalPages.textContent = total;
+
+        // Update navigation buttons
+        firstBtn.disabled = currentPage <= 1;
+        prevBtn.disabled = currentPage <= 1;
+        nextBtn.disabled = currentPage >= total;
+        lastBtn.disabled = currentPage >= total;
+
+        // Update page size selector
+        if (pageSizeSelect) {
+            pageSizeSelect.value = pageSize;
+        }
+    }
+
+    /**
+     * Display logs for current page
+     */
+    displayCurrentPageLogs() {
+        const { currentPage, pageSize, allLogs } = this.logsPagination;
+        const startIndex = (currentPage - 1) * pageSize;
+        const endIndex = startIndex + pageSize;
+        const pageLogs = allLogs.slice(startIndex, endIndex);
+
+        this.displayLogs(pageLogs);
+        this.updatePaginationControls();
+    }
+
+    /**
+     * Display logs in the log entries container
+     */
+    displayLogs(logs) {
+        const logEntries = document.getElementById('log-entries');
+        if (!logEntries) return;
+
+        // Clear existing content
+        logEntries.innerHTML = '';
+
+        if (!logs || logs.length === 0) {
+            const noLogsElement = document.createElement('div');
+            noLogsElement.className = 'log-entry info';
+            noLogsElement.textContent = 'No logs available';
+            logEntries.appendChild(noLogsElement);
+            return;
+        }
+
+        logs.forEach((log, index) => {
+            try {
+                if (log && typeof log === 'object') {
+                    const logElement = document.createElement('div');
+                    const logLevel = (log.level || 'info').toLowerCase();
+                    logElement.className = `log-entry log-${logLevel}`;
+                    logElement.style.cursor = 'pointer';
+                    
+                    const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+                    const level = log.level ? log.level.toUpperCase() : 'INFO';
+                    const message = log.message || 'No message';
+                    
+                    // Create the main log content with expand icon
+                    logElement.innerHTML = `
+                        <div class="log-content">
+                            <span class="log-timestamp">[${timestamp}]</span>
+                            <span class="log-level">${level}</span>
+                            <span class="log-message">${message}</span>
+                            <span class="log-expand-icon">
+                                <i class="fas fa-chevron-right"></i>
+                            </span>
+                        </div>
+                    `;
+
+                    // Add expandable details section
+                    const detailsElement = document.createElement('div');
+                    detailsElement.className = 'log-details';
+                    detailsElement.style.display = 'none';
+                    detailsElement.innerHTML = `
+                        <div class="log-details-content">
+                            <pre class="log-detail-json">${JSON.stringify(log, null, 2)}</pre>
+                        </div>
+                    `;
+                    logElement.appendChild(detailsElement);
+
+                    // Add click handler for expand/collapse
+                    const logContent = logElement.querySelector('.log-content');
+                    const expandIcon = logElement.querySelector('.log-expand-icon i');
+                    
+                    logContent.addEventListener('click', function (e) {
+                        // Only toggle if not clicking a link or button inside
+                        if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
+                        
+                        const expanded = logElement.classList.toggle('expanded');
+                        if (detailsElement) {
+                            detailsElement.style.display = expanded ? 'block' : 'none';
+                        }
+                        
+                        // Update expand icon
+                        if (expandIcon) {
+                            expandIcon.className = expanded ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
+                        }
+                    });
+
+                    logEntries.appendChild(logElement);
+                }
+            } catch (logError) {
+                console.error(`Error processing log entry at index ${index}:`, logError);
+            }
+        });
+    }
+
+    /**
+     * Setup pagination event handlers
+     */
+    setupPaginationHandlers() {
+        const firstBtn = document.getElementById('logs-first-page');
+        const prevBtn = document.getElementById('logs-prev-page');
+        const nextBtn = document.getElementById('logs-next-page');
+        const lastBtn = document.getElementById('logs-last-page');
+        const pageInput = document.getElementById('logs-page-input');
+        const pageSizeSelect = document.getElementById('logs-page-size');
+
+        if (firstBtn) firstBtn.addEventListener('click', () => this.goToPage(1));
+        if (prevBtn) prevBtn.addEventListener('click', () => this.goToPage(this.logsPagination.currentPage - 1));
+        if (nextBtn) nextBtn.addEventListener('click', () => this.goToPage(this.logsPagination.currentPage + 1));
+        if (lastBtn) lastBtn.addEventListener('click', () => this.goToPage(this.logsPagination.totalPages));
+
+        if (pageInput) {
+            pageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    const page = parseInt(pageInput.value);
+                    if (page && page >= 1 && page <= this.logsPagination.totalPages) {
+                        this.goToPage(page);
+                    }
+                }
+            });
+        }
+
+        if (pageSizeSelect) {
+            pageSizeSelect.addEventListener('change', (e) => {
+                this.logsPagination.pageSize = parseInt(e.target.value);
+                this.logsPagination.currentPage = 1;
+                this.calculatePagination();
+                this.displayCurrentPageLogs();
+            });
+        }
+    }
+
+    /**
+     * Navigate to a specific page
+     */
+    goToPage(page) {
+        if (page < 1 || page > this.logsPagination.totalPages) return;
+        
+        this.logsPagination.currentPage = page;
+        this.displayCurrentPageLogs();
+    }
+
+    /**
+     * Calculate pagination values
+     */
+    calculatePagination() {
+        const { pageSize, totalRecords } = this.logsPagination;
+        this.logsPagination.totalPages = Math.ceil(totalRecords / pageSize);
+        
+        // Ensure current page is within bounds
+        if (this.logsPagination.currentPage > this.logsPagination.totalPages) {
+            this.logsPagination.currentPage = this.logsPagination.totalPages || 1;
+        }
     }
 
     /**
@@ -755,10 +1041,16 @@ export class UIManager {
         logEntries.innerHTML = '';
         logEntries.appendChild(loadingElement);
         
+        // Update counter to show loading
+        const counter = document.getElementById('logs-counter');
+        if (counter) {
+            counter.textContent = 'Loading...';
+        }
+        
         try {
             // Fetch logs from the UI logs endpoint
             safeLog('Fetching logs from /api/logs/ui...', 'debug');
-            const response = await fetch('/api/logs/ui?limit=200');
+            const response = await fetch('/api/logs/ui?limit=1000'); // Fetch more logs for pagination
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -766,7 +1058,7 @@ export class UIManager {
             const responseData = await response.json();
             safeLog('Received logs from server', 'debug', { count: responseData.logs?.length });
             
-            // Clear any existing logs in the UI
+            // Clear loading indicator
             logEntries.innerHTML = '';
             
             if (responseData.success === true && Array.isArray(responseData.logs)) {
@@ -775,6 +1067,12 @@ export class UIManager {
                     noLogsElement.className = 'log-entry info';
                     noLogsElement.textContent = 'No logs available';
                     logEntries.appendChild(noLogsElement);
+                    
+                    // Update pagination
+                    this.logsPagination.allLogs = [];
+                    this.logsPagination.totalRecords = 0;
+                    this.calculatePagination();
+                    this.updatePaginationControls();
                     return;
                 }
                 
@@ -782,77 +1080,29 @@ export class UIManager {
                 // Reverse the array since server returns newest first, but we want oldest first
                 const logsToProcess = [...responseData.logs].reverse();
 
-                logsToProcess.forEach((log, index) => {
-                    try {
-                        if (log && typeof log === 'object') {
-                            const logElement = document.createElement('div');
-                            const logLevel = (log.level || 'info').toLowerCase();
-                            logElement.className = `log-entry log-${logLevel}`;
-                            logElement.style.cursor = 'pointer';
-                            
-                            const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
-                            const level = log.level ? log.level.toUpperCase() : 'INFO';
-                            const message = log.message || 'No message';
-                            
-                            // Create the main log content with expand icon
-                            logElement.innerHTML = `
-                                <div class="log-content">
-                                    <span class="log-timestamp">[${timestamp}]</span>
-                                    <span class="log-level">${level}</span>
-                                    <span class="log-message">${message}</span>
-                                    <span class="log-expand-icon">
-                                        <i class="fas fa-chevron-right"></i>
-                                    </span>
-                                </div>
-                            `;
-
-                            // Add expandable details section
-                            const detailsElement = document.createElement('div');
-                            detailsElement.className = 'log-details';
-                            detailsElement.style.display = 'none';
-                            detailsElement.innerHTML = `
-                                <div class="log-details-content">
-                                    <pre class="log-detail-json">${JSON.stringify(log, null, 2)}</pre>
-                                </div>
-                            `;
-                            logElement.appendChild(detailsElement);
-
-                            // Add click handler for expand/collapse
-                            const logContent = logElement.querySelector('.log-content');
-                            const expandIcon = logElement.querySelector('.log-expand-icon i');
-                            
-                            logContent.addEventListener('click', function (e) {
-                                // Only toggle if not clicking a link or button inside
-                                if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
-                                
-                                const expanded = logElement.classList.toggle('expanded');
-                                if (detailsElement) {
-                                    detailsElement.style.display = expanded ? 'block' : 'none';
-                                }
-                                
-                                // Update expand icon
-                                if (expandIcon) {
-                                    expandIcon.className = expanded ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
-                                }
-                            });
-
-                            logEntries.appendChild(logElement);
-                        } else {
-                            safeLog(`Skipping invalid log entry at index ${index}`, 'warn', log);
-                        }
-                    } catch (logError) {
-                        safeLog(`Error processing log entry at index ${index}: ${logError.message}`, 'error', { error: logError });
-                    }
-                });
+                // Store all logs for pagination
+                this.logsPagination.allLogs = logsToProcess;
+                this.logsPagination.totalRecords = logsToProcess.length;
+                this.calculatePagination();
                 
-                // Scroll to bottom after adding logs
-                this.scrollLogsToBottom();
+                // Display current page logs
+                this.displayCurrentPageLogs();
+                
+                // Setup pagination handlers if not already done
+                this.setupPaginationHandlers();
+                
             } else {
                 safeLog('No valid log entries found in response', 'warn');
                 const noLogsElement = document.createElement('div');
                 noLogsElement.className = 'log-entry info';
                 noLogsElement.textContent = 'No logs available';
                 logEntries.appendChild(noLogsElement);
+                
+                // Update pagination
+                this.logsPagination.allLogs = [];
+                this.logsPagination.totalRecords = 0;
+                this.calculatePagination();
+                this.updatePaginationControls();
             }
         } catch (error) {
             safeLog(`Error fetching logs: ${error.message}`, 'error', { 
@@ -863,103 +1113,19 @@ export class UIManager {
                 }
             });
             
-            // Fallback: show in-memory logs from logger
-            logEntries.innerHTML = '';
-            let fallbackLogs = [];
-            if (this.logger && typeof this.logger.getLogs === 'function') {
-                fallbackLogs = this.logger.getLogs();
-            }
-            if (fallbackLogs.length > 0) {
-                fallbackLogs.slice(-200).reverse().forEach((log, index) => {
-                    const logElement = document.createElement('div');
-                    const logLevel = (log.level || 'info').toLowerCase();
-                    logElement.className = `log-entry log-${logLevel}`;
-                    logElement.style.cursor = 'pointer';
-                    const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
-                    const level = log.level ? log.level.toUpperCase() : 'INFO';
-                    const message = log.message || 'No message';
-                    
-                    // Create the main log content with expand icon
-                    logElement.innerHTML = `
-                        <div class="log-content">
-                            <span class="log-timestamp">[${timestamp}]</span>
-                            <span class="log-level">${level}</span>
-                            <span class="log-message">${message}</span>
-                            <span class="log-expand-icon">
-                                <i class="fas fa-chevron-right"></i>
-                            </span>
-                        </div>
-                    `;
-                    
-                    // Add expandable details section
-                    const detailsElement = document.createElement('div');
-                    detailsElement.className = 'log-details';
-                    detailsElement.style.display = 'none';
-                    detailsElement.innerHTML = `
-                        <div class="log-details-content">
-                            <pre class="log-detail-json">${JSON.stringify(log, null, 2)}</pre>
-                        </div>
-                    `;
-                    logElement.appendChild(detailsElement);
-                    
-                    // Add click handler for expand/collapse
-                    const logContent = logElement.querySelector('.log-content');
-                    const expandIcon = logElement.querySelector('.log-expand-icon i');
-                    
-                    logContent.addEventListener('click', function (e) {
-                        if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
-                        
-                        const expanded = logElement.classList.toggle('expanded');
-                        if (detailsElement) {
-                            detailsElement.style.display = expanded ? 'block' : 'none';
-                        }
-                        
-                        // Update expand icon
-                        if (expandIcon) {
-                            expandIcon.className = expanded ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
-                        }
-                    });
-                    
-                    logEntries.appendChild(logElement);
-                });
-                this.scrollLogsToBottom();
-            } else {
-                const errorElement = document.createElement('div');
-                errorElement.className = 'log-entry error';
-                errorElement.textContent = `Error loading logs: ${error.message} (No logs available)`;
-                logEntries.appendChild(errorElement);
-            }
-        } finally {
-            // Remove loading indicator
-            const loadingElement = document.getElementById('logs-loading');
-            if (loadingElement && loadingElement.parentNode === logEntries) {
-                logEntries.removeChild(loadingElement);
-            }
+            const errorElement = document.createElement('div');
+            errorElement.className = 'log-entry error';
+            errorElement.textContent = `Error loading logs: ${error.message}`;
+            logEntries.appendChild(errorElement);
+            
+            // Update pagination
+            this.logsPagination.allLogs = [];
+            this.logsPagination.totalRecords = 0;
+            this.calculatePagination();
+            this.updatePaginationControls();
         }
     }
 
-    /**
-     * Show the import status section
-     * @param {number} totalUsers - Total number of users to import
-     */
-    /**
-     * Show or hide the import status section
-     * @param {boolean} isImporting - Whether import is in progress
-     */
-    setImporting(isImporting) {
-        const importButton = document.getElementById('start-import');
-        const cancelButton = document.getElementById('cancel-import');
-        
-        if (importButton) {
-            importButton.disabled = isImporting;
-            importButton.textContent = isImporting ? 'Importing...' : 'Start Import';
-        }
-        
-        if (cancelButton) {
-            cancelButton.style.display = isImporting ? 'inline-block' : 'none';
-        }
-    }
-    
     /**
      * Show the import status section
      * @param {number} totalUsers - Total number of users to import
@@ -970,6 +1136,9 @@ export class UIManager {
             importStatus.style.display = 'block';
         }
         
+        // Set importing flag
+        this.isImporting = true;
+        
         // Update last run status
         this.updateLastRunStatus('import', 'User Import', 'In Progress', `Importing ${totalUsers} users`, { total: totalUsers, success: 0, failed: 0, skipped: 0 });
         
@@ -979,6 +1148,12 @@ export class UIManager {
             failed: 0,
             skipped: 0
         });
+        
+        // Add initial progress log entry
+        this.addProgressLogEntry(`Starting import of ${totalUsers} users`, 'info', { total: totalUsers });
+        
+        // Set up progress log handlers
+        this.setupProgressLogHandlers();
     }
 
     /**
@@ -1016,6 +1191,20 @@ export class UIManager {
             if (skippedElement) skippedElement.textContent = results.skipped || 0;
         }
         
+        // Add progress log entry
+        let logType = 'info';
+        if (status.includes('completed') || status.includes('success')) {
+            logType = 'success';
+        } else if (status.includes('failed') || status.includes('error')) {
+            logType = 'error';
+        } else if (status.includes('skipped')) {
+            logType = 'warning';
+        } else if (status.includes('Importing')) {
+            logType = 'progress';
+        }
+        
+        this.addProgressLogEntry(status, logType, results);
+        
         // Update persistent status
         const operationStatus = current >= total ? 'Completed' : 'In Progress';
         this.updateLastRunStatus('import', 'User Import', operationStatus, status, { 
@@ -1030,6 +1219,9 @@ export class UIManager {
      * Reset the import state
      */
     resetImportState() {
+        // Set importing flag to false
+        this.isImporting = false;
+        
         // Clear the "In Progress" status to prevent progress screen from showing on future page loads
         const currentStatus = this.lastRunStatus['import'];
         if (currentStatus && currentStatus.status === 'In Progress') {
@@ -1065,6 +1257,12 @@ export class UIManager {
         if (skippedCount) skippedCount.textContent = '0';
         // Hide population warning
         this.hidePopulationWarning && this.hidePopulationWarning();
+        
+        // Only clear progress log if we're not currently importing
+        // This prevents clearing the log during active imports
+        if (!this.isImporting) {
+            this.clearProgressLog();
+        }
     }
 
     /**
@@ -1074,10 +1272,19 @@ export class UIManager {
      */
     setImportButtonState(enabled, text) {
         const importButton = document.getElementById('start-import-btn');
+        const importButtonBottom = document.getElementById('start-import-btn-bottom');
+        
         if (importButton) {
             importButton.disabled = !enabled;
             if (text) {
                 importButton.textContent = text;
+            }
+        }
+        
+        if (importButtonBottom) {
+            importButtonBottom.disabled = !enabled;
+            if (text) {
+                importButtonBottom.textContent = text;
             }
         }
     }
@@ -1174,6 +1381,16 @@ export class UIManager {
      */
     showRateLimitWarning(message, options = {}) {
         const { isRetrying = false, retryAttempt, maxRetries, retryDelay } = options;
+        
+        // Check if we recently showed a rate limit warning
+        const now = Date.now();
+        if (this.lastRateLimitWarning && (now - this.lastRateLimitWarning) < this.rateLimitWarningCooldown) {
+            // Skip showing the warning if it was shown recently
+            return;
+        }
+        
+        // Update the last warning time
+        this.lastRateLimitWarning = now;
         
         let enhancedMessage = message;
         
@@ -1346,6 +1563,10 @@ export class UIManager {
                 }
             });
         }
+        
+        // Setup pagination handlers
+        this.setupPaginationHandlers();
+        
         // Make sure the current view is visible
         const currentView = this.getLastView();
         this.showView(currentView);
@@ -1892,6 +2113,148 @@ export class UIManager {
         // Optionally implement UI update for file info, or leave as a no-op
         // Example: update an element with file name/size
         // console.log('updateFileInfo called', fileInfo);
+    }
+
+    /**
+     * Add an entry to the progress log
+     * @param {string} message - The progress message
+     * @param {string} type - The type of entry (success, error, warning, info)
+     * @param {Object} stats - Optional stats object
+     */
+    addProgressLogEntry(message, type = 'info', stats = null) {
+        const timestamp = new Date().toLocaleTimeString();
+        const entry = {
+            timestamp,
+            message,
+            type,
+            stats
+        };
+        
+        // Add to progress log array
+        this.progressLog.push(entry);
+        
+        // Keep only the last maxProgressLogEntries
+        if (this.progressLog.length > this.maxProgressLogEntries) {
+            this.progressLog = this.progressLog.slice(-this.maxProgressLogEntries);
+        }
+        
+        // Update the display
+        this.updateProgressLogDisplay();
+    }
+    
+    /**
+     * Update the progress log display
+     */
+    updateProgressLogDisplay() {
+        const logContainer = document.getElementById('progress-log-entries');
+        if (!logContainer) return;
+        
+        // Clear existing entries
+        logContainer.innerHTML = '';
+        
+        // Add all entries
+        this.progressLog.forEach(entry => {
+            const entryElement = document.createElement('div');
+            entryElement.className = `progress-log-entry ${entry.type}`;
+            
+            const icon = this.getProgressLogIcon(entry.type);
+            const statsText = entry.stats ? this.formatProgressStats(entry.stats) : '';
+            
+            entryElement.innerHTML = `
+                <span class="entry-timestamp">${entry.timestamp}</span>
+                <span class="entry-icon">${icon}</span>
+                <span class="entry-message">${entry.message}</span>
+                ${statsText ? `<span class="entry-stats">${statsText}</span>` : ''}
+            `;
+            
+            logContainer.appendChild(entryElement);
+        });
+        
+        // Scroll to bottom to show latest entries
+        logContainer.scrollTop = logContainer.scrollHeight;
+    }
+    
+    /**
+     * Get the appropriate icon for a progress log entry type
+     * @param {string} type - The entry type
+     * @returns {string} The icon HTML
+     */
+    getProgressLogIcon(type) {
+        const icons = {
+            success: '<i class="fas fa-check-circle"></i>',
+            error: '<i class="fas fa-exclamation-circle"></i>',
+            warning: '<i class="fas fa-exclamation-triangle"></i>',
+            info: '<i class="fas fa-info-circle"></i>',
+            progress: '<i class="fas fa-spinner fa-spin"></i>'
+        };
+        return icons[type] || icons.info;
+    }
+    
+    /**
+     * Format progress stats for display
+     * @param {Object} stats - The stats object
+     * @returns {string} Formatted stats string
+     */
+    formatProgressStats(stats) {
+        const parts = [];
+        if (stats.success !== undefined) parts.push(`✅ ${stats.success}`);
+        if (stats.failed !== undefined) parts.push(`❌ ${stats.failed}`);
+        if (stats.skipped !== undefined) parts.push(`⏭️ ${stats.skipped}`);
+        if (stats.total !== undefined) parts.push(`📊 ${stats.total}`);
+        return parts.join(' ');
+    }
+    
+    /**
+     * Clear the progress log
+     */
+    clearProgressLog() {
+        this.progressLog = [];
+        this.updateProgressLogDisplay();
+        this.logger?.info('Progress log cleared');
+    }
+    
+    /**
+     * Set up progress log event handlers
+     */
+    setupProgressLogHandlers() {
+        const clearButton = document.getElementById('clear-progress-log');
+        if (clearButton) {
+            clearButton.addEventListener('click', () => {
+                this.clearProgressLog();
+                this.showNotification('Progress log cleared', 'info');
+            });
+        }
+    }
+
+    /**
+     * Show or hide the import status section
+     * @param {boolean} isImporting - Whether import is in progress
+     */
+    setImporting(isImporting) {
+        this.isImporting = isImporting;
+        
+        const importButton = document.getElementById('start-import-btn');
+        const importButtonBottom = document.getElementById('start-import-btn-bottom');
+        const cancelButton = document.getElementById('cancel-import-btn');
+        const cancelButtonBottom = document.getElementById('cancel-import-btn-bottom');
+        
+        if (importButton) {
+            importButton.disabled = isImporting;
+            importButton.textContent = isImporting ? 'Importing...' : 'Import Users (v1.0.2)';
+        }
+        
+        if (importButtonBottom) {
+            importButtonBottom.disabled = isImporting;
+            importButtonBottom.textContent = isImporting ? 'Importing...' : 'Import Users (v1.0.2)';
+        }
+        
+        if (cancelButton) {
+            cancelButton.style.display = isImporting ? 'inline-block' : 'none';
+        }
+        
+        if (cancelButtonBottom) {
+            cancelButtonBottom.style.display = isImporting ? 'inline-block' : 'none';
+        }
     }
 }
 

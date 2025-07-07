@@ -9,8 +9,11 @@ import { VersionManager } from './modules/version-manager.js';
 class App {
     constructor() {
         try {
+            console.log('App constructor starting...');
+            
             // Initialize logger with the log container
             const logContainer = document.getElementById('logs-container');
+            console.log('Log container found:', !!logContainer);
             this.logger = new Logger(logContainer);
             
             // Initialize settings manager first as it's used by other components
@@ -19,6 +22,16 @@ class App {
             // Initialize UI components
             this.uiManager = new UIManager(this.logger);
             this.fileHandler = new FileHandler(this.logger, this.uiManager);
+            
+            // Call disclaimer setup immediately after UI is ready
+            this.setupDisclaimerAgreement();
+            
+            console.log('Core components initialized:', {
+                logger: !!this.logger,
+                settingsManager: !!this.settingsManager,
+                uiManager: !!this.uiManager,
+                fileHandler: !!this.fileHandler
+            });
             
             // Make UI manager available globally for other modules
             window.uiManager = this.uiManager;
@@ -58,9 +71,13 @@ class App {
             this.handleSaveSettings = this.handleSaveSettings.bind(this);
             this.testPingOneConnection = this.testPingOneConnection.bind(this);
             this.cancelImport = this.cancelImport.bind(this);
+            this.handleDeleteCsvFileSelect = this.handleDeleteCsvFileSelect.bind(this);
+            this.handleModifyCsvFileSelect = this.handleModifyCsvFileSelect.bind(this);
             
             // Initialize the application
             this.init();
+            
+            console.log('App constructor completed');
         } catch (error) {
             console.error('Error initializing application:', error);
             // Try to show error in UI if possible
@@ -203,412 +220,118 @@ class App {
     }
     
     setupEventListeners() {
+        console.log('Setting up event listeners...');
+        
         // General navigation event listeners for all nav items
         document.querySelectorAll('.nav-item').forEach(navItem => {
             navItem.addEventListener('click', (e) => {
                 e.preventDefault();
-                // Check disclaimer acceptance
-                if (localStorage.getItem('disclaimer-agreed') !== 'true') {
-                    this.showView('home');
-                    const acceptBtn = document.getElementById('accept-disclaimer');
-                    if (acceptBtn) acceptBtn.focus();
-                    if (this.uiManager) {
-                        this.uiManager.showWarning('Please accept the disclaimer before using the app.');
-                    }
-                    return;
-                }
                 const view = navItem.getAttribute('data-view');
                 if (view) {
-                    console.log('Nav item clicked:', view);
                     this.showView(view);
                 }
             });
         });
-        
-        // Disclaimer agreement functionality
-        this.setupDisclaimerAgreement();
-        
-        // Listen for file selection events
-        window.addEventListener('fileSelected', (event) => {
-            this.handleFileSelect(event.detail);
+
+        // Feature card navigation event listeners
+        document.querySelectorAll('.feature-card').forEach(featureCard => {
+            featureCard.addEventListener('click', (e) => {
+                e.preventDefault();
+                const view = featureCard.getAttribute('data-view');
+                if (view) {
+                    this.showView(view);
+                }
+            });
         });
-        
-        // Listen for settings form submission
+
+        // Settings form submission
         const settingsForm = document.getElementById('settings-form');
         if (settingsForm) {
             settingsForm.addEventListener('submit', async (e) => {
-                try {
-                    console.log('Settings form submit event triggered');
-                    e.preventDefault();
-                    e.stopPropagation();
-                    
-                    // Get form data
-                    const formData = new FormData(settingsForm);
-                    const settings = {
-                        environmentId: formData.get('environment-id'),
-                        apiClientId: formData.get('api-client-id'),
-                        apiSecret: formData.get('api-secret'),
-                        populationId: formData.get('population-id'),
-                        region: formData.get('region'),
-                        rateLimit: parseInt(formData.get('rate-limit')) || 50
-                    };
-                    
-                    console.log('Saving settings:', settings);
-                    
-                    // Save settings
-                    await this.handleSaveSettings(settings);
-                    
-                    // Show success message
-                    this.uiManager.showNotification('Settings saved successfully', 'success');
-                    
-                } catch (error) {
-                    console.error('Error in settings form submission:', error);
-                    this.uiManager.showNotification(`Error: ${error.message}`, 'error');
-                }
-                
-                return false; // Prevent form submission
-            });
-            
-            // Also prevent any button clicks from submitting the form traditionally
-            const saveButton = settingsForm.querySelector('button[type="submit"]');
-            if (saveButton) {
-                saveButton.addEventListener('click', (e) => {
-                    if (e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                    }
-                    settingsForm.dispatchEvent(new Event('submit'));
-                    return false;
-                });
-            }
-        }
-        
-        // Listen for settings save events (for programmatic saves)
-        window.addEventListener('saveSettings', (event) => {
-            this.handleSaveSettings(event.detail);
-        });
-        
-        // Listen for clear logs events (removed - handled by UI manager directly)
-        
-        // Listen for test connection events
-        window.addEventListener('testConnection', () => {
-            this.testPingOneConnection();
-        });
-        
-        // Listen for refresh token button clicks
-        const refreshTokenButton = document.getElementById('refresh-token-btn');
-        if (refreshTokenButton) {
-            refreshTokenButton.addEventListener('click', async (e) => {
                 e.preventDefault();
-                await this.refreshToken();
+                const formData = new FormData(settingsForm);
+                const settings = Object.fromEntries(formData.entries());
+                await this.handleSaveSettings(settings);
             });
         }
 
-        // Listen for get token button clicks
-        const getTokenButton = document.getElementById('get-token-btn');
-        if (getTokenButton) {
-            getTokenButton.addEventListener('click', async (e) => {
-                e.preventDefault();
-                await this.getToken();
-            });
-        }
-        
-        // Set up import button click handler
-        const importButton = document.getElementById('start-import-btn');
-        if (importButton) {
-            importButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                this.startImport();
-            });
-        }
-        
-        // Listen for import events (for programmatic triggering)
-        window.addEventListener('startImport', () => {
-            this.startImport();
-        });
-        
-        // Listen for cancel import events
-        window.addEventListener('cancelImport', () => {
-            this.cancelImport();
-        });
-
-        // Add tab switching for delete-csv
-        const deleteCsvNav = document.querySelector('.nav-item[data-view="delete-csv"]');
-        if (deleteCsvNav) {
-            deleteCsvNav.addEventListener('click', () => {
-                this.showView('delete-csv');
-            });
-        }
-        // File input for delete-csv
-        const deleteCsvFileInput = document.getElementById('delete-csv-file');
-        if (deleteCsvFileInput) {
-            deleteCsvFileInput.addEventListener('change', async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                
+        // Get token button
+        const getTokenBtn = document.getElementById('get-token-btn');
+        if (getTokenBtn) {
+            getTokenBtn.addEventListener('click', async () => {
                 try {
-                    this.showDeleteCsvFileInfo(file);
-                    const allUsers = await this.parseCsvFile(file, 'delete-csv-preview-container');
-                    
-                    // Debug: Log the first few users to see what columns are available
-                    console.log('First few users from CSV:', allUsers.slice(0, 3));
-                    console.log('Available columns:', allUsers.length > 0 ? Object.keys(allUsers[0]) : 'No users found');
-                    
-                    // Filter users to only include those with username or email
-                    const validUsers = allUsers.filter(user => {
-                        const hasUsername = user.username && user.username.trim() !== '';
-                        const hasEmail = user.email && user.email.trim() !== '';
-                        return hasUsername || hasEmail;
-                    });
-                    
-                    this.deleteCsvUsers = validUsers;
-                    
-                    if (validUsers.length === 0) {
-                        this.uiManager.showNotification('No valid users found in CSV. Users must have username or email.', 'error');
-                        return;
-                    }
-                    
-                    const skippedCount = allUsers.length - validUsers.length;
-                    if (skippedCount > 0) {
-                        this.uiManager.showNotification(`Found ${validUsers.length} valid users. Skipped ${skippedCount} users without username or email.`, 'warning');
-                    } else {
-                        this.uiManager.showNotification(`✅ Found ${validUsers.length} valid users for deletion.`, 'success');
-                    }
-                    
-                    this.updateDeleteCsvButtonState();
+                    await this.getToken();
                 } catch (error) {
-                    this.uiManager.showNotification('Error processing CSV file: ' + error.message, 'error');
+                    this.logger.fileLogger.error('Error getting token', { error: error.message });
+                    this.uiManager.showNotification('Failed to get token: ' + error.message, 'error');
                 }
             });
         }
 
-        // File input for modify-csv
-        const modifyCsvFileInput = document.getElementById('modify-csv-file');
-        if (modifyCsvFileInput) {
-            console.log('Modify CSV file input found and event listener added');
-            modifyCsvFileInput.addEventListener('change', async (e) => {
-                console.log('Modify CSV file input change event triggered');
-                const file = e.target.files[0];
-                if (!file) {
-                    console.log('No file selected');
-                    return;
-                }
-                
-                console.log('File selected for modify:', file.name, file.size);
-                
+        // Refresh token button
+        const refreshTokenBtn = document.getElementById('refresh-token-btn');
+        if (refreshTokenBtn) {
+            refreshTokenBtn.addEventListener('click', async () => {
                 try {
-                    this.showModifyCsvFileInfo(file);
-                    const allUsers = await this.parseCsvFile(file, 'modify-preview-container');
-                    
-                    console.log('Parsed users:', allUsers.length);
-                    
-                    // Filter users to only include those with username or email
-                    const validUsers = allUsers.filter(user => {
-                        const hasUsername = user.username && user.username.trim() !== '';
-                        const hasEmail = user.email && user.email.trim() !== '';
-                        return hasUsername || hasEmail;
-                    });
-                    
-                    this.modifyCsvUsers = validUsers;
-                    console.log('Valid users for modify:', validUsers.length);
-                    
-                    if (validUsers.length === 0) {
-                        this.uiManager.showNotification('No valid users found in CSV. Users must have username or email.', 'error');
-                        return;
-                    }
-                    
-                    const skippedCount = allUsers.length - validUsers.length;
-                    if (skippedCount > 0) {
-                        this.uiManager.showNotification(`Found ${validUsers.length} valid users. Skipped ${skippedCount} users without username or email.`, 'warning');
-                    } else {
-                        this.uiManager.showNotification(`✅ Found ${validUsers.length} valid users for modification.`, 'success');
-                    }
-                    
-                    console.log('Calling updateModifyCsvButtonState');
-                    this.updateModifyCsvButtonState();
+                    await this.refreshToken();
                 } catch (error) {
-                    console.error('Error processing modify CSV file:', error);
-                    this.uiManager.showNotification('Error processing CSV file: ' + error.message, 'error');
+                    this.logger.fileLogger.error('Error refreshing token', { error: error.message });
+                    this.uiManager.showNotification('Failed to refresh token: ' + error.message, 'error');
                 }
             });
-        } else {
-            console.error('Modify CSV file input not found');
         }
+
+        // Export button
+        const exportBtn = document.getElementById('start-export-btn');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                await this.startExport();
+            });
+        }
+
+        // Cancel export button
+        const cancelExportBtn = document.getElementById('cancel-export-btn');
+        if (cancelExportBtn) {
+            cancelExportBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.cancelExport();
+            });
+        }
+
         // Delete CSV button
-        const startDeleteCsvBtn = document.getElementById('start-delete-csv-btn');
-        if (startDeleteCsvBtn) {
-            startDeleteCsvBtn.addEventListener('click', () => {
-                this.startDeleteCsv();
+        const deleteCsvBtn = document.getElementById('start-delete-csv-btn');
+        if (deleteCsvBtn) {
+            deleteCsvBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                await this.startDeleteCsv();
             });
         }
 
+        // Cancel delete CSV button
         const cancelDeleteCsvBtn = document.getElementById('cancel-delete-csv-btn');
         if (cancelDeleteCsvBtn) {
-            cancelDeleteCsvBtn.addEventListener('click', () => {
+            cancelDeleteCsvBtn.addEventListener('click', (e) => {
+                e.preventDefault();
                 this.cancelDeleteCsv();
             });
         }
 
         // Modify CSV button
-        const startModifyBtn = document.getElementById('start-modify-btn');
-        if (startModifyBtn) {
-            startModifyBtn.addEventListener('click', () => {
-                this.startModifyCsv();
-            });
-        }
-
-        const cancelModifyBtn = document.getElementById('cancel-modify-btn');
-        if (cancelModifyBtn) {
-            cancelModifyBtn.addEventListener('click', () => {
-                this.cancelModifyCsv();
-            });
-        }
-
-        // Handle "create if not exists" checkbox
-        const createIfNotExistsCheckbox = document.getElementById('create-if-not-exists');
-        if (createIfNotExistsCheckbox) {
-            createIfNotExistsCheckbox.addEventListener('change', () => {
-                this.handleCreateIfNotExistsChange();
-            });
-        }
-
-        // Home tab navigation
-        const homeNav = document.querySelector('.nav-item[data-view="home"]');
-        if (homeNav) {
-            homeNav.addEventListener('click', () => {
-                this.showView('home');
-            });
-        }
-        // Feature card navigation
-        document.querySelectorAll('.feature-card').forEach(card => {
-            card.addEventListener('click', () => {
-                const view = card.getAttribute('data-view');
-                if (view) this.showView(view);
-            });
-        });
-        // Disclaimer acceptance
-        const disclaimerBtn = document.getElementById('accept-disclaimer');
-        if (disclaimerBtn) {
-            disclaimerBtn.addEventListener('click', () => {
-                localStorage.setItem('disclaimer-agreed', 'true');
-                localStorage.setItem('disclaimer-agreed-date', new Date().toISOString());
-                const disclaimerBox = document.getElementById('disclaimer');
-                if (disclaimerBox) disclaimerBox.style.display = 'none';
-                const featureCards = document.querySelector('.feature-cards');
-                if (featureCards) featureCards.style.display = 'grid';
-            });
-        }
-        // On load, show disclaimer if not agreed
-        const disclaimerBox = document.getElementById('disclaimer');
-        const featureCards = document.querySelector('.feature-cards');
-        if (localStorage.getItem('disclaimer-agreed') === 'true') {
-            if (disclaimerBox) disclaimerBox.style.display = 'none';
-            if (featureCards) featureCards.style.display = 'grid';
-        } else {
-            if (disclaimerBox) disclaimerBox.style.display = 'block';
-            if (featureCards) featureCards.style.display = 'none';
-        }
-
-        // Export functionality event listeners
-        const startExportBtn = document.getElementById('start-export-btn');
-        console.log('Setting up export button:', startExportBtn);
-        if (startExportBtn) {
-            startExportBtn.addEventListener('click', () => {
-                this.startExport();
-            });
-        } else {
-            console.error('Export button not found during setup!');
-        }
-
-        const cancelExportBtn = document.getElementById('cancel-export-btn');
-        if (cancelExportBtn) {
-            cancelExportBtn.addEventListener('click', () => {
-                this.cancelExport();
-            });
-        }
-
-        // Export preferences event listeners
-        const openAfterExportCheck = document.getElementById('open-after-export');
-        const preferredCsvApp = document.getElementById('preferred-csv-app');
-        const customAppPath = document.getElementById('custom-app-path');
-        const customAppPathGroup = document.getElementById('custom-app-path-group');
-        
-        if (openAfterExportCheck) {
-            openAfterExportCheck.addEventListener('change', () => {
-                this.saveExportPreferences();
-            });
-        }
-        
-        if (preferredCsvApp) {
-            preferredCsvApp.addEventListener('change', (e) => {
-                if (customAppPathGroup) {
-                    customAppPathGroup.style.display = e.target.value === 'custom' ? 'block' : 'none';
-                }
-                this.saveExportPreferences();
-            });
-        }
-        
-        if (customAppPath) {
-            customAppPath.addEventListener('input', () => {
-                this.saveExportPreferences();
-            });
-        }
-        
-        // Load export preferences
-        this.loadExportPreferences();
-
-        // Progress screen cancel button event listeners
-        const cancelImportProgressBtn = document.getElementById('cancel-import-progress');
-        if (cancelImportProgressBtn) {
-            cancelImportProgressBtn.addEventListener('click', (e) => {
+        const modifyCsvBtn = document.getElementById('start-modify-csv-btn');
+        if (modifyCsvBtn) {
+            modifyCsvBtn.addEventListener('click', async (e) => {
                 e.preventDefault();
-                this.cancelImport();
-                this.logger.fileLogger.info('Import cancelled via progress screen cancel button');
+                await this.startModifyCsv();
             });
         }
 
-        const cancelDeleteCsvProgressBtn = document.getElementById('cancel-delete-csv-progress');
-        if (cancelDeleteCsvProgressBtn) {
-            cancelDeleteCsvProgressBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                this.cancelDeleteCsv();
-                this.logger.fileLogger.info('Delete CSV cancelled via progress screen cancel button');
-            });
-        }
-
-        const cancelModifyProgressBtn = document.getElementById('cancel-modify-progress');
-        if (cancelModifyProgressBtn) {
-            cancelModifyProgressBtn.addEventListener('click', (e) => {
+        // Cancel modify CSV button
+        const cancelModifyCsvBtn = document.getElementById('cancel-modify-csv-btn');
+        if (cancelModifyCsvBtn) {
+            cancelModifyCsvBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 this.cancelModifyCsv();
-                this.logger.fileLogger.info('Modify CSV cancelled via progress screen cancel button');
-            });
-        }
-
-        const cancelExportProgressBtn = document.getElementById('cancel-export-progress');
-        if (cancelExportProgressBtn) {
-            cancelExportProgressBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                this.cancelExport();
-                this.logger.fileLogger.info('Export cancelled via progress screen cancel button');
-            });
-        }
-
-        // Enable Export button if manual population ID is entered
-        const exportPopulationIdInput = document.getElementById('export-population-id');
-        if (exportPopulationIdInput && startExportBtn) {
-            exportPopulationIdInput.addEventListener('input', () => {
-                console.log('Manual population ID input changed:', exportPopulationIdInput.value);
-                if (exportPopulationIdInput.value.trim().length > 0) {
-                    console.log('Enabling export button');
-                    startExportBtn.disabled = false;
-                } else {
-                    // Only disable if populations are not loaded (dropdown is empty or default)
-                    const populationSelect = document.getElementById('export-population-select');
-                    const hasPopulations = populationSelect && populationSelect.options.length > 1;
-                    console.log('Disabling export button, hasPopulations:', hasPopulations);
-                    startExportBtn.disabled = !hasPopulations;
-                }
             });
         }
 
@@ -645,12 +368,120 @@ class App {
         }
 
         // File upload event listeners
-        document.getElementById('csv-file').addEventListener('change', (event) => {
-            const file = event.target.files[0];
-            if (file) this.handleFileSelect(file);
-        });
+        const csvFileInput = document.getElementById('csv-file');
+        console.log('CSV file input element:', csvFileInput);
+        
+        if (csvFileInput) {
+            csvFileInput.addEventListener('change', (event) => {
+                console.log('CSV file input change event triggered');
+                const file = event.target.files[0];
+                console.log('Selected file:', file);
+                if (file) {
+                    console.log('Calling handleFileSelect with file:', file.name);
+                    this.handleFileSelect(file);
+                } else {
+                    console.log('No file selected');
+                }
+            });
+            console.log('CSV file input event listener attached');
+        } else {
+            console.error('CSV file input element not found');
+        }
+        
         document.getElementById('delete-csv-file').addEventListener('change', this.handleDeleteCsvFileSelect);
         document.getElementById('modify-csv-file').addEventListener('change', this.handleModifyCsvFileSelect);
+
+        // Population delete event listeners
+        const startPopulationDeleteBtn = document.getElementById('start-population-delete-btn');
+        if (startPopulationDeleteBtn) {
+            startPopulationDeleteBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                await this.startPopulationDelete();
+            });
+        }
+
+        const cancelPopulationDeleteBtn = document.getElementById('cancel-population-delete-btn');
+        if (cancelPopulationDeleteBtn) {
+            cancelPopulationDeleteBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.cancelPopulationDelete();
+            });
+        }
+
+        const populationDeleteSelect = document.getElementById('population-delete-select');
+        if (populationDeleteSelect) {
+            populationDeleteSelect.addEventListener('change', () => {
+                this.updatePopulationDeleteButtonState();
+            });
+        }
+
+        const cancelPopulationDeleteProgressBtn = document.getElementById('cancel-population-delete-progress');
+        if (cancelPopulationDeleteProgressBtn) {
+            cancelPopulationDeleteProgressBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.cancelPopulationDelete();
+            });
+        }
+
+        const closePopulationDeleteStatusBtn = document.getElementById('close-population-delete-status');
+        if (closePopulationDeleteStatusBtn) {
+            closePopulationDeleteStatusBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.uiManager.hidePopulationDeleteStatus();
+            });
+        }
+
+        // Import button event listeners (top and bottom)
+        const importButton = document.getElementById('start-import-btn');
+        const importButtonBottom = document.getElementById('start-import-btn-bottom');
+        
+        if (importButton) {
+            importButton.addEventListener('click', (e) => {
+                console.log('Top import button clicked');
+                e.preventDefault();
+                this.startImport();
+            });
+            console.log('Top import button event listener attached');
+        } else {
+            console.error('Top import button not found');
+        }
+        
+        if (importButtonBottom) {
+            importButtonBottom.addEventListener('click', (e) => {
+                console.log('Bottom import button clicked');
+                e.preventDefault();
+                this.startImport();
+            });
+            console.log('Bottom import button event listener attached');
+        } else {
+            console.error('Bottom import button not found');
+        }
+
+        // Cancel import button event listeners (top and bottom)
+        const cancelImportButton = document.getElementById('cancel-import-btn');
+        const cancelImportButtonBottom = document.getElementById('cancel-import-btn-bottom');
+        
+        if (cancelImportButton) {
+            cancelImportButton.addEventListener('click', (e) => {
+                console.log('Top cancel import button clicked');
+                e.preventDefault();
+                this.cancelImport();
+            });
+            console.log('Top cancel import button event listener attached');
+        } else {
+            console.error('Top cancel import button not found');
+        }
+        
+        if (cancelImportButtonBottom) {
+            cancelImportButtonBottom.addEventListener('click', (e) => {
+                console.log('Bottom cancel import button clicked');
+                e.preventDefault();
+                this.cancelImport();
+            });
+            console.log('Bottom cancel import button event listener attached');
+        } else {
+            console.error('Bottom cancel import button not found');
+        }
 
         // Refresh populations button
         document.getElementById('refresh-export-populations').addEventListener('click', async () => {
@@ -679,6 +510,34 @@ class App {
                 button.disabled = false;
             }
         });
+
+        // Population selection change listeners for import
+        const importPopulationSelect = document.getElementById('import-population-select');
+        const useCsvPopulationIdCheckbox = document.getElementById('use-csv-population-id');
+        const useDefaultPopulationCheckbox = document.getElementById('use-default-population');
+        
+        if (importPopulationSelect) {
+            importPopulationSelect.addEventListener('change', () => {
+                this.updateImportButtonState();
+            });
+        }
+        
+        if (useCsvPopulationIdCheckbox) {
+            useCsvPopulationIdCheckbox.addEventListener('change', () => {
+                this.updateImportButtonState();
+            });
+        }
+        
+        if (useDefaultPopulationCheckbox) {
+            useDefaultPopulationCheckbox.addEventListener('change', () => {
+                this.updateImportButtonState();
+            });
+        }
+        
+        // Setup delete page functionality
+        this.setupDeletePage();
+
+        console.log('Event listeners setup complete');
     }
 
     async showView(view) {
@@ -709,6 +568,11 @@ class App {
                 // Load populations for modify when modify view is shown
                 if (view === 'modify') {
                     await this.loadModifyPopulations();
+                }
+                
+                // Load populations for delete when delete view is shown
+                if (view === 'delete') {
+                    await this.loadPopulationsForDeletion();
                 }
                 
                 // Load logs when logs view is shown
@@ -1103,23 +967,33 @@ class App {
         this.isImporting = true;
         this.uiManager.setImporting(true);
         try {
-            // Show import progress
-            this.uiManager.showImportProgress();
-            this.uiManager.updateImportProgress(0, 0, 'Starting import...', {
-                success: 0,
-                failed: 0,
-                skipped: 0
-            });
-
             // Get the parsed users from the file handler
             const users = this.fileHandler.getParsedUsers();
             if (!users || users.length === 0) {
                 throw new Error('No users found in CSV file. Please check your file and try again.');
             }
 
+            // Show import progress
+            this.uiManager.showImportStatus(users.length);
+            this.uiManager.updateImportProgress(0, 0, 'Starting import...', {
+                success: 0,
+                failed: 0,
+                skipped: 0
+            });
+
             // Get import options
             const importOptions = this.getImportOptions();
             this.logger.fileLogger.info('Import options', importOptions);
+
+            // Validate population selection
+            const hasSelectedPopulation = importOptions.selectedPopulationId && importOptions.selectedPopulationId.trim() !== '';
+            const useDefaultPopulation = importOptions.useDefaultPopulation;
+            const useCsvPopulationId = importOptions.useCsvPopulationId;
+            
+            // Check if user has made a population choice
+            if (!hasSelectedPopulation && !useDefaultPopulation && !useCsvPopulationId) {
+                throw new Error('Please select a population or choose "Use default population from settings" before importing users.');
+            }
 
             // Check if CSV population ID is enabled but not available
             if (importOptions.useCsvPopulationId) {
@@ -1271,10 +1145,7 @@ class App {
             this.isImporting = false;
             this.currentImportAbortController = null;
             
-            // Hide progress after a delay to show completion
-            setTimeout(() => {
-                this.uiManager.hideImportProgress();
-            }, 3000);
+            // Import status will persist until user manually closes it
             this.uiManager.setImporting(false);
             this.uiManager.showLoading(false); // Hide spinner
         }
@@ -1390,6 +1261,8 @@ class App {
 
     async startDeleteCsv() {
         if (this.isDeletingCsv) return;
+        const confirmed = await this.confirmDeleteAction('<strong>⚠️ WARNING:</strong> This will permanently delete the selected users from PingOne. This action cannot be undone.<br><br>Type <b>DELETE</b> to confirm.');
+        if (!confirmed) return;
         this.isDeletingCsv = true;
         this.uiManager.setDeletingCsv(true);
         this.uiManager.showDeleteCsvStatus(this.deleteCsvUsers.length);
@@ -1806,59 +1679,49 @@ class App {
             document.getElementById('risk-acceptance')
         ];
         
-        if (!acceptButton || agreementCheckboxes.some(cb => !cb)) {
-            console.warn('Disclaimer agreement elements not found');
+        console.log('[DEBUG] Disclaimer setup: acceptButton', !!acceptButton, 'checkboxes', agreementCheckboxes.map(cb => !!cb));
+        if (!acceptButton) {
+            console.error('[ERROR] Disclaimer accept button not found');
             return;
         }
+        if (agreementCheckboxes.every(cb => !cb)) {
+            console.error('[ERROR] Disclaimer checkboxes not found');
+        }
         
-        // Function to check if all checkboxes are checked
-        const checkAgreementStatus = () => {
-            const allChecked = agreementCheckboxes.every(cb => cb.checked);
-            acceptButton.disabled = !allChecked;
-            
-            if (allChecked) {
-                acceptButton.classList.add('btn-success');
-                acceptButton.classList.remove('btn-danger');
-                acceptButton.innerHTML = '<i class="fas fa-check-circle"></i> I UNDERSTAND AND ACCEPT ALL RISKS';
-            } else {
-                acceptButton.classList.remove('btn-success');
-                acceptButton.classList.add('btn-danger');
-                acceptButton.innerHTML = '<i class="fas fa-exclamation-triangle"></i> I UNDERSTAND AND ACCEPT ALL RISKS';
-            }
-        };
+        // Always enable the button
+        acceptButton.disabled = false;
         
-        // Add event listeners to checkboxes
+        // Add event listeners to checkboxes for debugging
         agreementCheckboxes.forEach(checkbox => {
-            checkbox.addEventListener('change', checkAgreementStatus);
+            if (checkbox) {
+                checkbox.addEventListener('change', () => {
+                    console.log('[DEBUG] Checkbox changed:', checkbox.id, 'checked:', checkbox.checked);
+                });
+            }
         });
         
         // Add event listener to accept button
         acceptButton.addEventListener('click', () => {
-            if (acceptButton.disabled) {
-                this.uiManager.showNotification('Please check all agreement boxes first', 'warning');
-                return;
-            }
-            
+            console.log('[DEBUG] Disclaimer accept button clicked.');
             // Store agreement in localStorage
             localStorage.setItem('disclaimer-agreed', 'true');
             localStorage.setItem('disclaimer-agreed-date', new Date().toISOString());
-            
             // Hide disclaimer and show feature cards
             const disclaimer = document.getElementById('disclaimer');
             const featureCards = document.querySelector('.feature-cards');
-            
             if (disclaimer) {
                 disclaimer.style.display = 'none';
             }
-            
             if (featureCards) {
                 featureCards.style.display = 'grid';
             }
-            
+            // Make button green and keep it green
+            acceptButton.classList.add('btn-success');
+            acceptButton.classList.remove('btn-danger');
+            acceptButton.innerHTML = '<i class="fas fa-check-circle"></i> I UNDERSTAND AND ACCEPT ALL RISKS';
             this.uiManager.showNotification('Disclaimer accepted. You can now use the tool.', 'success');
             this.logger.fileLogger.info('User accepted disclaimer agreement');
         });
-        
         // Check if user has already agreed
         const hasAgreed = localStorage.getItem('disclaimer-agreed');
         const disclaimer = document.getElementById('disclaimer');
@@ -1870,6 +1733,10 @@ class App {
             if (featureCards) {
                 featureCards.style.display = 'grid';
             }
+            // Make button green and keep it green
+            acceptButton.classList.add('btn-success');
+            acceptButton.classList.remove('btn-danger');
+            acceptButton.innerHTML = '<i class="fas fa-check-circle"></i> I UNDERSTAND AND ACCEPT ALL RISKS';
         } else {
             if (disclaimer) {
                 disclaimer.style.display = 'block';
@@ -2920,6 +2787,741 @@ class App {
         } finally {
             this.uiManager.showLoading(false);
         }
+    }
+
+    updateImportButtonState() {
+        // Check if we have users to import
+        const users = this.fileHandler.getParsedUsers();
+        const hasUsers = users && users.length > 0;
+        
+        // Check if population choice has been made
+        const selectedPopulationId = document.getElementById('import-population-select')?.value || '';
+        const useDefaultPopulation = document.getElementById('use-default-population')?.checked || false;
+        const useCsvPopulationId = document.getElementById('use-csv-population-id')?.checked || false;
+        
+        const hasSelectedPopulation = selectedPopulationId && selectedPopulationId.trim() !== '';
+        const hasPopulationChoice = hasSelectedPopulation || useDefaultPopulation || useCsvPopulationId;
+        
+        // Enable buttons only if we have users AND a population choice
+        const shouldEnable = hasUsers && hasPopulationChoice;
+        
+        // Update both import buttons
+        const importBtn = document.getElementById('start-import-btn');
+        const importBtnBottom = document.getElementById('start-import-btn-bottom');
+        
+        if (importBtn) {
+            importBtn.disabled = !shouldEnable;
+        }
+        
+        if (importBtnBottom) {
+            importBtnBottom.disabled = !shouldEnable;
+        }
+        
+        this.logger.fileLogger.info('Import button state updated', {
+            hasUsers,
+            hasPopulationChoice,
+            shouldEnable,
+            selectedPopulationId: hasSelectedPopulation ? 'selected' : 'none',
+            useDefaultPopulation,
+            useCsvPopulationId
+        });
+    }
+
+    /**
+     * Update delete CSV button state
+     */
+    updateDeleteCsvButtonState() {
+        const startDeleteBtn = document.getElementById('start-delete-csv-btn');
+        const cancelDeleteBtn = document.getElementById('cancel-delete-csv-btn');
+        
+        if (startDeleteBtn) {
+            startDeleteBtn.disabled = !this.deleteCsvUsers || this.deleteCsvUsers.length === 0;
+        }
+        
+        if (cancelDeleteBtn) {
+            cancelDeleteBtn.style.display = this.isDeletingCsv ? 'inline-block' : 'none';
+        }
+    }
+
+    /**
+     * Load populations for deletion dropdown
+     */
+    async loadPopulationsForDeletion() {
+        try {
+            const populationSelect = document.getElementById('population-delete-select');
+            if (!populationSelect) {
+                console.warn('Population delete select not found');
+                return;
+            }
+
+            // Clear existing options
+            populationSelect.innerHTML = '<option value="">Loading populations...</option>';
+
+            // Get populations from PingOne
+            const populations = await this.pingOneClient.getPopulations();
+            
+            if (populations && populations._embedded && populations._embedded.populations) {
+                // Clear loading option
+                populationSelect.innerHTML = '<option value="">Select a population...</option>';
+                
+                // Add populations to select
+                populations._embedded.populations.forEach(population => {
+                    const option = document.createElement('option');
+                    option.value = population.id;
+                    option.textContent = population.name || population.id;
+                    populationSelect.appendChild(option);
+                });
+
+                console.log('Loaded populations for deletion:', populations._embedded.populations.length);
+            } else {
+                populationSelect.innerHTML = '<option value="">No populations found</option>';
+                console.warn('No populations found for deletion');
+            }
+        } catch (error) {
+            console.error('Failed to load populations for deletion:', error);
+            const populationSelect = document.getElementById('population-delete-select');
+            if (populationSelect) {
+                populationSelect.innerHTML = '<option value="">Error loading populations</option>';
+            }
+        }
+    }
+
+    /**
+     * Update population delete button state
+     */
+    updatePopulationDeleteButtonState() {
+        const startDeleteBtn = document.getElementById('start-population-delete-btn');
+        const cancelDeleteBtn = document.getElementById('cancel-population-delete-btn');
+        const populationSelect = document.getElementById('population-delete-select');
+        
+        if (startDeleteBtn && populationSelect) {
+            startDeleteBtn.disabled = !populationSelect.value || this.isDeletingPopulation;
+        }
+        
+        if (cancelDeleteBtn) {
+            cancelDeleteBtn.style.display = this.isDeletingPopulation ? 'inline-block' : 'none';
+        }
+    }
+
+    /**
+     * Start population deletion process
+     */
+    async startPopulationDelete() {
+        const populationSelect = document.getElementById('population-delete-select');
+        if (!populationSelect || !populationSelect.value) {
+            this.uiManager.showNotification('Please select a population to delete users from.', 'warning');
+            return;
+        }
+        const populationId = populationSelect.value;
+        const populationName = populationSelect.options[populationSelect.selectedIndex].text;
+        // Use modal instead of confirm
+        const confirmed = await this.confirmDeleteAction(`<strong>⚠️ WARNING:</strong> This will permanently delete <b>ALL</b> users in the population <b>"${populationName}"</b>. This action cannot be undone.<br><br>Type <b>DELETE</b> to confirm.`);
+        if (!confirmed) return;
+        this.isDeletingPopulation = true;
+        this.updatePopulationDeleteButtonState();
+
+        try {
+            // Show progress UI
+            this.uiManager.showPopulationDeleteStatus();
+
+            // Get all users in the population
+            this.logger.fileLogger.info('Starting population deletion', { 
+                populationId, 
+                populationName 
+            });
+
+            const users = await this.pingOneClient.getUsersByPopulation(populationId);
+            
+            if (!users || users.length === 0) {
+                this.uiManager.showNotification(`No users found in population: ${populationName}`, 'info');
+                this.resetPopulationDeleteState();
+                return;
+            }
+
+            this.logger.fileLogger.info('Found users to delete', { 
+                populationId, 
+                populationName, 
+                userCount: users.length 
+            });
+
+            // Start deletion process
+            await this.deleteUsersFromPopulation(users, populationName);
+
+        } catch (error) {
+            console.error('Population deletion failed:', error);
+            this.logger.fileLogger.error('Population deletion failed', { 
+                populationId, 
+                populationName, 
+                error: error.message 
+            });
+            this.uiManager.showNotification(`Failed to delete users from population: ${error.message}`, 'error');
+            this.resetPopulationDeleteState();
+        }
+    }
+
+    /**
+     * Show population delete confirmation dialog
+     */
+    async showPopulationDeleteConfirmation(populationName) {
+        return new Promise((resolve) => {
+            const confirmed = confirm(
+                `⚠️ WARNING: This action will permanently delete ALL users in the population "${populationName}".\n\n` +
+                `This action cannot be undone. Are you absolutely sure you want to proceed?\n\n` +
+                `Type "DELETE" to confirm:`
+            );
+
+            if (confirmed) {
+                const userInput = prompt('Type "DELETE" to confirm the deletion of all users:');
+                resolve(userInput === 'DELETE');
+            } else {
+                resolve(false);
+            }
+        });
+    }
+
+    /**
+     * Delete users from a population
+     */
+    async deleteUsersFromPopulation(users, populationName) {
+        const totalUsers = users.length;
+        let deletedCount = 0;
+        let failedCount = 0;
+        let skippedCount = 0;
+
+        this.logger.fileLogger.info('Starting user deletion from population', { 
+            populationName, 
+            totalUsers 
+        });
+
+        for (let i = 0; i < users.length; i++) {
+            const user = users[i];
+            
+            try {
+                // Check if we should cancel
+                if (this.cancelPopulationDelete) {
+                    this.logger.fileLogger.info('Population deletion cancelled by user');
+                    break;
+                }
+
+                // Update progress
+                const progress = ((i + 1) / totalUsers) * 100;
+                this.updatePopulationDeleteProgress(i + 1, totalUsers, `Deleting user ${i + 1} of ${totalUsers}...`, {
+                    success: deletedCount,
+                    failed: failedCount,
+                    skipped: skippedCount
+                });
+
+                // Delete the user
+                await this.pingOneClient.deleteUser(user.id);
+                deletedCount++;
+
+                this.logger.fileLogger.info('User deleted successfully', { 
+                    userId: user.id, 
+                    username: user.username,
+                    populationName 
+                });
+
+                // Rate limiting
+                await this.delay(1000 / this.settings.rateLimit);
+
+            } catch (error) {
+                console.error(`Failed to delete user ${user.username}:`, error);
+                this.logger.fileLogger.error('Failed to delete user', { 
+                    userId: user.id, 
+                    username: user.username,
+                    populationName,
+                    error: error.message 
+                });
+                failedCount++;
+            }
+        }
+
+        // Final progress update
+        this.updatePopulationDeleteProgress(totalUsers, totalUsers, 'Deletion completed', {
+            success: deletedCount,
+            failed: failedCount,
+            skipped: skippedCount
+        });
+
+        // Show completion message
+        const message = `Population deletion completed: ${deletedCount} deleted, ${failedCount} failed, ${skippedCount} skipped`;
+        this.uiManager.showNotification(message, deletedCount > 0 ? 'success' : 'warning');
+
+        this.logger.fileLogger.info('Population deletion completed', { 
+            populationName,
+            deleted: deletedCount,
+            failed: failedCount,
+            skipped: skippedCount
+        });
+
+        this.resetPopulationDeleteState();
+    }
+
+    /**
+     * Update population delete progress
+     */
+    updatePopulationDeleteProgress(current, total, message, counts = {}) {
+        const progressBar = document.getElementById('population-delete-progress');
+        const progressPercent = document.getElementById('population-delete-progress-percent');
+        const progressText = document.getElementById('population-delete-progress-text');
+        const progressCount = document.getElementById('population-delete-progress-count');
+        const successCount = document.getElementById('population-delete-success-count');
+        const failedCount = document.getElementById('population-delete-failed-count');
+        const skippedCount = document.getElementById('population-delete-skipped-count');
+
+        if (progressBar) {
+            const percent = total > 0 ? (current / total) * 100 : 0;
+            progressBar.style.width = `${percent}%`;
+            progressBar.setAttribute('aria-valuenow', percent);
+        }
+
+        if (progressPercent) progressPercent.textContent = `${Math.round((current / total) * 100)}%`;
+        if (progressText) progressText.textContent = message;
+        if (progressCount) progressCount.textContent = `${current} of ${total} users`;
+        if (successCount) successCount.textContent = counts.success || 0;
+        if (failedCount) failedCount.textContent = counts.failed || 0;
+        if (skippedCount) skippedCount.textContent = counts.skipped || 0;
+    }
+
+    /**
+     * Cancel population deletion
+     */
+    cancelPopulationDelete() {
+        this.cancelPopulationDelete = true;
+        this.uiManager.showNotification('Population deletion cancelled', 'info');
+        this.resetPopulationDeleteState();
+    }
+
+    /**
+     * Reset population delete state
+     */
+    resetPopulationDeleteState() {
+        this.isDeletingPopulation = false;
+        this.cancelPopulationDelete = false;
+        this.updatePopulationDeleteButtonState();
+        this.uiManager.hidePopulationDeleteStatus();
+    }
+
+    // Add after constructor/init
+    setupDeleteWarningModal() {
+        this.deleteWarningModal = document.getElementById('delete-warning-modal');
+        this.deleteWarningContinue = document.getElementById('delete-warning-continue');
+        this.deleteWarningCancel = document.getElementById('delete-warning-cancel');
+        this.deleteConfirmInput = document.getElementById('delete-confirm-input');
+        this.deleteWarningMessage = document.getElementById('delete-warning-message');
+        
+        if (!this.deleteWarningModal) return;
+        // Hide modal utility
+        this.hideDeleteWarningModal = () => {
+            this.deleteWarningModal.style.display = 'none';
+            this.deleteConfirmInput.value = '';
+            this.deleteWarningContinue.disabled = true;
+        };
+        // Show modal utility
+        this.showDeleteWarningModal = (message) => {
+            this.deleteWarningMessage.innerHTML = message || '<strong>⚠️ WARNING:</strong> This action will permanently delete users from PingOne. This cannot be undone.<br><br>Are you absolutely sure you want to continue?';
+            this.deleteWarningModal.style.display = 'flex';
+            this.deleteConfirmInput.value = '';
+            this.deleteWarningContinue.disabled = true;
+            this.deleteConfirmInput.focus();
+        };
+        // Enable Continue only if DELETE is typed
+        this.deleteConfirmInput.addEventListener('input', () => {
+            this.deleteWarningContinue.disabled = this.deleteConfirmInput.value !== 'DELETE';
+        });
+        // Cancel button
+        this.deleteWarningCancel.addEventListener('click', () => {
+            this.hideDeleteWarningModal();
+            if (this._deleteActionReject) this._deleteActionReject(false);
+        });
+        // Continue button
+        this.deleteWarningContinue.addEventListener('click', () => {
+            this.hideDeleteWarningModal();
+            if (this._deleteActionResolve) this._deleteActionResolve(true);
+        });
+    }
+    // Utility to show modal and return a promise
+    confirmDeleteAction(message) {
+        return new Promise((resolve, reject) => {
+            this._deleteActionResolve = resolve;
+            this._deleteActionReject = reject;
+            this.showDeleteWarningModal(message);
+        });
+    }
+
+    async startDeleteAllUsersInEnvironment() {
+        // Fetch all users in the environment
+        this.uiManager.showLoading(true, 'Fetching all users in environment...');
+        let users;
+        try {
+            users = await this.pingOneClient.getAllUsersInEnvironment();
+        } catch (err) {
+            this.uiManager.showLoading(false);
+            this.uiManager.showNotification('Failed to fetch users: ' + err.message, 'error');
+            return;
+        }
+        this.uiManager.showLoading(false);
+        if (!users || users.length === 0) {
+            this.uiManager.showNotification('No users found in environment.', 'info');
+            return;
+        }
+        // Confirm again before proceeding
+        const confirmed = await this.confirmDeleteAction(`<strong>⚠️ FINAL WARNING:</strong> This will permanently delete <b>ALL</b> users in your PingOne environment (${users.length} users). This action cannot be undone.<br><br>Type <b>DELETE</b> to confirm.`);
+        if (!confirmed) return;
+        // Show progress UI
+        this.uiManager.showLoading(true, 'Deleting all users in environment...');
+        let deleted = 0, failed = 0;
+        for (let i = 0; i < users.length; i++) {
+            try {
+                await this.pingOneClient.deleteUser(users[i].id);
+                deleted++;
+            } catch (err) {
+                failed++;
+            }
+            this.uiManager.showLoading(true, `Deleting user ${i+1} of ${users.length}... (${deleted} deleted, ${failed} failed)`);
+        }
+        this.uiManager.showLoading(false);
+        this.uiManager.showNotification(`Environment delete completed: ${deleted} deleted, ${failed} failed`, deleted > 0 ? 'success' : 'warning');
+    }
+
+    setupDeletePage() {
+        // CSV Delete Section
+        const deleteCsvCheckbox = document.getElementById('delete-csv-checkbox');
+        const csvDeleteControls = document.getElementById('csv-delete-controls');
+        const deleteCsvBtn = document.getElementById('deleteCsvBtn');
+        const csvFileInput = document.getElementById('csvFile');
+
+        if (deleteCsvCheckbox) {
+            deleteCsvCheckbox.addEventListener('change', (e) => {
+                csvDeleteControls.style.display = e.target.checked ? 'block' : 'none';
+                if (!e.target.checked) {
+                    csvFileInput.value = '';
+                }
+            });
+        }
+
+        if (deleteCsvBtn) {
+            deleteCsvBtn.addEventListener('click', () => {
+                if (!csvFileInput.files[0]) {
+                    this.uiManager.showNotification('Please select a CSV file first.', 'error');
+                    return;
+                }
+                this.showDeleteWarning('CSV', () => {
+                    this.startDeleteUsersFromCsv();
+                });
+            });
+        }
+
+        // Population Delete Section
+        const deletePopulationCheckbox = document.getElementById('delete-all-users-population-checkbox');
+        const populationDeleteControls = document.getElementById('population-delete-controls');
+        const deletePopulationBtn = document.getElementById('deletePopulationBtn');
+        const populationSelect = document.getElementById('populationSelect');
+
+        if (deletePopulationCheckbox) {
+            deletePopulationCheckbox.addEventListener('change', (e) => {
+                populationDeleteControls.style.display = e.target.checked ? 'block' : 'none';
+                if (e.target.checked) {
+                    this.loadPopulations();
+                }
+            });
+        }
+
+        if (deletePopulationBtn) {
+            deletePopulationBtn.addEventListener('click', () => {
+                if (!populationSelect.value) {
+                    this.uiManager.showNotification('Please select a population first.', 'error');
+                    return;
+                }
+                this.showDeleteWarning('Population', () => {
+                    this.startDeleteAllUsersInPopulation();
+                });
+            });
+        }
+
+        // Environment Delete Section
+        const deleteEnvironmentCheckbox = document.getElementById('delete-all-users-env-checkbox');
+        const environmentDeleteControls = document.getElementById('environment-delete-controls');
+        const deleteEnvironmentBtn = document.getElementById('deleteEnvironmentBtn');
+
+        if (deleteEnvironmentCheckbox) {
+            deleteEnvironmentCheckbox.addEventListener('change', (e) => {
+                environmentDeleteControls.style.display = e.target.checked ? 'block' : 'none';
+            });
+        }
+
+        if (deleteEnvironmentBtn) {
+            deleteEnvironmentBtn.addEventListener('click', () => {
+                this.showDeleteWarning('Environment', () => {
+                    this.startDeleteAllUsersInEnvironment();
+                });
+            });
+        }
+    }
+
+    showDeleteWarning(type, onConfirm) {
+        const modal = document.getElementById('delete-warning-modal');
+        const message = document.getElementById('delete-warning-message');
+        const confirmInput = document.getElementById('delete-confirm-input');
+        const continueBtn = document.getElementById('delete-warning-continue');
+        const cancelBtn = document.getElementById('delete-warning-cancel');
+
+        if (!modal || !message || !confirmInput || !continueBtn || !cancelBtn) return;
+
+        // Set warning message based on type
+        let warningText = '';
+        switch (type) {
+            case 'CSV':
+                warningText = 'Are you sure you want to delete users from the CSV file? This action cannot be undone.';
+                break;
+            case 'Population':
+                warningText = 'Are you sure you want to delete ALL users in the selected population? This action cannot be undone.';
+                break;
+            case 'Environment':
+                warningText = 'Are you sure you want to delete ALL users in the entire environment? This is a destructive action that cannot be undone.';
+                break;
+            default:
+                warningText = 'Are you sure you want to proceed with this deletion? This action cannot be undone.';
+        }
+
+        message.textContent = warningText;
+        confirmInput.value = '';
+        continueBtn.disabled = true;
+
+        // Show modal
+        modal.style.display = 'flex';
+
+        // Handle input validation
+        confirmInput.addEventListener('input', () => {
+            continueBtn.disabled = confirmInput.value !== 'DELETE';
+        });
+
+        // Handle continue button
+        continueBtn.onclick = () => {
+            if (confirmInput.value === 'DELETE') {
+                this.hideDeleteWarning();
+                onConfirm();
+            }
+        };
+
+        // Handle cancel button
+        cancelBtn.onclick = () => {
+            this.hideDeleteWarning();
+        };
+
+        // Handle escape key
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                this.hideDeleteWarning();
+            }
+        };
+
+        // Focus on input
+        confirmInput.focus();
+    }
+
+    hideDeleteWarning() {
+        const modal = document.getElementById('delete-warning-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    async startDeleteUsersFromCsv() {
+        const fileInput = document.getElementById('csvFile');
+        const file = fileInput.files[0];
+        
+        if (!file) {
+            this.uiManager.showNotification('Please select a CSV file first.', 'error');
+            return;
+        }
+
+        try {
+            const csvData = await this.readCsvFile(file);
+            const users = this.parseCsvData(csvData);
+            
+            if (users.length === 0) {
+                this.uiManager.showNotification('No valid users found in CSV file.', 'error');
+                return;
+            }
+
+            this.uiManager.showLoading(true, `Deleting ${users.length} users...`);
+            
+            let deletedCount = 0;
+            let errorCount = 0;
+            const errors = [];
+
+            for (let i = 0; i < users.length; i++) {
+                const user = users[i];
+                try {
+                    await this.pingOneClient.deleteUser(user.username);
+                    deletedCount++;
+                    this.uiManager.showLoading(true, `Deleted ${deletedCount}/${users.length} users...`);
+                } catch (error) {
+                    errorCount++;
+                    errors.push(`Failed to delete ${user.username}: ${error.message}`);
+                }
+            }
+
+            this.uiManager.showLoading(false);
+            
+            if (errorCount === 0) {
+                this.uiManager.showNotification(`Successfully deleted ${deletedCount} users.`, 'success');
+            } else {
+                this.uiManager.showNotification(`Deleted ${deletedCount} users. ${errorCount} errors occurred.`, 'warning');
+                console.error('Delete errors:', errors);
+            }
+
+        } catch (error) {
+            this.uiManager.showLoading(false);
+            this.uiManager.showNotification('Error processing CSV file: ' + error.message, 'error');
+        }
+    }
+
+    async startDeleteAllUsersInPopulation() {
+        const populationSelect = document.getElementById('populationSelect');
+        const populationId = populationSelect.value;
+        
+        if (!populationId) {
+            this.uiManager.showNotification('Please select a population first.', 'error');
+            return;
+        }
+
+        this.uiManager.showLoading(true, 'Fetching users in population...');
+        
+        try {
+            const users = await this.pingOneClient.getAllUsersInPopulation(populationId);
+            
+            if (users.length === 0) {
+                this.uiManager.showLoading(false);
+                this.uiManager.showNotification('No users found in the selected population.', 'info');
+                return;
+            }
+
+            this.uiManager.showLoading(true, `Deleting ${users.length} users from population...`);
+            
+            let deletedCount = 0;
+            let errorCount = 0;
+            const errors = [];
+
+            for (let i = 0; i < users.length; i++) {
+                const user = users[i];
+                try {
+                    await this.pingOneClient.deleteUser(user.id);
+                    deletedCount++;
+                    this.uiManager.showLoading(true, `Deleted ${deletedCount}/${users.length} users...`);
+                } catch (error) {
+                    errorCount++;
+                    errors.push(`Failed to delete ${user.username || user.id}: ${error.message}`);
+                }
+            }
+
+            this.uiManager.showLoading(false);
+            
+            if (errorCount === 0) {
+                this.uiManager.showNotification(`Successfully deleted ${deletedCount} users from population.`, 'success');
+            } else {
+                this.uiManager.showNotification(`Deleted ${deletedCount} users. ${errorCount} errors occurred.`, 'warning');
+                console.error('Delete errors:', errors);
+            }
+
+        } catch (error) {
+            this.uiManager.showLoading(false);
+            this.uiManager.showNotification('Error deleting users: ' + error.message, 'error');
+        }
+    }
+
+    async startDeleteAllUsersInEnvironment() {
+        this.uiManager.showLoading(true, 'Fetching all users in environment...');
+        
+        try {
+            const users = await this.pingOneClient.getAllUsersInEnvironment();
+            
+            if (users.length === 0) {
+                this.uiManager.showLoading(false);
+                this.uiManager.showNotification('No users found in the environment.', 'info');
+                return;
+            }
+
+            this.uiManager.showLoading(true, `Deleting ${users.length} users from environment...`);
+            
+            let deletedCount = 0;
+            let errorCount = 0;
+            const errors = [];
+
+            for (let i = 0; i < users.length; i++) {
+                const user = users[i];
+                try {
+                    await this.pingOneClient.deleteUser(user.id);
+                    deletedCount++;
+                    this.uiManager.showLoading(true, `Deleted ${deletedCount}/${users.length} users...`);
+                } catch (error) {
+                    errorCount++;
+                    errors.push(`Failed to delete ${user.username || user.id}: ${error.message}`);
+                }
+            }
+
+            this.uiManager.showLoading(false);
+            
+            if (errorCount === 0) {
+                this.uiManager.showNotification(`Successfully deleted ${deletedCount} users from environment.`, 'success');
+            } else {
+                this.uiManager.showNotification(`Deleted ${deletedCount} users. ${errorCount} errors occurred.`, 'warning');
+                console.error('Delete errors:', errors);
+            }
+
+        } catch (error) {
+            this.uiManager.showLoading(false);
+            this.uiManager.showNotification('Error deleting users: ' + error.message, 'error');
+        }
+    }
+
+    async loadPopulations() {
+        const populationSelect = document.getElementById('populationSelect');
+        if (!populationSelect) return;
+
+        try {
+            const populations = await this.pingOneClient.getPopulations();
+            populationSelect.innerHTML = '<option value="">Select a population...</option>';
+            
+            populations.forEach(population => {
+                const option = document.createElement('option');
+                option.value = population.id;
+                option.textContent = population.name;
+                populationSelect.appendChild(option);
+            });
+        } catch (error) {
+            this.uiManager.showNotification('Error loading populations: ' + error.message, 'error');
+            populationSelect.innerHTML = '<option value="">Error loading populations</option>';
+        }
+    }
+
+    readCsvFile(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = () => reject(new Error('Failed to read file'));
+            reader.readAsText(file);
+        });
+    }
+
+    parseCsvData(csvData) {
+        const lines = csvData.split('\n');
+        const headers = lines[0].split(',').map(h => h.trim());
+        const users = [];
+
+        for (let i = 1; i < lines.length; i++) {
+            if (lines[i].trim()) {
+                const values = lines[i].split(',').map(v => v.trim());
+                const user = {};
+                headers.forEach((header, index) => {
+                    user[header] = values[index] || '';
+                });
+                users.push(user);
+            }
+        }
+
+        return users;
     }
 }
 

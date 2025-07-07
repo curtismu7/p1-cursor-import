@@ -11,6 +11,11 @@ import logsRouter from './routes/logs.js';
 import settingsRouter from './routes/settings.js';
 import pingoneProxyRouter from './routes/pingone-proxy.js';
 import apiRouter from './routes/api/index.js';
+import util from 'util';
+let chalk = null;
+try {
+  chalk = (await import('chalk')).default;
+} catch {}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -63,7 +68,7 @@ const getRateLimit = () => {
     if (envRateLimit && envRateLimit >= 1 && envRateLimit <= 100) {
         return envRateLimit;
     }
-    return 50; // Default rate limit (increased to 50 for bulk operations)
+    return 90; // Default rate limit (increased to 90 for bulk operations)
 };
 
 // Create rate limiter with current settings
@@ -160,11 +165,9 @@ app.use('/api', limiter);
 app.use('/api', (req, res, next) => {
     const startTime = Date.now();
     const requestId = `api-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
-    // Add request metadata
     req.requestId = requestId;
     req.startTime = startTime;
-    
+
     // Log the incoming request
     const requestLog = {
         type: 'api_request',
@@ -181,13 +184,20 @@ app.use('/api', (req, res, next) => {
         userAgent: req.get('user-agent'),
         source: 'server-api'
     };
-    
+
+    // Pretty print request log
+    const reqSummary = `${chalk ? chalk.cyan('🔄 API REQUEST') : '🔄 API REQUEST'} ${req.method} ${req.originalUrl} [${requestId}]`;
+    const reqDetails = util.inspect(requestLog, { depth: 3, colors: !!chalk, compact: false });
+    console.log('\n' + '-'.repeat(60));
+    console.log(reqSummary);
+    console.log(reqDetails);
+    console.log('-'.repeat(60));
     logger.info('🔄 Server API Request:', requestLog);
-    
+
     // Capture the original res.json and res.send methods to log responses
     const originalJson = res.json.bind(res);
     const originalSend = res.send.bind(res);
-    
+
     res.json = function(data) {
         const responseLog = {
             type: 'api_response',
@@ -202,11 +212,15 @@ app.use('/api', (req, res, next) => {
             requestId: requestId,
             source: 'server-api'
         };
-        
+        const resSummary = `${chalk ? chalk.green('✅ API RESPONSE') : '✅ API RESPONSE'} ${res.statusCode} ${req.method} ${req.originalUrl} [${requestId}] (${responseLog.duration}ms)`;
+        const resDetails = util.inspect(responseLog, { depth: 3, colors: !!chalk, compact: false });
+        console.log(resSummary);
+        console.log(resDetails);
+        console.log('-'.repeat(60) + '\n');
         logger.info('✅ Server API Response:', responseLog);
         return originalJson(data);
     };
-    
+
     res.send = function(data) {
         const responseLog = {
             type: 'api_response',
@@ -221,11 +235,15 @@ app.use('/api', (req, res, next) => {
             requestId: requestId,
             source: 'server-api'
         };
-        
+        const resSummary = `${chalk ? chalk.green('✅ API RESPONSE') : '✅ API RESPONSE'} ${res.statusCode} ${req.method} ${req.originalUrl} [${requestId}] (${responseLog.duration}ms)`;
+        const resDetails = util.inspect(responseLog, { depth: 3, colors: !!chalk, compact: false });
+        console.log(resSummary);
+        console.log(resDetails);
+        console.log('-'.repeat(60) + '\n');
         logger.info('✅ Server API Response:', responseLog);
         return originalSend(data);
     };
-    
+
     next();
 });
 

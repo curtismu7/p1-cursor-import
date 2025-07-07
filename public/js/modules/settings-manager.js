@@ -129,7 +129,7 @@ class SettingsManager {
             region: 'NorthAmerica',
             
             // Rate limiting
-            rateLimit: 50,
+            rateLimit: 90,
             
             // Connection status
             connectionStatus: 'disconnected',

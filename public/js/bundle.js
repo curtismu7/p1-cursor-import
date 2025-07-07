@@ -12,8 +12,11 @@ var _versionManager = require("./modules/version-manager.js");
 class App {
   constructor() {
     try {
+      console.log('App constructor starting...');
+
       // Initialize logger with the log container
       const logContainer = document.getElementById('logs-container');
+      console.log('Log container found:', !!logContainer);
       this.logger = new _logger.Logger(logContainer);
 
       // Initialize settings manager first as it's used by other components
@@ -22,6 +25,15 @@ class App {
       // Initialize UI components
       this.uiManager = new _uiManager.UIManager(this.logger);
       this.fileHandler = new _fileHandler.FileHandler(this.logger, this.uiManager);
+
+      // Call disclaimer setup immediately after UI is ready
+      this.setupDisclaimerAgreement();
+      console.log('Core components initialized:', {
+        logger: !!this.logger,
+        settingsManager: !!this.settingsManager,
+        uiManager: !!this.uiManager,
+        fileHandler: !!this.fileHandler
+      });
 
       // Make UI manager available globally for other modules
       window.uiManager = this.uiManager;
@@ -63,9 +75,12 @@ class App {
       this.handleSaveSettings = this.handleSaveSettings.bind(this);
       this.testPingOneConnection = this.testPingOneConnection.bind(this);
       this.cancelImport = this.cancelImport.bind(this);
+      this.handleDeleteCsvFileSelect = this.handleDeleteCsvFileSelect.bind(this);
+      this.handleModifyCsvFileSelect = this.handleModifyCsvFileSelect.bind(this);
 
       // Initialize the application
       this.init();
+      console.log('App constructor completed');
     } catch (error) {
       console.error('Error initializing application:', error);
       // Try to show error in UI if possible
@@ -208,380 +223,122 @@ class App {
     }
   }
   setupEventListeners() {
+    console.log('Setting up event listeners...');
+
     // General navigation event listeners for all nav items
     document.querySelectorAll('.nav-item').forEach(navItem => {
       navItem.addEventListener('click', e => {
         e.preventDefault();
-        // Check disclaimer acceptance
-        if (localStorage.getItem('disclaimerAccepted') !== 'true') {
-          this.showView('home');
-          const acceptBtn = document.getElementById('accept-disclaimer');
-          if (acceptBtn) acceptBtn.focus();
-          if (this.uiManager) {
-            this.uiManager.showWarning('Please accept the disclaimer before using the app.');
-          }
-          return;
-        }
         const view = navItem.getAttribute('data-view');
         if (view) {
-          console.log('Nav item clicked:', view);
           this.showView(view);
         }
       });
     });
 
-    // Disclaimer agreement functionality
-    this.setupDisclaimerAgreement();
-
-    // Listen for file selection events
-    window.addEventListener('fileSelected', event => {
-      this.handleFileSelect(event.detail);
+    // Feature card navigation event listeners
+    document.querySelectorAll('.feature-card').forEach(featureCard => {
+      featureCard.addEventListener('click', e => {
+        e.preventDefault();
+        const view = featureCard.getAttribute('data-view');
+        if (view) {
+          this.showView(view);
+        }
+      });
     });
 
-    // Listen for settings form submission
+    // Settings form submission
     const settingsForm = document.getElementById('settings-form');
     if (settingsForm) {
       settingsForm.addEventListener('submit', async e => {
+        e.preventDefault();
+        const formData = new FormData(settingsForm);
+        const settings = Object.fromEntries(formData.entries());
+        await this.handleSaveSettings(settings);
+      });
+    }
+
+    // Get token button
+    const getTokenBtn = document.getElementById('get-token-btn');
+    if (getTokenBtn) {
+      getTokenBtn.addEventListener('click', async () => {
         try {
-          console.log('Settings form submit event triggered');
-          e.preventDefault();
-          e.stopPropagation();
-
-          // Get form data
-          const formData = new FormData(settingsForm);
-          const settings = {
-            environmentId: formData.get('environment-id'),
-            apiClientId: formData.get('api-client-id'),
-            apiSecret: formData.get('api-secret'),
-            populationId: formData.get('population-id'),
-            region: formData.get('region'),
-            rateLimit: parseInt(formData.get('rate-limit')) || 50
-          };
-          console.log('Saving settings:', settings);
-
-          // Save settings
-          await this.handleSaveSettings(settings);
-
-          // Show success message
-          this.uiManager.showNotification('Settings saved successfully', 'success');
+          await this.getToken();
         } catch (error) {
-          console.error('Error in settings form submission:', error);
-          this.uiManager.showNotification(`Error: ${error.message}`, 'error');
-        }
-        return false; // Prevent form submission
-      });
-
-      // Also prevent any button clicks from submitting the form traditionally
-      const saveButton = settingsForm.querySelector('button[type="submit"]');
-      if (saveButton) {
-        saveButton.addEventListener('click', e => {
-          if (e) {
-            e.preventDefault();
-            e.stopPropagation();
-          }
-          settingsForm.dispatchEvent(new Event('submit'));
-          return false;
-        });
-      }
-    }
-
-    // Listen for settings save events (for programmatic saves)
-    window.addEventListener('saveSettings', event => {
-      this.handleSaveSettings(event.detail);
-    });
-
-    // Listen for clear logs events (removed - handled by UI manager directly)
-
-    // Listen for test connection events
-    window.addEventListener('testConnection', () => {
-      this.testPingOneConnection();
-    });
-
-    // Listen for refresh token button clicks
-    const refreshTokenButton = document.getElementById('refresh-token-btn');
-    if (refreshTokenButton) {
-      refreshTokenButton.addEventListener('click', async e => {
-        e.preventDefault();
-        await this.refreshToken();
-      });
-    }
-
-    // Listen for get token button clicks
-    const getTokenButton = document.getElementById('get-token-btn');
-    if (getTokenButton) {
-      getTokenButton.addEventListener('click', async e => {
-        e.preventDefault();
-        await this.getToken();
-      });
-    }
-
-    // Set up import button click handler
-    const importButton = document.getElementById('start-import-btn');
-    if (importButton) {
-      importButton.addEventListener('click', e => {
-        e.preventDefault();
-        this.startImport();
-      });
-    }
-
-    // Listen for import events (for programmatic triggering)
-    window.addEventListener('startImport', () => {
-      this.startImport();
-    });
-
-    // Listen for cancel import events
-    window.addEventListener('cancelImport', () => {
-      this.cancelImport();
-    });
-
-    // Add tab switching for delete-csv
-    const deleteCsvNav = document.querySelector('.nav-item[data-view="delete-csv"]');
-    if (deleteCsvNav) {
-      deleteCsvNav.addEventListener('click', () => {
-        this.showView('delete-csv');
-      });
-    }
-    // File input for delete-csv
-    const deleteCsvFileInput = document.getElementById('delete-csv-file');
-    if (deleteCsvFileInput) {
-      deleteCsvFileInput.addEventListener('change', async e => {
-        const file = e.target.files[0];
-        if (!file) return;
-        try {
-          this.showDeleteCsvFileInfo(file);
-          const allUsers = await this.parseCsvFile(file, 'delete-csv-preview-container');
-
-          // Debug: Log the first few users to see what columns are available
-          console.log('First few users from CSV:', allUsers.slice(0, 3));
-          console.log('Available columns:', allUsers.length > 0 ? Object.keys(allUsers[0]) : 'No users found');
-
-          // Filter users to only include those with username or email
-          const validUsers = allUsers.filter(user => {
-            const hasUsername = user.username && user.username.trim() !== '';
-            const hasEmail = user.email && user.email.trim() !== '';
-            return hasUsername || hasEmail;
+          this.logger.fileLogger.error('Error getting token', {
+            error: error.message
           });
-          this.deleteCsvUsers = validUsers;
-          if (validUsers.length === 0) {
-            this.uiManager.showNotification('No valid users found in CSV. Users must have username or email.', 'error');
-            return;
-          }
-          const skippedCount = allUsers.length - validUsers.length;
-          if (skippedCount > 0) {
-            this.uiManager.showNotification(`Found ${validUsers.length} valid users. Skipped ${skippedCount} users without username or email.`, 'warning');
-          } else {
-            this.uiManager.showNotification(`✅ Found ${validUsers.length} valid users for deletion.`, 'success');
-          }
-          this.updateDeleteCsvButtonState();
-        } catch (error) {
-          this.uiManager.showNotification('Error processing CSV file: ' + error.message, 'error');
+          this.uiManager.showNotification('Failed to get token: ' + error.message, 'error');
         }
       });
     }
 
-    // File input for modify-csv
-    const modifyCsvFileInput = document.getElementById('modify-csv-file');
-    if (modifyCsvFileInput) {
-      console.log('Modify CSV file input found and event listener added');
-      modifyCsvFileInput.addEventListener('change', async e => {
-        console.log('Modify CSV file input change event triggered');
-        const file = e.target.files[0];
-        if (!file) {
-          console.log('No file selected');
-          return;
-        }
-        console.log('File selected for modify:', file.name, file.size);
+    // Refresh token button
+    const refreshTokenBtn = document.getElementById('refresh-token-btn');
+    if (refreshTokenBtn) {
+      refreshTokenBtn.addEventListener('click', async () => {
         try {
-          this.showModifyCsvFileInfo(file);
-          const allUsers = await this.parseCsvFile(file, 'modify-preview-container');
-          console.log('Parsed users:', allUsers.length);
-
-          // Filter users to only include those with username or email
-          const validUsers = allUsers.filter(user => {
-            const hasUsername = user.username && user.username.trim() !== '';
-            const hasEmail = user.email && user.email.trim() !== '';
-            return hasUsername || hasEmail;
-          });
-          this.modifyCsvUsers = validUsers;
-          console.log('Valid users for modify:', validUsers.length);
-          if (validUsers.length === 0) {
-            this.uiManager.showNotification('No valid users found in CSV. Users must have username or email.', 'error');
-            return;
-          }
-          const skippedCount = allUsers.length - validUsers.length;
-          if (skippedCount > 0) {
-            this.uiManager.showNotification(`Found ${validUsers.length} valid users. Skipped ${skippedCount} users without username or email.`, 'warning');
-          } else {
-            this.uiManager.showNotification(`✅ Found ${validUsers.length} valid users for modification.`, 'success');
-          }
-          console.log('Calling updateModifyCsvButtonState');
-          this.updateModifyCsvButtonState();
+          await this.refreshToken();
         } catch (error) {
-          console.error('Error processing modify CSV file:', error);
-          this.uiManager.showNotification('Error processing CSV file: ' + error.message, 'error');
+          this.logger.fileLogger.error('Error refreshing token', {
+            error: error.message
+          });
+          this.uiManager.showNotification('Failed to refresh token: ' + error.message, 'error');
         }
       });
-    } else {
-      console.error('Modify CSV file input not found');
     }
+
+    // Export button
+    const exportBtn = document.getElementById('start-export-btn');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', async e => {
+        e.preventDefault();
+        await this.startExport();
+      });
+    }
+
+    // Cancel export button
+    const cancelExportBtn = document.getElementById('cancel-export-btn');
+    if (cancelExportBtn) {
+      cancelExportBtn.addEventListener('click', e => {
+        e.preventDefault();
+        this.cancelExport();
+      });
+    }
+
     // Delete CSV button
-    const startDeleteCsvBtn = document.getElementById('start-delete-csv-btn');
-    if (startDeleteCsvBtn) {
-      startDeleteCsvBtn.addEventListener('click', () => {
-        this.startDeleteCsv();
+    const deleteCsvBtn = document.getElementById('start-delete-csv-btn');
+    if (deleteCsvBtn) {
+      deleteCsvBtn.addEventListener('click', async e => {
+        e.preventDefault();
+        await this.startDeleteCsv();
       });
     }
+
+    // Cancel delete CSV button
     const cancelDeleteCsvBtn = document.getElementById('cancel-delete-csv-btn');
     if (cancelDeleteCsvBtn) {
-      cancelDeleteCsvBtn.addEventListener('click', () => {
+      cancelDeleteCsvBtn.addEventListener('click', e => {
+        e.preventDefault();
         this.cancelDeleteCsv();
       });
     }
 
     // Modify CSV button
-    const startModifyBtn = document.getElementById('start-modify-btn');
-    if (startModifyBtn) {
-      startModifyBtn.addEventListener('click', () => {
-        this.startModifyCsv();
-      });
-    }
-    const cancelModifyBtn = document.getElementById('cancel-modify-btn');
-    if (cancelModifyBtn) {
-      cancelModifyBtn.addEventListener('click', () => {
-        this.cancelModifyCsv();
-      });
-    }
-
-    // Handle "create if not exists" checkbox
-    const createIfNotExistsCheckbox = document.getElementById('create-if-not-exists');
-    if (createIfNotExistsCheckbox) {
-      createIfNotExistsCheckbox.addEventListener('change', () => {
-        this.handleCreateIfNotExistsChange();
-      });
-    }
-
-    // Home tab navigation
-    const homeNav = document.querySelector('.nav-item[data-view="home"]');
-    if (homeNav) {
-      homeNav.addEventListener('click', () => {
-        this.showView('home');
-      });
-    }
-    // Feature card navigation
-    document.querySelectorAll('.feature-card').forEach(card => {
-      card.addEventListener('click', () => {
-        const view = card.getAttribute('data-view');
-        if (view) this.showView(view);
-      });
-    });
-    // Disclaimer acceptance
-    const disclaimerBtn = document.getElementById('accept-disclaimer');
-    if (disclaimerBtn) {
-      disclaimerBtn.addEventListener('click', () => {
-        localStorage.setItem('disclaimerAccepted', 'true');
-        const disclaimerBox = document.getElementById('disclaimer');
-        if (disclaimerBox) disclaimerBox.style.display = 'none';
-      });
-    }
-    // On load, show disclaimer if not accepted
-    if (localStorage.getItem('disclaimerAccepted') === 'true') {
-      const disclaimerBox = document.getElementById('disclaimer');
-      if (disclaimerBox) disclaimerBox.style.display = 'none';
-    }
-
-    // Export functionality event listeners
-    const startExportBtn = document.getElementById('start-export-btn');
-    console.log('Setting up export button:', startExportBtn);
-    if (startExportBtn) {
-      startExportBtn.addEventListener('click', () => {
-        this.startExport();
-      });
-    } else {
-      console.error('Export button not found during setup!');
-    }
-    const cancelExportBtn = document.getElementById('cancel-export-btn');
-    if (cancelExportBtn) {
-      cancelExportBtn.addEventListener('click', () => {
-        this.cancelExport();
-      });
-    }
-
-    // Export preferences event listeners
-    const openAfterExportCheck = document.getElementById('open-after-export');
-    const preferredCsvApp = document.getElementById('preferred-csv-app');
-    const customAppPath = document.getElementById('custom-app-path');
-    const customAppPathGroup = document.getElementById('custom-app-path-group');
-    if (openAfterExportCheck) {
-      openAfterExportCheck.addEventListener('change', () => {
-        this.saveExportPreferences();
-      });
-    }
-    if (preferredCsvApp) {
-      preferredCsvApp.addEventListener('change', e => {
-        if (customAppPathGroup) {
-          customAppPathGroup.style.display = e.target.value === 'custom' ? 'block' : 'none';
-        }
-        this.saveExportPreferences();
-      });
-    }
-    if (customAppPath) {
-      customAppPath.addEventListener('input', () => {
-        this.saveExportPreferences();
-      });
-    }
-
-    // Load export preferences
-    this.loadExportPreferences();
-
-    // Progress screen cancel button event listeners
-    const cancelImportProgressBtn = document.getElementById('cancel-import-progress');
-    if (cancelImportProgressBtn) {
-      cancelImportProgressBtn.addEventListener('click', e => {
+    const modifyCsvBtn = document.getElementById('start-modify-csv-btn');
+    if (modifyCsvBtn) {
+      modifyCsvBtn.addEventListener('click', async e => {
         e.preventDefault();
-        this.cancelImport();
-        this.logger.fileLogger.info('Import cancelled via progress screen cancel button');
+        await this.startModifyCsv();
       });
     }
-    const cancelDeleteCsvProgressBtn = document.getElementById('cancel-delete-csv-progress');
-    if (cancelDeleteCsvProgressBtn) {
-      cancelDeleteCsvProgressBtn.addEventListener('click', e => {
-        e.preventDefault();
-        this.cancelDeleteCsv();
-        this.logger.fileLogger.info('Delete CSV cancelled via progress screen cancel button');
-      });
-    }
-    const cancelModifyProgressBtn = document.getElementById('cancel-modify-progress');
-    if (cancelModifyProgressBtn) {
-      cancelModifyProgressBtn.addEventListener('click', e => {
+
+    // Cancel modify CSV button
+    const cancelModifyCsvBtn = document.getElementById('cancel-modify-csv-btn');
+    if (cancelModifyCsvBtn) {
+      cancelModifyCsvBtn.addEventListener('click', e => {
         e.preventDefault();
         this.cancelModifyCsv();
-        this.logger.fileLogger.info('Modify CSV cancelled via progress screen cancel button');
-      });
-    }
-    const cancelExportProgressBtn = document.getElementById('cancel-export-progress');
-    if (cancelExportProgressBtn) {
-      cancelExportProgressBtn.addEventListener('click', e => {
-        e.preventDefault();
-        this.cancelExport();
-        this.logger.fileLogger.info('Export cancelled via progress screen cancel button');
-      });
-    }
-
-    // Enable Export button if manual population ID is entered
-    const exportPopulationIdInput = document.getElementById('export-population-id');
-    if (exportPopulationIdInput && startExportBtn) {
-      exportPopulationIdInput.addEventListener('input', () => {
-        console.log('Manual population ID input changed:', exportPopulationIdInput.value);
-        if (exportPopulationIdInput.value.trim().length > 0) {
-          console.log('Enabling export button');
-          startExportBtn.disabled = false;
-        } else {
-          // Only disable if populations are not loaded (dropdown is empty or default)
-          const populationSelect = document.getElementById('export-population-select');
-          const hasPopulations = populationSelect && populationSelect.options.length > 1;
-          console.log('Disabling export button, hasPopulations:', hasPopulations);
-          startExportBtn.disabled = !hasPopulations;
-        }
       });
     }
 
@@ -624,9 +381,110 @@ class App {
     }
 
     // File upload event listeners
-    document.getElementById('csv-file').addEventListener('change', this.handleFileSelect);
+    const csvFileInput = document.getElementById('csv-file');
+    console.log('CSV file input element:', csvFileInput);
+    if (csvFileInput) {
+      csvFileInput.addEventListener('change', event => {
+        console.log('CSV file input change event triggered');
+        const file = event.target.files[0];
+        console.log('Selected file:', file);
+        if (file) {
+          console.log('Calling handleFileSelect with file:', file.name);
+          this.handleFileSelect(file);
+        } else {
+          console.log('No file selected');
+        }
+      });
+      console.log('CSV file input event listener attached');
+    } else {
+      console.error('CSV file input element not found');
+    }
     document.getElementById('delete-csv-file').addEventListener('change', this.handleDeleteCsvFileSelect);
     document.getElementById('modify-csv-file').addEventListener('change', this.handleModifyCsvFileSelect);
+
+    // Population delete event listeners
+    const startPopulationDeleteBtn = document.getElementById('start-population-delete-btn');
+    if (startPopulationDeleteBtn) {
+      startPopulationDeleteBtn.addEventListener('click', async e => {
+        e.preventDefault();
+        await this.startPopulationDelete();
+      });
+    }
+    const cancelPopulationDeleteBtn = document.getElementById('cancel-population-delete-btn');
+    if (cancelPopulationDeleteBtn) {
+      cancelPopulationDeleteBtn.addEventListener('click', e => {
+        e.preventDefault();
+        this.cancelPopulationDelete();
+      });
+    }
+    const populationDeleteSelect = document.getElementById('population-delete-select');
+    if (populationDeleteSelect) {
+      populationDeleteSelect.addEventListener('change', () => {
+        this.updatePopulationDeleteButtonState();
+      });
+    }
+    const cancelPopulationDeleteProgressBtn = document.getElementById('cancel-population-delete-progress');
+    if (cancelPopulationDeleteProgressBtn) {
+      cancelPopulationDeleteProgressBtn.addEventListener('click', e => {
+        e.preventDefault();
+        this.cancelPopulationDelete();
+      });
+    }
+    const closePopulationDeleteStatusBtn = document.getElementById('close-population-delete-status');
+    if (closePopulationDeleteStatusBtn) {
+      closePopulationDeleteStatusBtn.addEventListener('click', e => {
+        e.preventDefault();
+        this.uiManager.hidePopulationDeleteStatus();
+      });
+    }
+
+    // Import button event listeners (top and bottom)
+    const importButton = document.getElementById('start-import-btn');
+    const importButtonBottom = document.getElementById('start-import-btn-bottom');
+    if (importButton) {
+      importButton.addEventListener('click', e => {
+        console.log('Top import button clicked');
+        e.preventDefault();
+        this.startImport();
+      });
+      console.log('Top import button event listener attached');
+    } else {
+      console.error('Top import button not found');
+    }
+    if (importButtonBottom) {
+      importButtonBottom.addEventListener('click', e => {
+        console.log('Bottom import button clicked');
+        e.preventDefault();
+        this.startImport();
+      });
+      console.log('Bottom import button event listener attached');
+    } else {
+      console.error('Bottom import button not found');
+    }
+
+    // Cancel import button event listeners (top and bottom)
+    const cancelImportButton = document.getElementById('cancel-import-btn');
+    const cancelImportButtonBottom = document.getElementById('cancel-import-btn-bottom');
+    if (cancelImportButton) {
+      cancelImportButton.addEventListener('click', e => {
+        console.log('Top cancel import button clicked');
+        e.preventDefault();
+        this.cancelImport();
+      });
+      console.log('Top cancel import button event listener attached');
+    } else {
+      console.error('Top cancel import button not found');
+    }
+    if (cancelImportButtonBottom) {
+      cancelImportButtonBottom.addEventListener('click', e => {
+        console.log('Bottom cancel import button clicked');
+        e.preventDefault();
+        this.cancelImport();
+      });
+      console.log('Bottom cancel import button event listener attached');
+    } else {
+      console.error('Bottom cancel import button not found');
+    }
 
     // Refresh populations button
     document.getElementById('refresh-export-populations').addEventListener('click', async () => {
@@ -656,6 +514,30 @@ class App {
         button.disabled = false;
       }
     });
+
+    // Population selection change listeners for import
+    const importPopulationSelect = document.getElementById('import-population-select');
+    const useCsvPopulationIdCheckbox = document.getElementById('use-csv-population-id');
+    const useDefaultPopulationCheckbox = document.getElementById('use-default-population');
+    if (importPopulationSelect) {
+      importPopulationSelect.addEventListener('change', () => {
+        this.updateImportButtonState();
+      });
+    }
+    if (useCsvPopulationIdCheckbox) {
+      useCsvPopulationIdCheckbox.addEventListener('change', () => {
+        this.updateImportButtonState();
+      });
+    }
+    if (useDefaultPopulationCheckbox) {
+      useDefaultPopulationCheckbox.addEventListener('change', () => {
+        this.updateImportButtonState();
+      });
+    }
+
+    // Setup delete page functionality
+    this.setupDeletePage();
+    console.log('Event listeners setup complete');
   }
   async showView(view) {
     try {
@@ -685,6 +567,11 @@ class App {
         // Load populations for modify when modify view is shown
         if (view === 'modify') {
           await this.loadModifyPopulations();
+        }
+
+        // Load populations for delete when delete view is shown
+        if (view === 'delete') {
+          await this.loadPopulationsForDeletion();
         }
 
         // Load logs when logs view is shown
@@ -1093,23 +980,33 @@ class App {
     this.isImporting = true;
     this.uiManager.setImporting(true);
     try {
-      // Show import progress
-      this.uiManager.showImportProgress();
-      this.uiManager.updateImportProgress(0, 0, 'Starting import...', {
-        success: 0,
-        failed: 0,
-        skipped: 0
-      });
-
       // Get the parsed users from the file handler
       const users = this.fileHandler.getParsedUsers();
       if (!users || users.length === 0) {
         throw new Error('No users found in CSV file. Please check your file and try again.');
       }
 
+      // Show import progress
+      this.uiManager.showImportStatus(users.length);
+      this.uiManager.updateImportProgress(0, 0, 'Starting import...', {
+        success: 0,
+        failed: 0,
+        skipped: 0
+      });
+
       // Get import options
       const importOptions = this.getImportOptions();
       this.logger.fileLogger.info('Import options', importOptions);
+
+      // Validate population selection
+      const hasSelectedPopulation = importOptions.selectedPopulationId && importOptions.selectedPopulationId.trim() !== '';
+      const useDefaultPopulation = importOptions.useDefaultPopulation;
+      const useCsvPopulationId = importOptions.useCsvPopulationId;
+
+      // Check if user has made a population choice
+      if (!hasSelectedPopulation && !useDefaultPopulation && !useCsvPopulationId) {
+        throw new Error('Please select a population or choose "Use default population from settings" before importing users.');
+      }
 
       // Check if CSV population ID is enabled but not available
       if (importOptions.useCsvPopulationId) {
@@ -1253,10 +1150,7 @@ class App {
       this.isImporting = false;
       this.currentImportAbortController = null;
 
-      // Hide progress after a delay to show completion
-      setTimeout(() => {
-        this.uiManager.hideImportProgress();
-      }, 3000);
+      // Import status will persist until user manually closes it
       this.uiManager.setImporting(false);
       this.uiManager.showLoading(false); // Hide spinner
     }
@@ -1302,8 +1196,8 @@ class App {
    */
   validateUser(user, rowNumber) {
     // Check required fields
-    if (!user.email && !user.username) {
-      return `Row ${rowNumber}: User must have either email or username`;
+    if (!user.username) {
+      return `Row ${rowNumber}: User must have a username`;
     }
 
     // Validate email format if provided
@@ -1365,6 +1259,8 @@ class App {
   }
   async startDeleteCsv() {
     if (this.isDeletingCsv) return;
+    const confirmed = await this.confirmDeleteAction('<strong>⚠️ WARNING:</strong> This will permanently delete the selected users from PingOne. This action cannot be undone.<br><br>Type <b>DELETE</b> to confirm.');
+    if (!confirmed) return;
     this.isDeletingCsv = true;
     this.uiManager.setDeletingCsv(true);
     this.uiManager.showDeleteCsvStatus(this.deleteCsvUsers.length);
@@ -1500,31 +1396,8 @@ class App {
         fileSize: file.size
       });
 
-      // Show loading state
-      this.uiManager.showLoading(true, 'Processing file...');
-
-      // Process the file using the file handler
-      const result = await this.fileHandler.processCSV(file);
-      if (result && result.success) {
-        const userCount = result.userCount || 0;
-        this.logger.fileLogger.info('File processed successfully', {
-          rows: userCount,
-          headers: result.headers
-        });
-
-        // Show success message
-        this.uiManager.showNotification(`✅ Successfully processed ${userCount} users`, 'success');
-
-        // Enable import button if we have users and settings are valid
-        const isValid = await this.checkSettings();
-        if (isValid) {
-          this.uiManager.showNotification('Ready to import users', 'info');
-        }
-        return result;
-      } else {
-        const errorMsg = result?.error || 'Failed to process file';
-        throw new Error(errorMsg);
-      }
+      // Use the file handler's handleFileObject method
+      await this.fileHandler.handleFileObject(file);
     } catch (error) {
       const errorMsg = error.message || 'An unknown error occurred while processing the file';
       this.logger.fileLogger.error('Error processing file', {
@@ -1533,9 +1406,6 @@ class App {
       this.uiManager.showNotification(errorMsg, 'error');
       console.error('File processing error:', error);
       throw error; // Re-throw to allow caller to handle if needed
-    } finally {
-      // Always hide loading state
-      this.uiManager.showLoading(false);
     }
   }
 
@@ -1779,42 +1649,33 @@ class App {
   setupDisclaimerAgreement() {
     const acceptButton = document.getElementById('accept-disclaimer');
     const agreementCheckboxes = [document.getElementById('disclaimer-agreement'), document.getElementById('risk-acceptance')];
-    if (!acceptButton || agreementCheckboxes.some(cb => !cb)) {
-      console.warn('Disclaimer agreement elements not found');
+    console.log('[DEBUG] Disclaimer setup: acceptButton', !!acceptButton, 'checkboxes', agreementCheckboxes.map(cb => !!cb));
+    if (!acceptButton) {
+      console.error('[ERROR] Disclaimer accept button not found');
       return;
     }
+    if (agreementCheckboxes.every(cb => !cb)) {
+      console.error('[ERROR] Disclaimer checkboxes not found');
+    }
 
-    // Function to check if all checkboxes are checked
-    const checkAgreementStatus = () => {
-      const allChecked = agreementCheckboxes.every(cb => cb.checked);
-      acceptButton.disabled = !allChecked;
-      if (allChecked) {
-        acceptButton.classList.add('btn-success');
-        acceptButton.classList.remove('btn-danger');
-        acceptButton.innerHTML = '<i class="fas fa-check-circle"></i> I UNDERSTAND AND ACCEPT ALL RISKS';
-      } else {
-        acceptButton.classList.remove('btn-success');
-        acceptButton.classList.add('btn-danger');
-        acceptButton.innerHTML = '<i class="fas fa-exclamation-triangle"></i> I UNDERSTAND AND ACCEPT ALL RISKS';
-      }
-    };
+    // Always enable the button
+    acceptButton.disabled = false;
 
-    // Add event listeners to checkboxes
+    // Add event listeners to checkboxes for debugging
     agreementCheckboxes.forEach(checkbox => {
-      checkbox.addEventListener('change', checkAgreementStatus);
+      if (checkbox) {
+        checkbox.addEventListener('change', () => {
+          console.log('[DEBUG] Checkbox changed:', checkbox.id, 'checked:', checkbox.checked);
+        });
+      }
     });
 
     // Add event listener to accept button
     acceptButton.addEventListener('click', () => {
-      if (acceptButton.disabled) {
-        this.uiManager.showNotification('Please check all agreement boxes first', 'warning');
-        return;
-      }
-
+      console.log('[DEBUG] Disclaimer accept button clicked.');
       // Store agreement in localStorage
       localStorage.setItem('disclaimer-agreed', 'true');
       localStorage.setItem('disclaimer-agreed-date', new Date().toISOString());
-
       // Hide disclaimer and show feature cards
       const disclaimer = document.getElementById('disclaimer');
       const featureCards = document.querySelector('.feature-cards');
@@ -1824,31 +1685,36 @@ class App {
       if (featureCards) {
         featureCards.style.display = 'grid';
       }
+      // Make button green and keep it green
+      acceptButton.classList.add('btn-success');
+      acceptButton.classList.remove('btn-danger');
+      acceptButton.innerHTML = '<i class="fas fa-check-circle"></i> I UNDERSTAND AND ACCEPT ALL RISKS';
       this.uiManager.showNotification('Disclaimer accepted. You can now use the tool.', 'success');
       this.logger.fileLogger.info('User accepted disclaimer agreement');
     });
-
     // Check if user has already agreed
     const hasAgreed = localStorage.getItem('disclaimer-agreed');
+    const disclaimer = document.getElementById('disclaimer');
+    const featureCards = document.querySelector('.feature-cards');
     if (hasAgreed === 'true') {
-      const disclaimer = document.getElementById('disclaimer');
-      const featureCards = document.querySelector('.feature-cards');
       if (disclaimer) {
         disclaimer.style.display = 'none';
       }
       if (featureCards) {
         featureCards.style.display = 'grid';
       }
+      // Make button green and keep it green
+      acceptButton.classList.add('btn-success');
+      acceptButton.classList.remove('btn-danger');
+      acceptButton.innerHTML = '<i class="fas fa-check-circle"></i> I UNDERSTAND AND ACCEPT ALL RISKS';
     } else {
-      // Show feature cards by default, but keep disclaimer visible
-      const featureCards = document.querySelector('.feature-cards');
+      if (disclaimer) {
+        disclaimer.style.display = 'block';
+      }
       if (featureCards) {
-        featureCards.style.display = 'grid';
+        featureCards.style.display = 'none';
       }
     }
-
-    // Initial check
-    checkAgreementStatus();
   }
   async startModifyCsv() {
     if (this.isModifying) return;
@@ -2775,6 +2641,663 @@ class App {
       this.uiManager.showLoading(false);
     }
   }
+  updateImportButtonState() {
+    // Check if we have users to import
+    const users = this.fileHandler.getParsedUsers();
+    const hasUsers = users && users.length > 0;
+
+    // Check if population choice has been made
+    const selectedPopulationId = document.getElementById('import-population-select')?.value || '';
+    const useDefaultPopulation = document.getElementById('use-default-population')?.checked || false;
+    const useCsvPopulationId = document.getElementById('use-csv-population-id')?.checked || false;
+    const hasSelectedPopulation = selectedPopulationId && selectedPopulationId.trim() !== '';
+    const hasPopulationChoice = hasSelectedPopulation || useDefaultPopulation || useCsvPopulationId;
+
+    // Enable buttons only if we have users AND a population choice
+    const shouldEnable = hasUsers && hasPopulationChoice;
+
+    // Update both import buttons
+    const importBtn = document.getElementById('start-import-btn');
+    const importBtnBottom = document.getElementById('start-import-btn-bottom');
+    if (importBtn) {
+      importBtn.disabled = !shouldEnable;
+    }
+    if (importBtnBottom) {
+      importBtnBottom.disabled = !shouldEnable;
+    }
+    this.logger.fileLogger.info('Import button state updated', {
+      hasUsers,
+      hasPopulationChoice,
+      shouldEnable,
+      selectedPopulationId: hasSelectedPopulation ? 'selected' : 'none',
+      useDefaultPopulation,
+      useCsvPopulationId
+    });
+  }
+
+  /**
+   * Update delete CSV button state
+   */
+  updateDeleteCsvButtonState() {
+    const startDeleteBtn = document.getElementById('start-delete-csv-btn');
+    const cancelDeleteBtn = document.getElementById('cancel-delete-csv-btn');
+    if (startDeleteBtn) {
+      startDeleteBtn.disabled = !this.deleteCsvUsers || this.deleteCsvUsers.length === 0;
+    }
+    if (cancelDeleteBtn) {
+      cancelDeleteBtn.style.display = this.isDeletingCsv ? 'inline-block' : 'none';
+    }
+  }
+
+  /**
+   * Load populations for deletion dropdown
+   */
+  async loadPopulationsForDeletion() {
+    try {
+      const populationSelect = document.getElementById('population-delete-select');
+      if (!populationSelect) {
+        console.warn('Population delete select not found');
+        return;
+      }
+
+      // Clear existing options
+      populationSelect.innerHTML = '<option value="">Loading populations...</option>';
+
+      // Get populations from PingOne
+      const populations = await this.pingOneClient.getPopulations();
+      if (populations && populations._embedded && populations._embedded.populations) {
+        // Clear loading option
+        populationSelect.innerHTML = '<option value="">Select a population...</option>';
+
+        // Add populations to select
+        populations._embedded.populations.forEach(population => {
+          const option = document.createElement('option');
+          option.value = population.id;
+          option.textContent = population.name || population.id;
+          populationSelect.appendChild(option);
+        });
+        console.log('Loaded populations for deletion:', populations._embedded.populations.length);
+      } else {
+        populationSelect.innerHTML = '<option value="">No populations found</option>';
+        console.warn('No populations found for deletion');
+      }
+    } catch (error) {
+      console.error('Failed to load populations for deletion:', error);
+      const populationSelect = document.getElementById('population-delete-select');
+      if (populationSelect) {
+        populationSelect.innerHTML = '<option value="">Error loading populations</option>';
+      }
+    }
+  }
+
+  /**
+   * Update population delete button state
+   */
+  updatePopulationDeleteButtonState() {
+    const startDeleteBtn = document.getElementById('start-population-delete-btn');
+    const cancelDeleteBtn = document.getElementById('cancel-population-delete-btn');
+    const populationSelect = document.getElementById('population-delete-select');
+    if (startDeleteBtn && populationSelect) {
+      startDeleteBtn.disabled = !populationSelect.value || this.isDeletingPopulation;
+    }
+    if (cancelDeleteBtn) {
+      cancelDeleteBtn.style.display = this.isDeletingPopulation ? 'inline-block' : 'none';
+    }
+  }
+
+  /**
+   * Start population deletion process
+   */
+  async startPopulationDelete() {
+    const populationSelect = document.getElementById('population-delete-select');
+    if (!populationSelect || !populationSelect.value) {
+      this.uiManager.showNotification('Please select a population to delete users from.', 'warning');
+      return;
+    }
+    const populationId = populationSelect.value;
+    const populationName = populationSelect.options[populationSelect.selectedIndex].text;
+    // Use modal instead of confirm
+    const confirmed = await this.confirmDeleteAction(`<strong>⚠️ WARNING:</strong> This will permanently delete <b>ALL</b> users in the population <b>"${populationName}"</b>. This action cannot be undone.<br><br>Type <b>DELETE</b> to confirm.`);
+    if (!confirmed) return;
+    this.isDeletingPopulation = true;
+    this.updatePopulationDeleteButtonState();
+    try {
+      // Show progress UI
+      this.uiManager.showPopulationDeleteStatus();
+
+      // Get all users in the population
+      this.logger.fileLogger.info('Starting population deletion', {
+        populationId,
+        populationName
+      });
+      const users = await this.pingOneClient.getUsersByPopulation(populationId);
+      if (!users || users.length === 0) {
+        this.uiManager.showNotification(`No users found in population: ${populationName}`, 'info');
+        this.resetPopulationDeleteState();
+        return;
+      }
+      this.logger.fileLogger.info('Found users to delete', {
+        populationId,
+        populationName,
+        userCount: users.length
+      });
+
+      // Start deletion process
+      await this.deleteUsersFromPopulation(users, populationName);
+    } catch (error) {
+      console.error('Population deletion failed:', error);
+      this.logger.fileLogger.error('Population deletion failed', {
+        populationId,
+        populationName,
+        error: error.message
+      });
+      this.uiManager.showNotification(`Failed to delete users from population: ${error.message}`, 'error');
+      this.resetPopulationDeleteState();
+    }
+  }
+
+  /**
+   * Show population delete confirmation dialog
+   */
+  async showPopulationDeleteConfirmation(populationName) {
+    return new Promise(resolve => {
+      const confirmed = confirm(`⚠️ WARNING: This action will permanently delete ALL users in the population "${populationName}".\n\n` + `This action cannot be undone. Are you absolutely sure you want to proceed?\n\n` + `Type "DELETE" to confirm:`);
+      if (confirmed) {
+        const userInput = prompt('Type "DELETE" to confirm the deletion of all users:');
+        resolve(userInput === 'DELETE');
+      } else {
+        resolve(false);
+      }
+    });
+  }
+
+  /**
+   * Delete users from a population
+   */
+  async deleteUsersFromPopulation(users, populationName) {
+    const totalUsers = users.length;
+    let deletedCount = 0;
+    let failedCount = 0;
+    let skippedCount = 0;
+    this.logger.fileLogger.info('Starting user deletion from population', {
+      populationName,
+      totalUsers
+    });
+    for (let i = 0; i < users.length; i++) {
+      const user = users[i];
+      try {
+        // Check if we should cancel
+        if (this.cancelPopulationDelete) {
+          this.logger.fileLogger.info('Population deletion cancelled by user');
+          break;
+        }
+
+        // Update progress
+        const progress = (i + 1) / totalUsers * 100;
+        this.updatePopulationDeleteProgress(i + 1, totalUsers, `Deleting user ${i + 1} of ${totalUsers}...`, {
+          success: deletedCount,
+          failed: failedCount,
+          skipped: skippedCount
+        });
+
+        // Delete the user
+        await this.pingOneClient.deleteUser(user.id);
+        deletedCount++;
+        this.logger.fileLogger.info('User deleted successfully', {
+          userId: user.id,
+          username: user.username,
+          populationName
+        });
+
+        // Rate limiting
+        await this.delay(1000 / this.settings.rateLimit);
+      } catch (error) {
+        console.error(`Failed to delete user ${user.username}:`, error);
+        this.logger.fileLogger.error('Failed to delete user', {
+          userId: user.id,
+          username: user.username,
+          populationName,
+          error: error.message
+        });
+        failedCount++;
+      }
+    }
+
+    // Final progress update
+    this.updatePopulationDeleteProgress(totalUsers, totalUsers, 'Deletion completed', {
+      success: deletedCount,
+      failed: failedCount,
+      skipped: skippedCount
+    });
+
+    // Show completion message
+    const message = `Population deletion completed: ${deletedCount} deleted, ${failedCount} failed, ${skippedCount} skipped`;
+    this.uiManager.showNotification(message, deletedCount > 0 ? 'success' : 'warning');
+    this.logger.fileLogger.info('Population deletion completed', {
+      populationName,
+      deleted: deletedCount,
+      failed: failedCount,
+      skipped: skippedCount
+    });
+    this.resetPopulationDeleteState();
+  }
+
+  /**
+   * Update population delete progress
+   */
+  updatePopulationDeleteProgress(current, total, message) {
+    let counts = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
+    const progressBar = document.getElementById('population-delete-progress');
+    const progressPercent = document.getElementById('population-delete-progress-percent');
+    const progressText = document.getElementById('population-delete-progress-text');
+    const progressCount = document.getElementById('population-delete-progress-count');
+    const successCount = document.getElementById('population-delete-success-count');
+    const failedCount = document.getElementById('population-delete-failed-count');
+    const skippedCount = document.getElementById('population-delete-skipped-count');
+    if (progressBar) {
+      const percent = total > 0 ? current / total * 100 : 0;
+      progressBar.style.width = `${percent}%`;
+      progressBar.setAttribute('aria-valuenow', percent);
+    }
+    if (progressPercent) progressPercent.textContent = `${Math.round(current / total * 100)}%`;
+    if (progressText) progressText.textContent = message;
+    if (progressCount) progressCount.textContent = `${current} of ${total} users`;
+    if (successCount) successCount.textContent = counts.success || 0;
+    if (failedCount) failedCount.textContent = counts.failed || 0;
+    if (skippedCount) skippedCount.textContent = counts.skipped || 0;
+  }
+
+  /**
+   * Cancel population deletion
+   */
+  cancelPopulationDelete() {
+    this.cancelPopulationDelete = true;
+    this.uiManager.showNotification('Population deletion cancelled', 'info');
+    this.resetPopulationDeleteState();
+  }
+
+  /**
+   * Reset population delete state
+   */
+  resetPopulationDeleteState() {
+    this.isDeletingPopulation = false;
+    this.cancelPopulationDelete = false;
+    this.updatePopulationDeleteButtonState();
+    this.uiManager.hidePopulationDeleteStatus();
+  }
+
+  // Add after constructor/init
+  setupDeleteWarningModal() {
+    this.deleteWarningModal = document.getElementById('delete-warning-modal');
+    this.deleteWarningContinue = document.getElementById('delete-warning-continue');
+    this.deleteWarningCancel = document.getElementById('delete-warning-cancel');
+    this.deleteConfirmInput = document.getElementById('delete-confirm-input');
+    this.deleteWarningMessage = document.getElementById('delete-warning-message');
+    if (!this.deleteWarningModal) return;
+    // Hide modal utility
+    this.hideDeleteWarningModal = () => {
+      this.deleteWarningModal.style.display = 'none';
+      this.deleteConfirmInput.value = '';
+      this.deleteWarningContinue.disabled = true;
+    };
+    // Show modal utility
+    this.showDeleteWarningModal = message => {
+      this.deleteWarningMessage.innerHTML = message || '<strong>⚠️ WARNING:</strong> This action will permanently delete users from PingOne. This cannot be undone.<br><br>Are you absolutely sure you want to continue?';
+      this.deleteWarningModal.style.display = 'flex';
+      this.deleteConfirmInput.value = '';
+      this.deleteWarningContinue.disabled = true;
+      this.deleteConfirmInput.focus();
+    };
+    // Enable Continue only if DELETE is typed
+    this.deleteConfirmInput.addEventListener('input', () => {
+      this.deleteWarningContinue.disabled = this.deleteConfirmInput.value !== 'DELETE';
+    });
+    // Cancel button
+    this.deleteWarningCancel.addEventListener('click', () => {
+      this.hideDeleteWarningModal();
+      if (this._deleteActionReject) this._deleteActionReject(false);
+    });
+    // Continue button
+    this.deleteWarningContinue.addEventListener('click', () => {
+      this.hideDeleteWarningModal();
+      if (this._deleteActionResolve) this._deleteActionResolve(true);
+    });
+  }
+  // Utility to show modal and return a promise
+  confirmDeleteAction(message) {
+    return new Promise((resolve, reject) => {
+      this._deleteActionResolve = resolve;
+      this._deleteActionReject = reject;
+      this.showDeleteWarningModal(message);
+    });
+  }
+  async startDeleteAllUsersInEnvironment() {
+    // Fetch all users in the environment
+    this.uiManager.showLoading(true, 'Fetching all users in environment...');
+    let users;
+    try {
+      users = await this.pingOneClient.getAllUsersInEnvironment();
+    } catch (err) {
+      this.uiManager.showLoading(false);
+      this.uiManager.showNotification('Failed to fetch users: ' + err.message, 'error');
+      return;
+    }
+    this.uiManager.showLoading(false);
+    if (!users || users.length === 0) {
+      this.uiManager.showNotification('No users found in environment.', 'info');
+      return;
+    }
+    // Confirm again before proceeding
+    const confirmed = await this.confirmDeleteAction(`<strong>⚠️ FINAL WARNING:</strong> This will permanently delete <b>ALL</b> users in your PingOne environment (${users.length} users). This action cannot be undone.<br><br>Type <b>DELETE</b> to confirm.`);
+    if (!confirmed) return;
+    // Show progress UI
+    this.uiManager.showLoading(true, 'Deleting all users in environment...');
+    let deleted = 0,
+      failed = 0;
+    for (let i = 0; i < users.length; i++) {
+      try {
+        await this.pingOneClient.deleteUser(users[i].id);
+        deleted++;
+      } catch (err) {
+        failed++;
+      }
+      this.uiManager.showLoading(true, `Deleting user ${i + 1} of ${users.length}... (${deleted} deleted, ${failed} failed)`);
+    }
+    this.uiManager.showLoading(false);
+    this.uiManager.showNotification(`Environment delete completed: ${deleted} deleted, ${failed} failed`, deleted > 0 ? 'success' : 'warning');
+  }
+  setupDeletePage() {
+    // CSV Delete Section
+    const deleteCsvCheckbox = document.getElementById('delete-csv-checkbox');
+    const csvDeleteControls = document.getElementById('csv-delete-controls');
+    const deleteCsvBtn = document.getElementById('deleteCsvBtn');
+    const csvFileInput = document.getElementById('csvFile');
+    if (deleteCsvCheckbox) {
+      deleteCsvCheckbox.addEventListener('change', e => {
+        csvDeleteControls.style.display = e.target.checked ? 'block' : 'none';
+        if (!e.target.checked) {
+          csvFileInput.value = '';
+        }
+      });
+    }
+    if (deleteCsvBtn) {
+      deleteCsvBtn.addEventListener('click', () => {
+        if (!csvFileInput.files[0]) {
+          this.uiManager.showNotification('Please select a CSV file first.', 'error');
+          return;
+        }
+        this.showDeleteWarning('CSV', () => {
+          this.startDeleteUsersFromCsv();
+        });
+      });
+    }
+
+    // Population Delete Section
+    const deletePopulationCheckbox = document.getElementById('delete-all-users-population-checkbox');
+    const populationDeleteControls = document.getElementById('population-delete-controls');
+    const deletePopulationBtn = document.getElementById('deletePopulationBtn');
+    const populationSelect = document.getElementById('populationSelect');
+    if (deletePopulationCheckbox) {
+      deletePopulationCheckbox.addEventListener('change', e => {
+        populationDeleteControls.style.display = e.target.checked ? 'block' : 'none';
+        if (e.target.checked) {
+          this.loadPopulations();
+        }
+      });
+    }
+    if (deletePopulationBtn) {
+      deletePopulationBtn.addEventListener('click', () => {
+        if (!populationSelect.value) {
+          this.uiManager.showNotification('Please select a population first.', 'error');
+          return;
+        }
+        this.showDeleteWarning('Population', () => {
+          this.startDeleteAllUsersInPopulation();
+        });
+      });
+    }
+
+    // Environment Delete Section
+    const deleteEnvironmentCheckbox = document.getElementById('delete-all-users-env-checkbox');
+    const environmentDeleteControls = document.getElementById('environment-delete-controls');
+    const deleteEnvironmentBtn = document.getElementById('deleteEnvironmentBtn');
+    if (deleteEnvironmentCheckbox) {
+      deleteEnvironmentCheckbox.addEventListener('change', e => {
+        environmentDeleteControls.style.display = e.target.checked ? 'block' : 'none';
+      });
+    }
+    if (deleteEnvironmentBtn) {
+      deleteEnvironmentBtn.addEventListener('click', () => {
+        this.showDeleteWarning('Environment', () => {
+          this.startDeleteAllUsersInEnvironment();
+        });
+      });
+    }
+  }
+  showDeleteWarning(type, onConfirm) {
+    const modal = document.getElementById('delete-warning-modal');
+    const message = document.getElementById('delete-warning-message');
+    const confirmInput = document.getElementById('delete-confirm-input');
+    const continueBtn = document.getElementById('delete-warning-continue');
+    const cancelBtn = document.getElementById('delete-warning-cancel');
+    if (!modal || !message || !confirmInput || !continueBtn || !cancelBtn) return;
+
+    // Set warning message based on type
+    let warningText = '';
+    switch (type) {
+      case 'CSV':
+        warningText = 'Are you sure you want to delete users from the CSV file? This action cannot be undone.';
+        break;
+      case 'Population':
+        warningText = 'Are you sure you want to delete ALL users in the selected population? This action cannot be undone.';
+        break;
+      case 'Environment':
+        warningText = 'Are you sure you want to delete ALL users in the entire environment? This is a destructive action that cannot be undone.';
+        break;
+      default:
+        warningText = 'Are you sure you want to proceed with this deletion? This action cannot be undone.';
+    }
+    message.textContent = warningText;
+    confirmInput.value = '';
+    continueBtn.disabled = true;
+
+    // Show modal
+    modal.style.display = 'flex';
+
+    // Handle input validation
+    confirmInput.addEventListener('input', () => {
+      continueBtn.disabled = confirmInput.value !== 'DELETE';
+    });
+
+    // Handle continue button
+    continueBtn.onclick = () => {
+      if (confirmInput.value === 'DELETE') {
+        this.hideDeleteWarning();
+        onConfirm();
+      }
+    };
+
+    // Handle cancel button
+    cancelBtn.onclick = () => {
+      this.hideDeleteWarning();
+    };
+
+    // Handle escape key
+    modal.onclick = e => {
+      if (e.target === modal) {
+        this.hideDeleteWarning();
+      }
+    };
+
+    // Focus on input
+    confirmInput.focus();
+  }
+  hideDeleteWarning() {
+    const modal = document.getElementById('delete-warning-modal');
+    if (modal) {
+      modal.style.display = 'none';
+    }
+  }
+  async startDeleteUsersFromCsv() {
+    const fileInput = document.getElementById('csvFile');
+    const file = fileInput.files[0];
+    if (!file) {
+      this.uiManager.showNotification('Please select a CSV file first.', 'error');
+      return;
+    }
+    try {
+      const csvData = await this.readCsvFile(file);
+      const users = this.parseCsvData(csvData);
+      if (users.length === 0) {
+        this.uiManager.showNotification('No valid users found in CSV file.', 'error');
+        return;
+      }
+      this.uiManager.showLoading(true, `Deleting ${users.length} users...`);
+      let deletedCount = 0;
+      let errorCount = 0;
+      const errors = [];
+      for (let i = 0; i < users.length; i++) {
+        const user = users[i];
+        try {
+          await this.pingOneClient.deleteUser(user.username);
+          deletedCount++;
+          this.uiManager.showLoading(true, `Deleted ${deletedCount}/${users.length} users...`);
+        } catch (error) {
+          errorCount++;
+          errors.push(`Failed to delete ${user.username}: ${error.message}`);
+        }
+      }
+      this.uiManager.showLoading(false);
+      if (errorCount === 0) {
+        this.uiManager.showNotification(`Successfully deleted ${deletedCount} users.`, 'success');
+      } else {
+        this.uiManager.showNotification(`Deleted ${deletedCount} users. ${errorCount} errors occurred.`, 'warning');
+        console.error('Delete errors:', errors);
+      }
+    } catch (error) {
+      this.uiManager.showLoading(false);
+      this.uiManager.showNotification('Error processing CSV file: ' + error.message, 'error');
+    }
+  }
+  async startDeleteAllUsersInPopulation() {
+    const populationSelect = document.getElementById('populationSelect');
+    const populationId = populationSelect.value;
+    if (!populationId) {
+      this.uiManager.showNotification('Please select a population first.', 'error');
+      return;
+    }
+    this.uiManager.showLoading(true, 'Fetching users in population...');
+    try {
+      const users = await this.pingOneClient.getAllUsersInPopulation(populationId);
+      if (users.length === 0) {
+        this.uiManager.showLoading(false);
+        this.uiManager.showNotification('No users found in the selected population.', 'info');
+        return;
+      }
+      this.uiManager.showLoading(true, `Deleting ${users.length} users from population...`);
+      let deletedCount = 0;
+      let errorCount = 0;
+      const errors = [];
+      for (let i = 0; i < users.length; i++) {
+        const user = users[i];
+        try {
+          await this.pingOneClient.deleteUser(user.id);
+          deletedCount++;
+          this.uiManager.showLoading(true, `Deleted ${deletedCount}/${users.length} users...`);
+        } catch (error) {
+          errorCount++;
+          errors.push(`Failed to delete ${user.username || user.id}: ${error.message}`);
+        }
+      }
+      this.uiManager.showLoading(false);
+      if (errorCount === 0) {
+        this.uiManager.showNotification(`Successfully deleted ${deletedCount} users from population.`, 'success');
+      } else {
+        this.uiManager.showNotification(`Deleted ${deletedCount} users. ${errorCount} errors occurred.`, 'warning');
+        console.error('Delete errors:', errors);
+      }
+    } catch (error) {
+      this.uiManager.showLoading(false);
+      this.uiManager.showNotification('Error deleting users: ' + error.message, 'error');
+    }
+  }
+  async startDeleteAllUsersInEnvironment() {
+    this.uiManager.showLoading(true, 'Fetching all users in environment...');
+    try {
+      const users = await this.pingOneClient.getAllUsersInEnvironment();
+      if (users.length === 0) {
+        this.uiManager.showLoading(false);
+        this.uiManager.showNotification('No users found in the environment.', 'info');
+        return;
+      }
+      this.uiManager.showLoading(true, `Deleting ${users.length} users from environment...`);
+      let deletedCount = 0;
+      let errorCount = 0;
+      const errors = [];
+      for (let i = 0; i < users.length; i++) {
+        const user = users[i];
+        try {
+          await this.pingOneClient.deleteUser(user.id);
+          deletedCount++;
+          this.uiManager.showLoading(true, `Deleted ${deletedCount}/${users.length} users...`);
+        } catch (error) {
+          errorCount++;
+          errors.push(`Failed to delete ${user.username || user.id}: ${error.message}`);
+        }
+      }
+      this.uiManager.showLoading(false);
+      if (errorCount === 0) {
+        this.uiManager.showNotification(`Successfully deleted ${deletedCount} users from environment.`, 'success');
+      } else {
+        this.uiManager.showNotification(`Deleted ${deletedCount} users. ${errorCount} errors occurred.`, 'warning');
+        console.error('Delete errors:', errors);
+      }
+    } catch (error) {
+      this.uiManager.showLoading(false);
+      this.uiManager.showNotification('Error deleting users: ' + error.message, 'error');
+    }
+  }
+  async loadPopulations() {
+    const populationSelect = document.getElementById('populationSelect');
+    if (!populationSelect) return;
+    try {
+      const populations = await this.pingOneClient.getPopulations();
+      populationSelect.innerHTML = '<option value="">Select a population...</option>';
+      populations.forEach(population => {
+        const option = document.createElement('option');
+        option.value = population.id;
+        option.textContent = population.name;
+        populationSelect.appendChild(option);
+      });
+    } catch (error) {
+      this.uiManager.showNotification('Error loading populations: ' + error.message, 'error');
+      populationSelect.innerHTML = '<option value="">Error loading populations</option>';
+    }
+  }
+  readCsvFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsText(file);
+    });
+  }
+  parseCsvData(csvData) {
+    const lines = csvData.split('\n');
+    const headers = lines[0].split(',').map(h => h.trim());
+    const users = [];
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i].trim()) {
+        const values = lines[i].split(',').map(v => v.trim());
+        const user = {};
+        headers.forEach((header, index) => {
+          user[header] = values[index] || '';
+        });
+        users.push(user);
+      }
+    }
+    return users;
+  }
 }
 
 // Initialize the application when the DOM is fully loaded
@@ -3047,7 +3570,7 @@ class FileHandler {
   constructor(logger, uiManager) {
     this.logger = logger;
     this.uiManager = uiManager;
-    this.requiredFields = ['email'];
+    this.requiredFields = ['username'];
     this.validationResults = {
       total: 0,
       valid: 0,
@@ -3141,8 +3664,16 @@ class FileHandler {
   }
 
   /**
-   * Handle file selection
-   * @param {Event} event - File input change event
+   * Handle a File object directly (not an event)
+   * @param {File} file
+   */
+  async handleFileObject(file) {
+    await this._handleFileInternal(file);
+  }
+
+  /**
+   * Handle file selection from an input event
+   * @param {Event} event
    */
   async handleFileSelect(event) {
     const file = event.target.files[0];
@@ -3150,12 +3681,51 @@ class FileHandler {
       this.logger.warn('No file selected');
       return;
     }
+    await this._handleFileInternal(file, event);
+  }
 
-    // Validate file type
-    if (!file.name.toLowerCase().endsWith('.csv')) {
-      this.logger.error('Invalid file type. Please select a CSV file.');
-      this.uiManager.showNotification('Please select a CSV file.', 'error');
+  /**
+   * Shared internal file handling logic
+   * @param {File} file
+   * @param {Event} [event]
+   * @private
+   */
+  async _handleFileInternal(file, event) {
+    // Debug: Log the file object structure
+    this.logger.debug('File object received:', {
+      hasFile: !!file,
+      fileType: typeof file,
+      hasName: !!file.name,
+      hasSize: !!file.size,
+      fileName: file.name,
+      fileSize: file.size
+    });
+
+    // Validate file has required properties
+    if (!file.name) {
+      this.logger.error('File object missing name property', {
+        file
+      });
+      this.uiManager.showNotification('Invalid file object: missing file name', 'error');
       return;
+    }
+
+    // Permissive file type validation: only block known bad extensions
+    const knownBadExtensions = ['.exe', '.js', '.png', '.jpg', '.jpeg', '.gif', '.pdf', '.zip', '.tar', '.gz'];
+    const fileNameLower = file.name.toLowerCase();
+    const hasBadExtension = knownBadExtensions.some(ext => fileNameLower.endsWith(ext));
+    if (hasBadExtension) {
+      this.logger.error('Invalid file type. Please select a CSV or text file.');
+      this.uiManager.showNotification('Please select a CSV or text file.', 'error');
+      return;
+    }
+    // Warn if not .csv/.txt, but allow
+    const allowedExtensions = ['.csv', '.txt', ''];
+    const hasAllowedExtension = allowedExtensions.some(ext => fileNameLower.endsWith(ext));
+    if (!hasAllowedExtension) {
+      this.logger.warn('File does not have a standard CSV or text extension, attempting to process anyway.', {
+        fileName: file.name
+      });
     }
 
     // Validate file size (max 10MB)
@@ -3171,12 +3741,14 @@ class FileHandler {
         fileSize: file.size,
         lastModified: file.lastModified
       });
+      console.log('About to parse CSV file', file);
 
       // Show loading state
       this.uiManager.showNotification('Processing CSV file...', 'info');
 
       // Parse CSV file with robust validation
       const parseResults = await this.parseCSVFile(file);
+      console.log('CSV parsing completed', parseResults);
       this.logger.info('CSV parsing completed', {
         totalRows: parseResults.totalRows,
         validUsers: parseResults.validUsers,
@@ -3218,11 +3790,17 @@ class FileHandler {
           errors: parseResults.errors.slice(0, 10) // Log first 10 errors
         });
       }
+
+      // Update import button state based on population selection
+      if (window.app && window.app.updateImportButtonState) {
+        window.app.updateImportButtonState();
+      }
     } catch (error) {
       this.logger.error('Failed to process CSV file', {
         error: error.message,
         fileName: file.name
       });
+      console.error('Error in _handleFileInternal:', error);
       let errorMessage = 'Failed to process CSV file. ';
       if (error.message.includes('Missing required headers')) {
         errorMessage += error.message;
@@ -3236,7 +3814,9 @@ class FileHandler {
       this.uiManager.showNotification(errorMessage, 'error');
 
       // Clear file input
-      event.target.value = '';
+      if (event && event.target && event.target.value) {
+        event.target.value = '';
+      }
     }
   }
   async processCSV(file) {
@@ -3256,26 +3836,19 @@ class FileHandler {
       throw new Error('File is empty');
     }
 
-    // Check file type
+    // Only block known bad extensions, allow all others
     const fileName = file.name || '';
     const fileExt = this.getFileExtension(fileName).toLowerCase();
-    const fileType = file.type || '';
-    this.logger.log(`File info - Name: ${fileName}, Extension: ${fileExt}, Type: ${fileType}`, 'debug');
-
-    // Check if file has a valid extension or is a text file
-    const isValidExtension = fileExt && ['csv', 'txt'].includes(fileExt);
-    const isTextFile = fileType.match(/text\/.*/) || fileType === ''; // Some browsers might not set type for CSV
-
-    if (!isValidExtension && !isTextFile) {
-      const errorMsg = `Unsupported file type: ${fileExt || 'unknown'}. Please upload a CSV or text file.`;
+    const knownBadExts = ['exe', 'js', 'png', 'jpg', 'jpeg', 'gif', 'pdf', 'zip', 'tar', 'gz'];
+    if (fileExt && knownBadExts.includes(fileExt)) {
+      const errorMsg = `Unsupported file type: ${fileExt}. Please upload a CSV or text file.`;
       this.logger.error(errorMsg, {
         fileName,
-        fileExt,
-        fileType
+        fileExt
       });
       throw new Error(errorMsg);
     }
-
+    // Accept all other extensions and blank/unknown types
     // Check file size (max 10MB)
     const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
@@ -3404,7 +3977,7 @@ class FileHandler {
 
           // Parse header row
           const headers = this.parseCSVRow(lines[0]);
-          const requiredHeaders = ['firstName', 'lastName', 'email'];
+          const requiredHeaders = ['username'];
           const missingHeaders = requiredHeaders.filter(header => !headers.some(h => h.toLowerCase() === header.toLowerCase()));
           if (missingHeaders.length > 0) {
             reject(new Error(`Missing required headers: ${missingHeaders.join(', ')}. Required headers are: ${requiredHeaders.join(', ')}`));
@@ -3540,8 +4113,8 @@ class FileHandler {
     }
 
     // Validate required fields
-    if (!user.email && !user.username) {
-      throw new Error(`Row ${rowNumber}: User must have either email or username`);
+    if (!user.username) {
+      throw new Error(`Row ${rowNumber}: User must have a username`);
     }
 
     // Set default username if not provided
@@ -3658,10 +4231,14 @@ class FileHandler {
     if (!this.previewContainer) return;
     if (!rows || rows.length === 0) {
       this.previewContainer.innerHTML = '<div class="alert alert-info">No data to display</div>';
-      // Disable import button if no rows
+      // Disable import buttons if no rows
       const importBtn = document.getElementById('start-import-btn');
+      const importBtnBottom = document.getElementById('start-import-btn-bottom');
       if (importBtn) {
         importBtn.disabled = true;
+      }
+      if (importBtnBottom) {
+        importBtnBottom.disabled = true;
       }
       return;
     }
@@ -3689,14 +4266,36 @@ class FileHandler {
         `;
     this.previewContainer.innerHTML = html;
 
-    // Enable import button after showing preview
+    // Check if population choice has been made
+    const hasPopulationChoice = this.checkPopulationChoice();
+
+    // Enable import buttons after showing preview (only if population choice is made)
     const importBtn = document.getElementById('start-import-btn');
+    const importBtnBottom = document.getElementById('start-import-btn-bottom');
     if (importBtn) {
-      importBtn.disabled = false;
-      this.logger.log('Import button enabled', 'debug');
+      importBtn.disabled = !hasPopulationChoice;
+      this.logger.log(`Import button ${hasPopulationChoice ? 'enabled' : 'disabled'}`, 'debug');
     } else {
       this.logger.warn('Could not find import button to enable', 'warn');
     }
+    if (importBtnBottom) {
+      importBtnBottom.disabled = !hasPopulationChoice;
+      this.logger.log(`Bottom import button ${hasPopulationChoice ? 'enabled' : 'disabled'}`, 'debug');
+    } else {
+      this.logger.warn('Could not find bottom import button to enable', 'warn');
+    }
+  }
+
+  /**
+   * Check if user has made a population choice
+   * @returns {boolean} True if a population choice has been made
+   */
+  checkPopulationChoice() {
+    const selectedPopulationId = document.getElementById('import-population-select')?.value || '';
+    const useDefaultPopulation = document.getElementById('use-default-population')?.checked || false;
+    const useCsvPopulationId = document.getElementById('use-csv-population-id')?.checked || false;
+    const hasSelectedPopulation = selectedPopulationId && selectedPopulationId.trim() !== '';
+    return hasSelectedPopulation || useDefaultPopulation || useCsvPopulationId;
   }
 
   // ======================
@@ -5290,7 +5889,12 @@ class PingOneClient {
         try {
           // Call progress callback before processing each user
           if (onProgress) {
-            onProgress(currentIndex, totalUsers, currentUser);
+            onProgress(currentIndex, totalUsers, currentUser, {
+              success: successCount,
+              failed: failedCount,
+              skipped: skippedCount,
+              retries: retryCount
+            });
           }
 
           // Validate user data before creating
@@ -5471,8 +6075,8 @@ class PingOneClient {
    */
   validateUserForImport(user) {
     // Check required fields
-    if (!user.email && !user.username) {
-      return 'User must have either email or username';
+    if (!user.username) {
+      return 'User must have a username';
     }
 
     // Validate email format if provided
@@ -6080,6 +6684,57 @@ class PingOneClient {
     }
     return results;
   }
+
+  /**
+   * Fetch all users in a specific population (paginated)
+   * @param {string} populationId - The population ID
+   * @returns {Promise<Array>} Array of user objects
+   */
+  async getAllUsersInPopulation(populationId) {
+    const settings = this.getSettings();
+    const users = [];
+    let page = 1;
+    const pageSize = 100;
+    let total = 0;
+    let fetched = 0;
+    do {
+      const resp = await this.request('GET', `/environments/${settings.environmentId}/populations/${populationId}/users?limit=${pageSize}&page=${page}`);
+      if (resp._embedded && resp._embedded.users) {
+        users.push(...resp._embedded.users);
+        fetched = resp._embedded.users.length;
+        total = resp._embedded.users.length;
+      } else {
+        total = 0;
+      }
+      page++;
+    } while (fetched === pageSize && total > 0);
+    return users;
+  }
+
+  /**
+   * Fetch all users in the environment (paginated)
+   * @returns {Promise<Array>} Array of user objects
+   */
+  async getAllUsersInEnvironment() {
+    const settings = this.getSettings();
+    const users = [];
+    let page = 1;
+    const pageSize = 100;
+    let total = 0;
+    let fetched = 0;
+    do {
+      const resp = await this.request('GET', `/environments/${settings.environmentId}/users?limit=${pageSize}&page=${page}`);
+      if (resp._embedded && resp._embedded.users) {
+        users.push(...resp._embedded.users);
+        fetched = resp._embedded.users.length;
+        total = resp.page && resp.page.totalElements ? resp.page.totalElements : users.length;
+      } else {
+        break;
+      }
+      page++;
+    } while (users.length < total && fetched > 0);
+    return users;
+  }
 }
 exports.PingOneClient = PingOneClient;
 
@@ -6245,7 +6900,7 @@ class SettingsManager {
       populationId: 'not set',
       region: 'NorthAmerica',
       // Rate limiting
-      rateLimit: 50,
+      rateLimit: 90,
       // Connection status
       connectionStatus: 'disconnected',
       connectionMessage: 'Not connected',
@@ -6746,8 +7401,301 @@ class UIManager {
     // Load persisted status from localStorage
     this.loadPersistedStatus();
 
+    // Rate limit warning tracking
+    this.lastRateLimitWarning = null;
+    this.rateLimitWarningCooldown = 30000; // 30 seconds cooldown
+
+    // Progress log tracking
+    this.progressLog = [];
+    this.maxProgressLogEntries = 100; // Keep last 100 entries
+
+    // Import state tracking
+    this.isImporting = false;
+
+    // Log pagination tracking
+    this.logsPagination = {
+      currentPage: 1,
+      pageSize: 25,
+      totalRecords: 0,
+      totalPages: 0,
+      allLogs: [],
+      // Store all logs for pagination
+      isLoading: false
+    };
+
     // Set up progress close button handlers
     this.setupProgressCloseButtons();
+
+    // Set up log navigation handlers
+    this.setupLogNavigation();
+  }
+
+  /**
+   * Set up event handlers for log navigation buttons
+   */
+  setupLogNavigation() {
+    const logNavButtons = [{
+      id: 'scroll-logs-top',
+      action: 'scrollToTop'
+    }, {
+      id: 'scroll-logs-up',
+      action: 'scrollUp'
+    }, {
+      id: 'scroll-logs-down',
+      action: 'scrollDown'
+    }, {
+      id: 'scroll-logs-bottom',
+      action: 'scrollToBottom'
+    }];
+    logNavButtons.forEach(_ref => {
+      let {
+        id,
+        action
+      } = _ref;
+      const button = document.getElementById(id);
+      if (button) {
+        button.addEventListener('click', () => {
+          this[action]();
+          this.logger?.info(`Log navigation: ${action}`);
+        });
+      }
+    });
+  }
+
+  /**
+   * Scroll logs to the top
+   */
+  scrollToTop() {
+    const logsContainer = document.getElementById('log-entries');
+    if (logsContainer) {
+      logsContainer.scrollTop = 0;
+      this.showNotification('Scrolled to top of logs', 'info');
+    }
+  }
+
+  /**
+   * Scroll logs up by one page
+   */
+  scrollUp() {
+    const logsContainer = document.getElementById('log-entries');
+    if (logsContainer) {
+      const scrollAmount = logsContainer.clientHeight * 0.8;
+      logsContainer.scrollTop = Math.max(0, logsContainer.scrollTop - scrollAmount);
+      this.showNotification('Scrolled up in logs', 'info');
+    }
+  }
+
+  /**
+   * Scroll logs down by one page
+   */
+  scrollDown() {
+    const logsContainer = document.getElementById('log-entries');
+    if (logsContainer) {
+      const scrollAmount = logsContainer.clientHeight * 0.8;
+      logsContainer.scrollTop = Math.min(logsContainer.scrollHeight - logsContainer.clientHeight, logsContainer.scrollTop + scrollAmount);
+      this.showNotification('Scrolled down in logs', 'info');
+    }
+  }
+
+  /**
+   * Scroll logs to the bottom
+   */
+  scrollToBottom() {
+    const logsContainer = document.getElementById('log-entries');
+    if (logsContainer) {
+      logsContainer.scrollTop = logsContainer.scrollHeight;
+      this.showNotification('Scrolled to bottom of logs', 'info');
+    }
+  }
+
+  /**
+   * Update pagination controls and display
+   */
+  updatePaginationControls() {
+    const counter = document.getElementById('logs-counter');
+    const pageInput = document.getElementById('logs-page-input');
+    const totalPages = document.getElementById('logs-total-pages');
+    const firstBtn = document.getElementById('logs-first-page');
+    const prevBtn = document.getElementById('logs-prev-page');
+    const nextBtn = document.getElementById('logs-next-page');
+    const lastBtn = document.getElementById('logs-last-page');
+    const pageSizeSelect = document.getElementById('logs-page-size');
+    if (!counter || !pageInput || !totalPages) return;
+    const {
+      currentPage,
+      pageSize,
+      totalRecords,
+      totalPages: total
+    } = this.logsPagination;
+
+    // Update counter
+    const startRecord = (currentPage - 1) * pageSize + 1;
+    const endRecord = Math.min(currentPage * pageSize, totalRecords);
+    counter.textContent = `${startRecord}-${endRecord} of ${totalRecords} records shown`;
+
+    // Update page input and total pages
+    pageInput.value = currentPage;
+    totalPages.textContent = total;
+
+    // Update navigation buttons
+    firstBtn.disabled = currentPage <= 1;
+    prevBtn.disabled = currentPage <= 1;
+    nextBtn.disabled = currentPage >= total;
+    lastBtn.disabled = currentPage >= total;
+
+    // Update page size selector
+    if (pageSizeSelect) {
+      pageSizeSelect.value = pageSize;
+    }
+  }
+
+  /**
+   * Display logs for current page
+   */
+  displayCurrentPageLogs() {
+    const {
+      currentPage,
+      pageSize,
+      allLogs
+    } = this.logsPagination;
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    const pageLogs = allLogs.slice(startIndex, endIndex);
+    this.displayLogs(pageLogs);
+    this.updatePaginationControls();
+  }
+
+  /**
+   * Display logs in the log entries container
+   */
+  displayLogs(logs) {
+    const logEntries = document.getElementById('log-entries');
+    if (!logEntries) return;
+
+    // Clear existing content
+    logEntries.innerHTML = '';
+    if (!logs || logs.length === 0) {
+      const noLogsElement = document.createElement('div');
+      noLogsElement.className = 'log-entry info';
+      noLogsElement.textContent = 'No logs available';
+      logEntries.appendChild(noLogsElement);
+      return;
+    }
+    logs.forEach((log, index) => {
+      try {
+        if (log && typeof log === 'object') {
+          const logElement = document.createElement('div');
+          const logLevel = (log.level || 'info').toLowerCase();
+          logElement.className = `log-entry log-${logLevel}`;
+          logElement.style.cursor = 'pointer';
+          const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+          const level = log.level ? log.level.toUpperCase() : 'INFO';
+          const message = log.message || 'No message';
+
+          // Create the main log content with expand icon
+          logElement.innerHTML = `
+                        <div class="log-content">
+                            <span class="log-timestamp">[${timestamp}]</span>
+                            <span class="log-level">${level}</span>
+                            <span class="log-message">${message}</span>
+                            <span class="log-expand-icon">
+                                <i class="fas fa-chevron-right"></i>
+                            </span>
+                        </div>
+                    `;
+
+          // Add expandable details section
+          const detailsElement = document.createElement('div');
+          detailsElement.className = 'log-details';
+          detailsElement.style.display = 'none';
+          detailsElement.innerHTML = `
+                        <div class="log-details-content">
+                            <pre class="log-detail-json">${JSON.stringify(log, null, 2)}</pre>
+                        </div>
+                    `;
+          logElement.appendChild(detailsElement);
+
+          // Add click handler for expand/collapse
+          const logContent = logElement.querySelector('.log-content');
+          const expandIcon = logElement.querySelector('.log-expand-icon i');
+          logContent.addEventListener('click', function (e) {
+            // Only toggle if not clicking a link or button inside
+            if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
+            const expanded = logElement.classList.toggle('expanded');
+            if (detailsElement) {
+              detailsElement.style.display = expanded ? 'block' : 'none';
+            }
+
+            // Update expand icon
+            if (expandIcon) {
+              expandIcon.className = expanded ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
+            }
+          });
+          logEntries.appendChild(logElement);
+        }
+      } catch (logError) {
+        console.error(`Error processing log entry at index ${index}:`, logError);
+      }
+    });
+  }
+
+  /**
+   * Setup pagination event handlers
+   */
+  setupPaginationHandlers() {
+    const firstBtn = document.getElementById('logs-first-page');
+    const prevBtn = document.getElementById('logs-prev-page');
+    const nextBtn = document.getElementById('logs-next-page');
+    const lastBtn = document.getElementById('logs-last-page');
+    const pageInput = document.getElementById('logs-page-input');
+    const pageSizeSelect = document.getElementById('logs-page-size');
+    if (firstBtn) firstBtn.addEventListener('click', () => this.goToPage(1));
+    if (prevBtn) prevBtn.addEventListener('click', () => this.goToPage(this.logsPagination.currentPage - 1));
+    if (nextBtn) nextBtn.addEventListener('click', () => this.goToPage(this.logsPagination.currentPage + 1));
+    if (lastBtn) lastBtn.addEventListener('click', () => this.goToPage(this.logsPagination.totalPages));
+    if (pageInput) {
+      pageInput.addEventListener('keypress', e => {
+        if (e.key === 'Enter') {
+          const page = parseInt(pageInput.value);
+          if (page && page >= 1 && page <= this.logsPagination.totalPages) {
+            this.goToPage(page);
+          }
+        }
+      });
+    }
+    if (pageSizeSelect) {
+      pageSizeSelect.addEventListener('change', e => {
+        this.logsPagination.pageSize = parseInt(e.target.value);
+        this.logsPagination.currentPage = 1;
+        this.calculatePagination();
+        this.displayCurrentPageLogs();
+      });
+    }
+  }
+
+  /**
+   * Navigate to a specific page
+   */
+  goToPage(page) {
+    if (page < 1 || page > this.logsPagination.totalPages) return;
+    this.logsPagination.currentPage = page;
+    this.displayCurrentPageLogs();
+  }
+
+  /**
+   * Calculate pagination values
+   */
+  calculatePagination() {
+    const {
+      pageSize,
+      totalRecords
+    } = this.logsPagination;
+    this.logsPagination.totalPages = Math.ceil(totalRecords / pageSize);
+
+    // Ensure current page is within bounds
+    if (this.logsPagination.currentPage > this.logsPagination.totalPages) {
+      this.logsPagination.currentPage = this.logsPagination.totalPages || 1;
+    }
   }
 
   /**
@@ -6796,12 +7744,12 @@ class UIManager {
       statusId: 'modify-status',
       viewName: 'modify'
     }];
-    progressScreens.forEach(_ref => {
+    progressScreens.forEach(_ref2 => {
       let {
         buttonId,
         statusId,
         viewName
-      } = _ref;
+      } = _ref2;
       const closeButton = document.getElementById(buttonId);
       const statusElement = document.getElementById(statusId);
       if (closeButton && statusElement) {
@@ -7079,8 +8027,8 @@ class UIManager {
    */
   async showView(viewName) {
     // Hide all views and remove 'active'
-    Object.entries(this.views).forEach(_ref2 => {
-      let [name, element] = _ref2;
+    Object.entries(this.views).forEach(_ref3 => {
+      let [name, element] = _ref3;
       if (element) {
         element.style.display = 'none';
         element.classList.remove('active');
@@ -7137,8 +8085,8 @@ class UIManager {
     }
 
     // Hide all views
-    Object.entries(this.views).forEach(_ref3 => {
-      let [name, element] = _ref3;
+    Object.entries(this.views).forEach(_ref4 => {
+      let [name, element] = _ref4;
       if (element) {
         element.style.display = 'none';
         element.classList.remove('active');
@@ -7454,10 +8402,16 @@ class UIManager {
     // Clear existing content and show loading
     logEntries.innerHTML = '';
     logEntries.appendChild(loadingElement);
+
+    // Update counter to show loading
+    const counter = document.getElementById('logs-counter');
+    if (counter) {
+      counter.textContent = 'Loading...';
+    }
     try {
       // Fetch logs from the UI logs endpoint
       safeLog('Fetching logs from /api/logs/ui...', 'debug');
-      const response = await fetch('/api/logs/ui?limit=200');
+      const response = await fetch('/api/logs/ui?limit=1000'); // Fetch more logs for pagination
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -7466,7 +8420,7 @@ class UIManager {
         count: responseData.logs?.length
       });
 
-      // Clear any existing logs in the UI
+      // Clear loading indicator
       logEntries.innerHTML = '';
       if (responseData.success === true && Array.isArray(responseData.logs)) {
         if (responseData.logs.length === 0) {
@@ -7474,81 +8428,41 @@ class UIManager {
           noLogsElement.className = 'log-entry info';
           noLogsElement.textContent = 'No logs available';
           logEntries.appendChild(noLogsElement);
+
+          // Update pagination
+          this.logsPagination.allLogs = [];
+          this.logsPagination.totalRecords = 0;
+          this.calculatePagination();
+          this.updatePaginationControls();
           return;
         }
 
         // Process logs in chronological order (oldest first, newest last)
         // Reverse the array since server returns newest first, but we want oldest first
         const logsToProcess = [...responseData.logs].reverse();
-        logsToProcess.forEach((log, index) => {
-          try {
-            if (log && typeof log === 'object') {
-              const logElement = document.createElement('div');
-              const logLevel = (log.level || 'info').toLowerCase();
-              logElement.className = `log-entry log-${logLevel}`;
-              logElement.style.cursor = 'pointer';
-              const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
-              const level = log.level ? log.level.toUpperCase() : 'INFO';
-              const message = log.message || 'No message';
 
-              // Create the main log content with expand icon
-              logElement.innerHTML = `
-                                <div class="log-content">
-                                    <span class="log-timestamp">[${timestamp}]</span>
-                                    <span class="log-level">${level}</span>
-                                    <span class="log-message">${message}</span>
-                                    <span class="log-expand-icon">
-                                        <i class="fas fa-chevron-right"></i>
-                                    </span>
-                                </div>
-                            `;
+        // Store all logs for pagination
+        this.logsPagination.allLogs = logsToProcess;
+        this.logsPagination.totalRecords = logsToProcess.length;
+        this.calculatePagination();
 
-              // Add expandable details section
-              const detailsElement = document.createElement('div');
-              detailsElement.className = 'log-details';
-              detailsElement.style.display = 'none';
-              detailsElement.innerHTML = `
-                                <div class="log-details-content">
-                                    <pre class="log-detail-json">${JSON.stringify(log, null, 2)}</pre>
-                                </div>
-                            `;
-              logElement.appendChild(detailsElement);
+        // Display current page logs
+        this.displayCurrentPageLogs();
 
-              // Add click handler for expand/collapse
-              const logContent = logElement.querySelector('.log-content');
-              const expandIcon = logElement.querySelector('.log-expand-icon i');
-              logContent.addEventListener('click', function (e) {
-                // Only toggle if not clicking a link or button inside
-                if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
-                const expanded = logElement.classList.toggle('expanded');
-                if (detailsElement) {
-                  detailsElement.style.display = expanded ? 'block' : 'none';
-                }
-
-                // Update expand icon
-                if (expandIcon) {
-                  expandIcon.className = expanded ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
-                }
-              });
-              logEntries.appendChild(logElement);
-            } else {
-              safeLog(`Skipping invalid log entry at index ${index}`, 'warn', log);
-            }
-          } catch (logError) {
-            safeLog(`Error processing log entry at index ${index}: ${logError.message}`, 'error', {
-              error: logError
-            });
-          }
-        });
-
-        // Scroll to bottom after adding logs
-        this.scrollLogsToBottom();
+        // Setup pagination handlers if not already done
+        this.setupPaginationHandlers();
       } else {
         safeLog('No valid log entries found in response', 'warn');
         const noLogsElement = document.createElement('div');
         noLogsElement.className = 'log-entry info';
         noLogsElement.textContent = 'No logs available';
         logEntries.appendChild(noLogsElement);
+
+        // Update pagination
+        this.logsPagination.allLogs = [];
+        this.logsPagination.totalRecords = 0;
+        this.calculatePagination();
+        this.updatePaginationControls();
       }
     } catch (error) {
       safeLog(`Error fetching logs: ${error.message}`, 'error', {
@@ -7558,96 +8472,16 @@ class UIManager {
           stack: error.stack
         }
       });
+      const errorElement = document.createElement('div');
+      errorElement.className = 'log-entry error';
+      errorElement.textContent = `Error loading logs: ${error.message}`;
+      logEntries.appendChild(errorElement);
 
-      // Fallback: show in-memory logs from logger
-      logEntries.innerHTML = '';
-      let fallbackLogs = [];
-      if (this.logger && typeof this.logger.getLogs === 'function') {
-        fallbackLogs = this.logger.getLogs();
-      }
-      if (fallbackLogs.length > 0) {
-        fallbackLogs.slice(-200).reverse().forEach((log, index) => {
-          const logElement = document.createElement('div');
-          const logLevel = (log.level || 'info').toLowerCase();
-          logElement.className = `log-entry log-${logLevel}`;
-          logElement.style.cursor = 'pointer';
-          const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
-          const level = log.level ? log.level.toUpperCase() : 'INFO';
-          const message = log.message || 'No message';
-
-          // Create the main log content with expand icon
-          logElement.innerHTML = `
-                        <div class="log-content">
-                            <span class="log-timestamp">[${timestamp}]</span>
-                            <span class="log-level">${level}</span>
-                            <span class="log-message">${message}</span>
-                            <span class="log-expand-icon">
-                                <i class="fas fa-chevron-right"></i>
-                            </span>
-                        </div>
-                    `;
-
-          // Add expandable details section
-          const detailsElement = document.createElement('div');
-          detailsElement.className = 'log-details';
-          detailsElement.style.display = 'none';
-          detailsElement.innerHTML = `
-                        <div class="log-details-content">
-                            <pre class="log-detail-json">${JSON.stringify(log, null, 2)}</pre>
-                        </div>
-                    `;
-          logElement.appendChild(detailsElement);
-
-          // Add click handler for expand/collapse
-          const logContent = logElement.querySelector('.log-content');
-          const expandIcon = logElement.querySelector('.log-expand-icon i');
-          logContent.addEventListener('click', function (e) {
-            if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
-            const expanded = logElement.classList.toggle('expanded');
-            if (detailsElement) {
-              detailsElement.style.display = expanded ? 'block' : 'none';
-            }
-
-            // Update expand icon
-            if (expandIcon) {
-              expandIcon.className = expanded ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
-            }
-          });
-          logEntries.appendChild(logElement);
-        });
-        this.scrollLogsToBottom();
-      } else {
-        const errorElement = document.createElement('div');
-        errorElement.className = 'log-entry error';
-        errorElement.textContent = `Error loading logs: ${error.message} (No logs available)`;
-        logEntries.appendChild(errorElement);
-      }
-    } finally {
-      // Remove loading indicator
-      const loadingElement = document.getElementById('logs-loading');
-      if (loadingElement && loadingElement.parentNode === logEntries) {
-        logEntries.removeChild(loadingElement);
-      }
-    }
-  }
-
-  /**
-   * Show the import status section
-   * @param {number} totalUsers - Total number of users to import
-   */
-  /**
-   * Show or hide the import status section
-   * @param {boolean} isImporting - Whether import is in progress
-   */
-  setImporting(isImporting) {
-    const importButton = document.getElementById('start-import');
-    const cancelButton = document.getElementById('cancel-import');
-    if (importButton) {
-      importButton.disabled = isImporting;
-      importButton.textContent = isImporting ? 'Importing...' : 'Start Import';
-    }
-    if (cancelButton) {
-      cancelButton.style.display = isImporting ? 'inline-block' : 'none';
+      // Update pagination
+      this.logsPagination.allLogs = [];
+      this.logsPagination.totalRecords = 0;
+      this.calculatePagination();
+      this.updatePaginationControls();
     }
   }
 
@@ -7660,6 +8494,9 @@ class UIManager {
     if (importStatus) {
       importStatus.style.display = 'block';
     }
+
+    // Set importing flag
+    this.isImporting = true;
 
     // Update last run status
     this.updateLastRunStatus('import', 'User Import', 'In Progress', `Importing ${totalUsers} users`, {
@@ -7675,6 +8512,14 @@ class UIManager {
       failed: 0,
       skipped: 0
     });
+
+    // Add initial progress log entry
+    this.addProgressLogEntry(`Starting import of ${totalUsers} users`, 'info', {
+      total: totalUsers
+    });
+
+    // Set up progress log handlers
+    this.setupProgressLogHandlers();
   }
 
   /**
@@ -7709,6 +8554,19 @@ class UIManager {
       if (skippedElement) skippedElement.textContent = results.skipped || 0;
     }
 
+    // Add progress log entry
+    let logType = 'info';
+    if (status.includes('completed') || status.includes('success')) {
+      logType = 'success';
+    } else if (status.includes('failed') || status.includes('error')) {
+      logType = 'error';
+    } else if (status.includes('skipped')) {
+      logType = 'warning';
+    } else if (status.includes('Importing')) {
+      logType = 'progress';
+    }
+    this.addProgressLogEntry(status, logType, results);
+
     // Update persistent status
     const operationStatus = current >= total ? 'Completed' : 'In Progress';
     this.updateLastRunStatus('import', 'User Import', operationStatus, status, {
@@ -7723,6 +8581,9 @@ class UIManager {
    * Reset the import state
    */
   resetImportState() {
+    // Set importing flag to false
+    this.isImporting = false;
+
     // Clear the "In Progress" status to prevent progress screen from showing on future page loads
     const currentStatus = this.lastRunStatus['import'];
     if (currentStatus && currentStatus.status === 'In Progress') {
@@ -7758,6 +8619,12 @@ class UIManager {
     if (skippedCount) skippedCount.textContent = '0';
     // Hide population warning
     this.hidePopulationWarning && this.hidePopulationWarning();
+
+    // Only clear progress log if we're not currently importing
+    // This prevents clearing the log during active imports
+    if (!this.isImporting) {
+      this.clearProgressLog();
+    }
   }
 
   /**
@@ -7767,10 +8634,17 @@ class UIManager {
    */
   setImportButtonState(enabled, text) {
     const importButton = document.getElementById('start-import-btn');
+    const importButtonBottom = document.getElementById('start-import-btn-bottom');
     if (importButton) {
       importButton.disabled = !enabled;
       if (text) {
         importButton.textContent = text;
+      }
+    }
+    if (importButtonBottom) {
+      importButtonBottom.disabled = !enabled;
+      if (text) {
+        importButtonBottom.textContent = text;
       }
     }
   }
@@ -7872,6 +8746,16 @@ class UIManager {
       maxRetries,
       retryDelay
     } = options;
+
+    // Check if we recently showed a rate limit warning
+    const now = Date.now();
+    if (this.lastRateLimitWarning && now - this.lastRateLimitWarning < this.rateLimitWarningCooldown) {
+      // Skip showing the warning if it was shown recently
+      return;
+    }
+
+    // Update the last warning time
+    this.lastRateLimitWarning = now;
     let enhancedMessage = message;
 
     // Add retry information if available
@@ -7966,8 +8850,8 @@ class UIManager {
     };
 
     // Update each form field with the corresponding setting value
-    Object.entries(settingFields).forEach(_ref4 => {
-      let [settingKey, fieldId] = _ref4;
+    Object.entries(settingFields).forEach(_ref5 => {
+      let [settingKey, fieldId] = _ref5;
       const element = document.getElementById(fieldId);
       if (element && settings[settingKey] !== undefined) {
         element.value = settings[settingKey] || '';
@@ -8042,6 +8926,10 @@ class UIManager {
         }
       });
     }
+
+    // Setup pagination handlers
+    this.setupPaginationHandlers();
+
     // Make sure the current view is visible
     const currentView = this.getLastView();
     this.showView(currentView);
@@ -8543,6 +9431,142 @@ class UIManager {
     // Example: update an element with file name/size
     // console.log('updateFileInfo called', fileInfo);
   }
+
+  /**
+   * Add an entry to the progress log
+   * @param {string} message - The progress message
+   * @param {string} type - The type of entry (success, error, warning, info)
+   * @param {Object} stats - Optional stats object
+   */
+  addProgressLogEntry(message) {
+    let type = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'info';
+    let stats = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : null;
+    const timestamp = new Date().toLocaleTimeString();
+    const entry = {
+      timestamp,
+      message,
+      type,
+      stats
+    };
+
+    // Add to progress log array
+    this.progressLog.push(entry);
+
+    // Keep only the last maxProgressLogEntries
+    if (this.progressLog.length > this.maxProgressLogEntries) {
+      this.progressLog = this.progressLog.slice(-this.maxProgressLogEntries);
+    }
+
+    // Update the display
+    this.updateProgressLogDisplay();
+  }
+
+  /**
+   * Update the progress log display
+   */
+  updateProgressLogDisplay() {
+    const logContainer = document.getElementById('progress-log-entries');
+    if (!logContainer) return;
+
+    // Clear existing entries
+    logContainer.innerHTML = '';
+
+    // Add all entries
+    this.progressLog.forEach(entry => {
+      const entryElement = document.createElement('div');
+      entryElement.className = `progress-log-entry ${entry.type}`;
+      const icon = this.getProgressLogIcon(entry.type);
+      const statsText = entry.stats ? this.formatProgressStats(entry.stats) : '';
+      entryElement.innerHTML = `
+                <span class="entry-timestamp">${entry.timestamp}</span>
+                <span class="entry-icon">${icon}</span>
+                <span class="entry-message">${entry.message}</span>
+                ${statsText ? `<span class="entry-stats">${statsText}</span>` : ''}
+            `;
+      logContainer.appendChild(entryElement);
+    });
+
+    // Scroll to bottom to show latest entries
+    logContainer.scrollTop = logContainer.scrollHeight;
+  }
+
+  /**
+   * Get the appropriate icon for a progress log entry type
+   * @param {string} type - The entry type
+   * @returns {string} The icon HTML
+   */
+  getProgressLogIcon(type) {
+    const icons = {
+      success: '<i class="fas fa-check-circle"></i>',
+      error: '<i class="fas fa-exclamation-circle"></i>',
+      warning: '<i class="fas fa-exclamation-triangle"></i>',
+      info: '<i class="fas fa-info-circle"></i>',
+      progress: '<i class="fas fa-spinner fa-spin"></i>'
+    };
+    return icons[type] || icons.info;
+  }
+
+  /**
+   * Format progress stats for display
+   * @param {Object} stats - The stats object
+   * @returns {string} Formatted stats string
+   */
+  formatProgressStats(stats) {
+    const parts = [];
+    if (stats.success !== undefined) parts.push(`✅ ${stats.success}`);
+    if (stats.failed !== undefined) parts.push(`❌ ${stats.failed}`);
+    if (stats.skipped !== undefined) parts.push(`⏭️ ${stats.skipped}`);
+    if (stats.total !== undefined) parts.push(`📊 ${stats.total}`);
+    return parts.join(' ');
+  }
+
+  /**
+   * Clear the progress log
+   */
+  clearProgressLog() {
+    this.progressLog = [];
+    this.updateProgressLogDisplay();
+    this.logger?.info('Progress log cleared');
+  }
+
+  /**
+   * Set up progress log event handlers
+   */
+  setupProgressLogHandlers() {
+    const clearButton = document.getElementById('clear-progress-log');
+    if (clearButton) {
+      clearButton.addEventListener('click', () => {
+        this.clearProgressLog();
+        this.showNotification('Progress log cleared', 'info');
+      });
+    }
+  }
+
+  /**
+   * Show or hide the import status section
+   * @param {boolean} isImporting - Whether import is in progress
+   */
+  setImporting(isImporting) {
+    this.isImporting = isImporting;
+    const importButton = document.getElementById('start-import-btn');
+    const importButtonBottom = document.getElementById('start-import-btn-bottom');
+    const cancelButton = document.getElementById('cancel-import-btn');
+    const cancelButtonBottom = document.getElementById('cancel-import-btn-bottom');
+    if (importButton) {
+      importButton.disabled = isImporting;
+      importButton.textContent = isImporting ? 'Importing...' : 'Import Users (v1.0.2)';
+    }
+    if (importButtonBottom) {
+      importButtonBottom.disabled = isImporting;
+      importButtonBottom.textContent = isImporting ? 'Importing...' : 'Import Users (v1.0.2)';
+    }
+    if (cancelButton) {
+      cancelButton.style.display = isImporting ? 'inline-block' : 'none';
+    }
+    if (cancelButtonBottom) {
+      cancelButtonBottom.style.display = isImporting ? 'inline-block' : 'none';
+    }
+  }
 }
 
 // No need for module.exports with ES modules
@@ -8557,7 +9581,7 @@ Object.defineProperty(exports, "__esModule", {
 exports.VersionManager = void 0;
 class VersionManager {
   constructor() {
-    this.version = '4.1'; // Update this with each new version
+    this.version = '4.2'; // Update this with each new version
     console.log(`Version Manager initialized with version ${this.version}`);
   }
   getVersion() {

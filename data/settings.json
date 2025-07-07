@@ -1,16 +1,17 @@
 {
-  "apiClientId": "26e7f07c-11a4-402a-b064-07b55aee189e",
-  "apiSecret": "enc:3Pjai4/WFPdsfOLrk1mHSt+JRGRP8rv9cATVUDr81Vtj9i7FPML5vGlerYLDWVm/HN2OjVY8iuC1MkXxIO3WOmUe/CC2n+2XhXl7G5g+d9XjOTAUcSaRSJ3haak=",
   "environmentId": "b9817c16-9910-4415-b67e-4ac687da74d9",
+  "apiClientId": "26e7f07c-11a4-402a-b064-07b55aee189e",
+  "apiSecret": "enc:BbobDJLF0UHcPfDecTsVm1rO2IsYc26zgmx1I1rWZY7gdlV5onwrLZiga0UmBzkpHe+ZYRgqIhLqBLoofVM+pDgD8H+qDZebKC0X8m0Aw++fF5f5olESyhxGHKw=",
   "populationId": "",
   "region": "NorthAmerica",
-  "rateLimit": 50,
+  "rateLimit": 90,
   "connectionStatus": "connected",
   "connectionMessage": "Connected",
-  "lastConnectionTest": "2025-07-07T14:12:56.543Z",
+  "lastConnectionTest": "2025-07-07T17:25:28.747Z",
   "autoSave": true,
   "lastUsedDirectory": "",
   "theme": "light",
   "pageSize": 50,
-  "showNotifications": true
+  "showNotifications": true,
+  "test": "value"
 }

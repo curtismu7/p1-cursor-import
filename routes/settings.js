@@ -269,7 +269,7 @@ async function readSettings() {
         apiSecret: process.env.PINGONE_CLIENT_SECRET ? `enc:${Buffer.from(process.env.PINGONE_CLIENT_SECRET).toString('base64')}` : "",
         populationId: process.env.PINGONE_POPULATION_ID || "not set",
         region: process.env.PINGONE_REGION || "NorthAmerica",
-        rateLimit: parseInt(process.env.RATE_LIMIT) || 50
+        rateLimit: parseInt(process.env.RATE_LIMIT) || 90
     };
 
     try {
@@ -367,11 +367,19 @@ router.post("/", express.json(), async (req, res) => {
             });
         }
         
-        // Validate required fields
-        if (!newSettings.environmentId || !newSettings.apiClientId) {
+        // Only validate required fields if they are provided in the request
+        // This allows the frontend to save partial settings
+        if (newSettings.environmentId !== undefined && !newSettings.environmentId) {
             return res.status(400).json({
                 success: false,
-                error: "Missing required fields: Environment ID and API Client ID are required"
+                error: "Environment ID cannot be empty if provided"
+            });
+        }
+        
+        if (newSettings.apiClientId !== undefined && !newSettings.apiClientId) {
+            return res.status(400).json({
+                success: false,
+                error: "API Client ID cannot be empty if provided"
             });
         }
         
@@ -395,54 +403,101 @@ router.post("/", express.json(), async (req, res) => {
             if (existingSettings.apiSecret && !newSettings.apiSecret) {
                 newSettings.apiSecret = existingSettings.apiSecret;
             }
+            
+            // Merge with existing settings to preserve any missing fields
+            const mergedSettings = { ...existingSettings, ...newSettings };
+            
+            // Ensure directory exists
+            const settingsDir = dirname(SETTINGS_PATH);
+            await fs.mkdir(settingsDir, { recursive: true });
+            
+            // Save merged settings to file
+            await fs.writeFile(SETTINGS_PATH, JSON.stringify(mergedSettings, null, 2), "utf8");
+            
+            // Update environment variables (but skip encrypted API secret)
+            await updateEnvironmentVariables(mergedSettings);
+
+            // Update .env file
+            await updateEnvFile(mergedSettings);
+            
+            // Update rate limiter if rate limit changed
+            if (mergedSettings.rateLimit) {
+                // Get the app instance to call updateRateLimiter
+                const app = req.app;
+                if (app && typeof app.get === 'function') {
+                    const updateRateLimiter = app.get('updateRateLimiter');
+                    if (updateRateLimiter && typeof updateRateLimiter === 'function') {
+                        updateRateLimiter(mergedSettings.rateLimit);
+                    }
+                }
+            }
+            
+            // Log successful settings save
+            logger.info('Settings saved successfully', {
+                environmentId: mergedSettings.environmentId ? '***' + mergedSettings.environmentId.slice(-4) : 'not set',
+                region: mergedSettings.region,
+                apiClientId: mergedSettings.apiClientId ? '***' + mergedSettings.apiClientId.slice(-4) : 'not set',
+                populationId: mergedSettings.populationId ? '***' + mergedSettings.populationId.slice(-4) : 'not set',
+                hasApiSecret: !!mergedSettings.apiSecret,
+                apiSecretEncrypted: mergedSettings.apiSecret ? mergedSettings.apiSecret.startsWith('enc:') : false
+            });
+            
+            // Don't send the API secret back in the response
+            const { apiSecret, ...responseSettings } = mergedSettings;
+            
+            res.json({
+                success: true,
+                message: "Settings saved successfully",
+                data: responseSettings
+            });
         } catch (error) {
             // If we can't read existing settings, continue with the new settings as-is
             logger.warn("Could not read existing settings", { error: error.message });
-        }
+            
+            // Ensure directory exists
+            const settingsDir = dirname(SETTINGS_PATH);
+            await fs.mkdir(settingsDir, { recursive: true });
+            
+            // Save new settings to file
+            await fs.writeFile(SETTINGS_PATH, JSON.stringify(newSettings, null, 2), "utf8");
+            
+            // Update environment variables (but skip encrypted API secret)
+            await updateEnvironmentVariables(newSettings);
 
-        // Ensure directory exists
-        const settingsDir = dirname(SETTINGS_PATH);
-        await fs.mkdir(settingsDir, { recursive: true });
-        
-        // Save settings to file
-        await fs.writeFile(SETTINGS_PATH, JSON.stringify(newSettings, null, 2), "utf8");
-        
-        // Update environment variables (but skip encrypted API secret)
-        await updateEnvironmentVariables(newSettings);
-
-        // Update .env file
-        await updateEnvFile(newSettings);
-        
-        // Update rate limiter if rate limit changed
-        if (newSettings.rateLimit) {
-            // Get the app instance to call updateRateLimiter
-            const app = req.app;
-            if (app && typeof app.get === 'function') {
-                const updateRateLimiter = app.get('updateRateLimiter');
-                if (updateRateLimiter && typeof updateRateLimiter === 'function') {
-                    updateRateLimiter(newSettings.rateLimit);
+            // Update .env file
+            await updateEnvFile(newSettings);
+            
+            // Update rate limiter if rate limit changed
+            if (newSettings.rateLimit) {
+                // Get the app instance to call updateRateLimiter
+                const app = req.app;
+                if (app && typeof app.get === 'function') {
+                    const updateRateLimiter = app.get('updateRateLimiter');
+                    if (updateRateLimiter && typeof updateRateLimiter === 'function') {
+                        updateRateLimiter(newSettings.rateLimit);
+                    }
                 }
             }
+            
+            // Log successful settings save
+            logger.info('Settings saved successfully', {
+                environmentId: newSettings.environmentId ? '***' + newSettings.environmentId.slice(-4) : 'not set',
+                region: newSettings.region,
+                apiClientId: newSettings.apiClientId ? '***' + newSettings.apiClientId.slice(-4) : 'not set',
+                populationId: newSettings.populationId ? '***' + newSettings.populationId.slice(-4) : 'not set',
+                hasApiSecret: !!newSettings.apiSecret,
+                apiSecretEncrypted: newSettings.apiSecret ? newSettings.apiSecret.startsWith('enc:') : false
+            });
+            
+            // Don't send the API secret back in the response
+            const { apiSecret, ...responseSettings } = newSettings;
+            
+            res.json({
+                success: true,
+                message: "Settings saved successfully",
+                data: responseSettings
+            });
         }
-        
-        // Log successful settings save
-        logger.info('Settings saved successfully', {
-            environmentId: newSettings.environmentId ? '***' + newSettings.environmentId.slice(-4) : 'not set',
-            region: newSettings.region,
-            apiClientId: newSettings.apiClientId ? '***' + newSettings.apiClientId.slice(-4) : 'not set',
-            populationId: newSettings.populationId ? '***' + newSettings.populationId.slice(-4) : 'not set',
-            hasApiSecret: !!newSettings.apiSecret,
-            apiSecretEncrypted: newSettings.apiSecret ? newSettings.apiSecret.startsWith('enc:') : false
-        });
-        
-        // Don't send the API secret back in the response
-        const { apiSecret, ...responseSettings } = newSettings;
-        
-        res.json({
-            success: true,
-            message: "Settings saved successfully",
-            data: responseSettings
-        });
     } catch (error) {
         logger.error("Error saving settings", { error: error.message });
         res.status(500).json({

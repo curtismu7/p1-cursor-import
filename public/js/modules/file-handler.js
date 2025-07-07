@@ -172,12 +172,14 @@ class FileHandler {
                 fileSize: file.size,
                 lastModified: file.lastModified
             });
+            console.log('About to parse CSV file', file);
 
             // Show loading state
             this.uiManager.showNotification('Processing CSV file...', 'info');
 
             // Parse CSV file with robust validation
             const parseResults = await this.parseCSVFile(file);
+            console.log('CSV parsing completed', parseResults);
             
             this.logger.info('CSV parsing completed', {
                 totalRows: parseResults.totalRows,
@@ -224,11 +226,17 @@ class FileHandler {
                 });
             }
 
+            // Update import button state based on population selection
+            if (window.app && window.app.updateImportButtonState) {
+                window.app.updateImportButtonState();
+            }
+
         } catch (error) {
             this.logger.error('Failed to process CSV file', {
                 error: error.message,
                 fileName: file.name
             });
+            console.error('Error in _handleFileInternal:', error);
 
             let errorMessage = 'Failed to process CSV file. ';
             if (error.message.includes('Missing required headers')) {
@@ -691,10 +699,14 @@ class FileHandler {
         
         if (!rows || rows.length === 0) {
             this.previewContainer.innerHTML = '<div class="alert alert-info">No data to display</div>';
-            // Disable import button if no rows
+            // Disable import buttons if no rows
             const importBtn = document.getElementById('start-import-btn');
+            const importBtnBottom = document.getElementById('start-import-btn-bottom');
             if (importBtn) {
                 importBtn.disabled = true;
+            }
+            if (importBtnBottom) {
+                importBtnBottom.disabled = true;
             }
             return;
         }
@@ -724,14 +736,38 @@ class FileHandler {
         
         this.previewContainer.innerHTML = html;
         
-        // Enable import button after showing preview
+        // Check if population choice has been made
+        const hasPopulationChoice = this.checkPopulationChoice();
+        
+        // Enable import buttons after showing preview (only if population choice is made)
         const importBtn = document.getElementById('start-import-btn');
+        const importBtnBottom = document.getElementById('start-import-btn-bottom');
         if (importBtn) {
-            importBtn.disabled = false;
-            this.logger.log('Import button enabled', 'debug');
+            importBtn.disabled = !hasPopulationChoice;
+            this.logger.log(`Import button ${hasPopulationChoice ? 'enabled' : 'disabled'}`, 'debug');
         } else {
             this.logger.warn('Could not find import button to enable', 'warn');
         }
+        if (importBtnBottom) {
+            importBtnBottom.disabled = !hasPopulationChoice;
+            this.logger.log(`Bottom import button ${hasPopulationChoice ? 'enabled' : 'disabled'}`, 'debug');
+        } else {
+            this.logger.warn('Could not find bottom import button to enable', 'warn');
+        }
+    }
+    
+    /**
+     * Check if user has made a population choice
+     * @returns {boolean} True if a population choice has been made
+     */
+    checkPopulationChoice() {
+        const selectedPopulationId = document.getElementById('import-population-select')?.value || '';
+        const useDefaultPopulation = document.getElementById('use-default-population')?.checked || false;
+        const useCsvPopulationId = document.getElementById('use-csv-population-id')?.checked || false;
+        
+        const hasSelectedPopulation = selectedPopulationId && selectedPopulationId.trim() !== '';
+        
+        return hasSelectedPopulation || useDefaultPopulation || useCsvPopulationId;
     }
     
     // ======================

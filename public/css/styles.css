@@ -1074,17 +1074,27 @@ label {
 }
 
 .log-expand-icon {
-    color: #999;
-    font-size: 10px;
-    transition: transform 0.2s ease;
+    color: #222;
+    font-size: 16px;
+    font-weight: 900;
+    transition: color 0.2s ease;
+    margin-left: auto;
+    padding-left: 8px;
+    text-shadow: 0 0 2px #fff, 0 0 2px #fff;
 }
 
 .log-entry:hover {
     background-color: rgba(0, 0, 0, 0.02);
 }
 
+.log-entry:hover .log-expand-icon {
+    color: #007bff;
+    text-shadow: 0 0 2px #fff, 0 0 2px #fff;
+}
+
 .log-entry.expanded .log-expand-icon {
-    transform: rotate(90deg);
+    color: #007bff;
+    text-shadow: 0 0 2px #fff, 0 0 2px #fff;
 }
 
 .log-details {
@@ -2421,4 +2431,334 @@ label {
 #custom-app-path {
     font-family: monospace;
     font-size: 0.9rem;
+}
+
+/* Log Navigation Styles */
+.log-navigation {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin: 20px 0;
+    padding: 15px;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 10px;
+    border: 2px solid #dee2e6;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.log-nav-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 80px;
+    height: 60px;
+    padding: 10px 15px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 8px;
+    border: 2px solid #007bff;
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: white;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 123, 255, 0.3);
+    position: relative;
+    overflow: hidden;
+}
+
+.log-nav-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 123, 255, 0.4);
+    background: linear-gradient(135deg, #0056b3 0%, #004085 100%);
+    border-color: #0056b3;
+}
+
+.log-nav-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0, 123, 255, 0.3);
+}
+
+.log-nav-btn i {
+    font-size: 18px;
+    margin-bottom: 4px;
+    display: block;
+}
+
+.log-nav-btn span {
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.log-nav-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s ease;
+}
+
+.log-nav-btn:hover::before {
+    left: 100%;
+}
+
+/* Special styling for top/bottom buttons */
+#scroll-logs-top,
+#scroll-logs-bottom {
+    background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+    border-color: #28a745;
+    box-shadow: 0 2px 4px rgba(40, 167, 69, 0.3);
+}
+
+#scroll-logs-top:hover,
+#scroll-logs-bottom:hover {
+    background: linear-gradient(135deg, #1e7e34 0%, #155724 100%);
+    border-color: #1e7e34;
+    box-shadow: 0 4px 8px rgba(40, 167, 69, 0.4);
+}
+
+/* Responsive design for log navigation */
+@media (max-width: 768px) {
+    .log-navigation {
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 10px;
+    }
+    
+    .log-nav-btn {
+        min-width: 70px;
+        height: 50px;
+        font-size: 12px;
+    }
+    
+    .log-nav-btn i {
+        font-size: 16px;
+    }
+    
+    .log-nav-btn span {
+        font-size: 10px;
+    }
+}
+
+@media (max-width: 480px) {
+    .log-navigation {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .log-nav-btn {
+        width: 100%;
+        max-width: 200px;
+        flex-direction: row;
+        justify-content: space-between;
+        padding: 12px 20px;
+    }
+    
+    .log-nav-btn i {
+        margin-bottom: 0;
+        margin-right: 10px;
+    }
+}
+
+/* Import Progress Log Styles */
+.import-progress-log {
+    margin-top: 20px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: #f8f9fa;
+    max-height: 300px;
+    overflow: hidden;
+}
+
+.progress-log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, #f1f3f4 0%, #e8eaed 100%);
+    border-bottom: 1px solid #e0e0e0;
+    border-radius: 8px 8px 0 0;
+}
+
+.progress-log-header h4 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #495057;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.progress-log-header h4 i {
+    color: #6c757d;
+}
+
+.progress-log-entries {
+    max-height: 250px;
+    overflow-y: auto;
+    padding: 8px;
+    background: white;
+    border-radius: 0 0 8px 8px;
+}
+
+.progress-log-entry {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    margin: 4px 0;
+    border-radius: 6px;
+    font-size: 13px;
+    line-height: 1.4;
+    border-left: 3px solid #dee2e6;
+    background: #f8f9fa;
+    transition: all 0.2s ease;
+}
+
+.progress-log-entry:hover {
+    background: #e9ecef;
+    border-left-color: #6c757d;
+}
+
+.progress-log-entry.success {
+    border-left-color: #28a745;
+    background: #d4edda;
+    color: #155724;
+}
+
+.progress-log-entry.error {
+    border-left-color: #dc3545;
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.progress-log-entry.warning {
+    border-left-color: #ffc107;
+    background: #fff3cd;
+    color: #856404;
+}
+
+.progress-log-entry.info {
+    border-left-color: #17a2b8;
+    background: #d1ecf1;
+    color: #0c5460;
+}
+
+.progress-log-entry .entry-timestamp {
+    font-size: 11px;
+    color: #6c757d;
+    margin-right: 8px;
+    min-width: 60px;
+}
+
+.progress-log-entry .entry-message {
+    flex: 1;
+    word-break: break-word;
+}
+
+.progress-log-entry .entry-icon {
+    margin-right: 8px;
+    font-size: 12px;
+    min-width: 16px;
+}
+
+.progress-log-entry .entry-stats {
+    font-size: 11px;
+    color: #6c757d;
+    margin-left: 8px;
+    white-space: nowrap;
+}
+
+/* Scrollbar styling for progress log */
+.progress-log-entries::-webkit-scrollbar {
+    width: 6px;
+}
+
+.progress-log-entries::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.progress-log-entries::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+}
+
+.progress-log-entries::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* Log Pagination Styles */
+.log-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    margin: 15px 0;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.pagination-info {
+    font-weight: 500;
+    color: #495057;
+}
+
+.pagination-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.page-input-container {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.page-separator {
+    color: #6c757d;
+    font-size: 0.9em;
+}
+
+.pagination-size {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9em;
+    color: #6c757d;
+}
+
+.pagination-size label {
+    margin: 0;
+    font-weight: 500;
+}
+
+.pagination-size select {
+    width: auto;
+    min-width: 60px;
+}
+
+/* Responsive pagination */
+@media (max-width: 768px) {
+    .log-pagination {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 15px;
+    }
+    
+    .pagination-controls {
+        justify-content: center;
+    }
+    
+    .pagination-size {
+        justify-content: center;
+    }
 }

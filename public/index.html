@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PingOne User Import v4.1</title>
+    <title>PingOne User Import v4.2</title>
     <!-- Bootstrap CSS -->
     <link href="/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome -->
@@ -54,7 +54,7 @@
         <main class="main-content">
             <!-- Version Badge -->
             <div id="version-badge-top" class="version-badge-top">
-                <span id="version-text">v4.1</span>
+                <span id="version-text">v4.2</span>
             </div>
             
             <!-- Universal Disclaimer Banner -->
@@ -235,7 +235,7 @@
                                 <select id="import-population-select" class="form-control">
                                     <option value="">Loading populations...</option>
                                 </select>
-                                <small class="form-text text-muted">Choose a population from your PingOne environment where users will be imported.</small>
+                                <small class="form-text text-muted">Choose a population from your PingOne environment where users will be imported. <strong>You must select a population or enable one of the options below before importing.</strong></small>
                             </div>
                             
                             <div class="form-group">
@@ -250,12 +250,17 @@
                             
                             <div class="form-group">
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="use-default-population" checked>
+                                    <input class="form-check-input" type="checkbox" id="use-default-population">
                                     <label class="form-check-label" for="use-default-population">
                                         <i class="fas fa-cog"></i> Use default population from settings
                                     </label>
                                 </div>
                                 <small class="form-text text-muted">If checked, will use the default population ID configured in your settings as fallback when no population is specified.</small>
+                            </div>
+                            
+                            <div class="alert alert-warning" style="margin-top: 15px;">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <strong>Required:</strong> You must select a population from the dropdown above OR enable "Use default population from settings" before importing users.
                             </div>
                             
                             <div class="alert alert-info" style="margin-top: 15px;">
@@ -315,11 +320,38 @@
                                     <span id="import-skipped-count" class="stat-value warning">0</span>
                                 </div>
                             </div>
+                            
+                            <!-- Real-time Progress Log -->
+                            <div id="import-progress-log" class="import-progress-log">
+                                <div class="progress-log-header">
+                                    <h4><i class="fas fa-list"></i> Progress Updates</h4>
+                                    <button id="clear-progress-log" class="btn btn-sm btn-outline-secondary" title="Clear Progress Log">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                                <div id="progress-log-entries" class="progress-log-entries">
+                                    <!-- Progress log entries will be displayed here -->
+                                </div>
+                            </div>
                         </div>
                     </div>
                     
                     <div id="preview-container" class="preview-container">
                         <!-- CSV preview will be displayed here -->
+                    </div>
+                    
+                    <!-- Bottom Import Button -->
+                    <div class="import-bottom-actions" style="margin-top: 30px; text-align: center; padding: 20px; border-top: 1px solid #ddd;">
+                        <button id="start-import-btn-bottom" class="btn btn-primary btn-lg" disabled>
+                            <i class="fas fa-upload"></i> Import Users (v1.0.2)
+                        </button>
+                        <button id="cancel-import-btn-bottom" class="btn btn-secondary btn-lg" style="display: none;">
+                            <i class="fas fa-times"></i> Cancel Import
+                        </button>
+                        <div class="import-bottom-info" style="margin-top: 15px; font-size: 0.9em; color: #666;">
+                            <i class="fas fa-info-circle"></i>
+                            Upload a CSV file and select a population above to enable import functionality
+                        </div>
                     </div>
                 </div>
             </div>
@@ -363,8 +395,8 @@
                     <div class="form-group">
                         <label for="rate-limit">Rate Limit (requests per second)</label>
                         <input type="number" id="rate-limit" name="rate-limit" class="form-control" 
-                               min="1" max="100" value="50" step="1" required>
-                        <small class="form-text text-muted">Maximum API requests per second. Range: 1-100. Default: 50</small>
+                               min="1" max="100" value="90" step="1" required>
+                        <small class="form-text text-muted">Maximum API requests per second. Range: 1-100. Default: 90</small>
                     </div>
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary">
@@ -398,6 +430,65 @@
                 <div class="log-controls">
                     <button id="clear-logs" class="btn btn-secondary">Clear Logs</button>
                 </div>
+                
+                <!-- Log Navigation Controls -->
+                <div class="log-navigation">
+                    <button id="scroll-logs-top" class="btn btn-primary log-nav-btn" title="Scroll to Top">
+                        <i class="fas fa-chevron-up"></i>
+                        <span>Top</span>
+                    </button>
+                    <button id="scroll-logs-up" class="btn btn-primary log-nav-btn" title="Scroll Up">
+                        <i class="fas fa-chevron-up"></i>
+                        <span>Up</span>
+                    </button>
+                    <button id="scroll-logs-down" class="btn btn-primary log-nav-btn" title="Scroll Down">
+                        <i class="fas fa-chevron-down"></i>
+                        <span>Down</span>
+                    </button>
+                    <button id="scroll-logs-bottom" class="btn btn-primary log-nav-btn" title="Scroll to Bottom">
+                        <i class="fas fa-chevron-down"></i>
+                        <span>Bottom</span>
+                    </button>
+                </div>
+                
+                <!-- Log Pagination Controls -->
+                <div class="log-pagination">
+                    <div class="pagination-info">
+                        <span id="logs-counter">Loading...</span>
+                    </div>
+                    <div class="pagination-controls">
+                        <button id="logs-first-page" class="btn btn-outline-primary btn-sm" title="First Page">
+                            <i class="fas fa-angle-double-left"></i>
+                        </button>
+                        <button id="logs-prev-page" class="btn btn-outline-primary btn-sm" title="Previous Page">
+                            <i class="fas fa-angle-left"></i>
+                        </button>
+                        <div class="page-input-container">
+                            <input type="number" id="logs-page-input" class="form-control form-control-sm" 
+                                   min="1" placeholder="Page" style="width: 80px; text-align: center;">
+                            <span class="page-separator">of</span>
+                            <span id="logs-total-pages">0</span>
+                        </div>
+                        <button id="logs-next-page" class="btn btn-outline-primary btn-sm" title="Next Page">
+                            <i class="fas fa-angle-right"></i>
+                        </button>
+                        <button id="logs-last-page" class="btn btn-outline-primary btn-sm" title="Last Page">
+                            <i class="fas fa-angle-double-right"></i>
+                        </button>
+                    </div>
+                    <div class="pagination-size">
+                        <label for="logs-page-size">Show:</label>
+                        <select id="logs-page-size" class="form-control form-control-sm">
+                            <option value="10">10</option>
+                            <option value="25" selected>25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                            <option value="200">200</option>
+                        </select>
+                        <span>per page</span>
+                    </div>
+                </div>
+                
                 <div id="log-entries" class="log-entries">
                     <!-- Log entries will be displayed here -->
                 </div>
@@ -470,6 +561,171 @@
                     </div>
                     <div id="delete-csv-preview-container" class="preview-container">
                         <!-- CSV preview will be displayed here -->
+                    </div>
+                </div>
+                
+                <!-- Delete CSV Section -->
+                <div class="csv-delete-section" style="margin-top: 20px;">
+                    <h4>Delete Users from CSV File</h4>
+                    <div class="form-check" style="margin-bottom: 10px;">
+                        <input class="form-check-input" type="checkbox" id="delete-csv-checkbox">
+                        <label class="form-check-label" for="delete-csv-checkbox" style="font-weight: bold; color: #d63031;">
+                            Delete users listed in CSV file
+                        </label>
+                    </div>
+                    <div id="csv-delete-controls" style="display: none;">
+                        <div class="mb-3">
+                            <label for="csvFile" class="form-label">Select CSV file:</label>
+                            <input type="file" class="form-control" id="csvFile" accept=".csv" required>
+                        </div>
+                        <button type="button" class="btn btn-danger" id="deleteCsvBtn">
+                            <i class="fas fa-trash"></i> Delete Users from CSV
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Delete All Users in Population Section -->
+                <div class="population-delete-section" style="margin-top: 40px; padding: 20px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px;">
+                    <h4>Delete All Users in Population</h4>
+                    <div class="form-check" style="margin-bottom: 10px;">
+                        <input class="form-check-input" type="checkbox" id="delete-all-users-population-checkbox">
+                        <label class="form-check-label" for="delete-all-users-population-checkbox" style="font-weight: bold; color: #e17055;">
+                            Delete all users in selected population
+                        </label>
+                    </div>
+                    <div id="population-delete-controls" style="display: none;">
+                        <div class="mb-3">
+                            <label for="populationSelect" class="form-label">Select Population:</label>
+                            <select class="form-control" id="populationSelect" required>
+                                <option value="">Loading populations...</option>
+                            </select>
+                        </div>
+                        <div class="alert alert-warning" role="alert">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <strong>Warning:</strong> This will delete ALL users in the selected population. This action cannot be undone.
+                        </div>
+                        <button type="button" class="btn btn-warning" id="deletePopulationBtn">
+                            <i class="fas fa-trash"></i> Delete All Users in Population
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Delete All Users in Environment Section -->
+                <div class="environment-delete-section" style="margin-top: 40px; padding: 20px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px;">
+                    <div class="form-check" style="margin-bottom: 10px;">
+                        <input class="form-check-input" type="checkbox" id="delete-all-users-env-checkbox">
+                        <label class="form-check-label" for="delete-all-users-env-checkbox" style="font-weight: bold; color: #d63031; font-size: 18px;">
+                            Delete ALL users in the entire Environment
+                        </label>
+                    </div>
+                    <div id="environment-delete-controls" style="display: none;">
+                        <div class="alert alert-warning" role="alert" style="margin-bottom: 15px;">
+                            <strong>⚠️ WARNING:</strong> This will delete ALL users in the entire environment. This action cannot be undone.
+                        </div>
+                        <button type="button" id="delete-all-users-env-btn" class="btn btn-danger" style="font-weight: bold;">
+                            Delete ALL Users in Environment
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Global Delete Warning Modal -->
+                <div id="delete-warning-modal" class="modal" tabindex="-1" role="dialog" style="display:none; background: rgba(0,0,0,0.5); position: fixed; z-index: 9999; left: 0; top: 0; width: 100vw; height: 100vh; align-items: center; justify-content: center;">
+                  <div class="modal-dialog" role="document" style="max-width: 500px; margin: auto;">
+                    <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
+                      <div class="modal-header" style="background: #fff3cd; border-bottom: 1px solid #ffeaa7;">
+                        <h5 class="modal-title" style="color: #856404;"><i class="fas fa-exclamation-triangle"></i> Confirm Destructive Action</h5>
+                      </div>
+                      <div class="modal-body" style="background: #fff;">
+                        <p id="delete-warning-message" style="color: #856404; font-size: 1.1em;">
+                          <strong>⚠️ WARNING:</strong> This action will permanently delete users from PingOne. This cannot be undone.<br><br>
+                          Are you absolutely sure you want to continue?
+                        </p>
+                        <div style="margin-top: 15px;">
+                          <label for="delete-confirm-input" style="font-weight: 600; color: #856404;">Type <b>DELETE</b> to confirm:</label>
+                          <input type="text" id="delete-confirm-input" class="form-control" autocomplete="off" style="margin-top: 5px;">
+                        </div>
+                      </div>
+                      <div class="modal-footer" style="background: #fff3cd; border-top: 1px solid #ffeaa7; display: flex; justify-content: flex-end; gap: 10px;">
+                        <button id="delete-warning-continue" class="btn btn-danger" disabled>Continue</button>
+                        <button id="delete-warning-cancel" class="btn btn-secondary">Cancel</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Population Delete Section -->
+                <div class="population-delete-section" style="margin-top: 40px; padding: 20px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px;">
+                    <div class="section-header" style="margin-bottom: 20px;">
+                        <h3 style="color: #856404; margin: 0;">
+                            <i class="fas fa-exclamation-triangle"></i> Delete All Users in Population
+                        </h3>
+                        <p style="color: #856404; margin: 10px 0 0 0; font-size: 0.9em;">
+                            <strong>⚠️ WARNING:</strong> This action will permanently delete ALL users in the selected population. 
+                            This action cannot be undone. Please ensure you have a backup before proceeding.
+                        </p>
+                    </div>
+                    
+                    <div class="population-delete-controls" style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                        <div class="form-group" style="margin: 0; min-width: 300px;">
+                            <label for="population-delete-select" style="font-weight: 600; color: #856404;">
+                                Select Population to Delete All Users:
+                            </label>
+                            <select id="population-delete-select" class="form-control" style="border-color: #ffeaa7;">
+                                <option value="">Loading populations...</option>
+                            </select>
+                            <small class="form-text text-muted">Choose the population from which you want to delete all users.</small>
+                        </div>
+                        
+                        <div class="population-delete-actions" style="display: flex; gap: 10px; align-items: end;">
+                            <button id="start-population-delete-btn" class="btn btn-danger" disabled style="white-space: nowrap;">
+                                <i class="fas fa-trash-alt"></i> Delete All Users
+                            </button>
+                            <button id="cancel-population-delete-btn" class="btn btn-secondary" style="display: none; white-space: nowrap;">
+                                <i class="fas fa-times"></i> Cancel
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="population-delete-status" class="import-status" style="display: none; margin-top: 20px;">
+                        <div class="progress-header">
+                            <h3>Population Delete Progress</h3>
+                            <button id="close-population-delete-status" class="close-progress-btn" type="button" aria-label="Close">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="progress-container">
+                            <div id="population-delete-progress" class="progress-bar bg-danger" role="progressbar" style="width: 0%"
+                                 aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                <span id="population-delete-progress-percent">0%</span>
+                            </div>
+                        </div>
+                        <div class="progress-actions">
+                            <button id="cancel-population-delete-progress" class="btn btn-danger btn-sm">
+                                <i class="fas fa-stop"></i> Cancel Delete
+                            </button>
+                        </div>
+                        <div id="population-delete-stats" class="import-stats">
+                            <div class="stat-item">
+                                <span class="stat-label">Status:</span>
+                                <span id="population-delete-progress-text" class="stat-value">Ready</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Progress:</span>
+                                <span id="population-delete-progress-count" class="stat-value">0 of 0 users</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Deleted:</span>
+                                <span id="population-delete-success-count" class="stat-value success">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Failed:</span>
+                                <span id="population-delete-failed-count" class="stat-value error">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Skipped:</span>
+                                <span id="population-delete-skipped-count" class="stat-value warning">0</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -849,8 +1105,8 @@
     <script src="/setup-settings.js"></script>
     <script>
       document.addEventListener('DOMContentLoaded', function() {
-        const topBtn = document.getElementById('start-export-btn');
-        const bottomBtn = document.getElementById('start-export-btn-bottom');
+        const topBtn = document.getElementById('start-import-btn');
+        const bottomBtn = document.getElementById('start-import-btn-bottom');
         if (topBtn && bottomBtn) {
           // Sync click
           bottomBtn.addEventListener('click', function(e) {
