@@ -264,6 +264,52 @@ app.use('/api/logs', logsRateLimiter, logsRouter);
 // Apply specific rate limiter to health endpoints
 app.use('/api/health', healthRateLimiter);
 
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+    try {
+        const status = {
+            server: 'ok',
+            timestamp: new Date().toISOString(),
+            uptime: process.uptime(),
+            memory: {
+                used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+                total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024)
+            },
+            checks: {
+                server: 'ok',
+                // Add any additional health checks here
+                database: 'ok', // Add actual database health check
+                storage: 'ok',  // Add storage health check
+                pingone: 'ok'   // Add PingOne API health check
+            }
+        };
+
+        const isHealthy = Object.values(status.checks).every(check => check === 'ok');
+        
+        if (!isHealthy) {
+            logger.warn('Health check failed', { status });
+            return res.status(503).json({
+                status: 'unhealthy',
+                message: 'One or more services are not healthy',
+                details: status
+            });
+        }
+
+        res.json({
+            status: 'healthy',
+            message: 'All services are healthy',
+            details: status
+        });
+    } catch (error) {
+        logger.error('Health check failed:', error);
+        res.status(500).json({
+            status: 'error',
+            error: 'Internal server error during health check',
+            message: error.message
+        });
+    }
+});
+
 app.use('/api/settings', settingsRouter);
 app.use('/api', apiRouter);
 

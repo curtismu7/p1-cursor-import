@@ -98,10 +98,19 @@ router.post('/export-users', async (req, res, next) => {
             });
         }
 
-        // Build the PingOne API URL with proper population filtering
+        // Build the PingOne API URL with proper population filtering and expand population details
         let pingOneUrl = 'http://127.0.0.1:4000/api/pingone/users';
+        const params = new URLSearchParams();
+        
         if (populationId && populationId.trim() !== '') {
-            pingOneUrl += `?population.id=${encodeURIComponent(populationId.trim())}`;
+            params.append('population.id', populationId.trim());
+        }
+        
+        // Add expand parameter to include population details
+        params.append('expand', 'population');
+        
+        if (params.toString()) {
+            pingOneUrl += `?${params.toString()}`;
         }
 
         console.log('Export request:', {
@@ -130,6 +139,15 @@ router.post('/export-users', async (req, res, next) => {
         const usersData = await pingOneResponse.json();
         let users = usersData._embedded?.users || [];
         
+        // Log the first user to debug population information
+        if (users.length > 0) {
+            console.log('First user population info:', {
+                userId: users[0].id,
+                population: users[0].population,
+                hasPopulationName: !!users[0].population?.name
+            });
+        }
+        
         // Track ignored disabled users
         let ignoredCount = 0;
         let ignoredUsers = [];
@@ -156,6 +174,33 @@ router.post('/export-users', async (req, res, next) => {
             }
         }
 
+        // Check if population information is available in user objects
+        const hasPopulationInfo = users.length > 0 && users[0].population && typeof users[0].population === 'object';
+        
+        // If population info is not available, try to fetch it separately
+        if (!hasPopulationInfo && populationId && populationId.trim() !== '') {
+            try {
+                console.log('Population info not available in user objects, fetching separately...');
+                const populationResponse = await fetch(`http://127.0.0.1:4000/api/pingone/populations/${populationId.trim()}`);
+                if (populationResponse.ok) {
+                    const populationData = await populationResponse.json();
+                    const populationName = populationData.name || '';
+                    console.log('Fetched population name:', populationName);
+                    
+                    // Add population information to all users
+                    users = users.map(user => ({
+                        ...user,
+                        population: {
+                            id: populationId.trim(),
+                            name: populationName
+                        }
+                    }));
+                }
+            } catch (error) {
+                console.warn('Failed to fetch population information separately:', error.message);
+            }
+        }
+        
         // Process users based on fields selection
         let processedUsers = users;
         

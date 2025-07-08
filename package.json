@@ -1,13 +1,13 @@
 {
-  "name": "pingone-import",
-  "version": "4.3.1",
+  "name": "pingone-import-cursor",
+  "version": "4.5.0",
   "description": "A modern web application for importing users into PingOne using the PingOne Admin API.",
   "main": "server.js",
   "type": "module",
   "scripts": {
     "start": "node --experimental-modules --experimental-json-modules server.js",
     "dev": "nodemon --experimental-modules --experimental-json-modules server.js",
-    "build:bundle": "browserify public/js/app.js -t [ babelify --configFile ./babel.config.json --presets [ @babel/preset-env ] --plugins [ @babel/plugin-transform-runtime ] ] -o public/js/bundle.js",
+    "build:bundle": "npx browserify public/js/app.js -t [ babelify --configFile ./babel.config.json --presets [ @babel/preset-env ] --plugins [ @babel/plugin-transform-runtime ] ] -o public/js/bundle.js",
     "test": "jest --detectOpenHandles --forceExit --config=jest.simple.config.cjs",
     "test:unit": "cross-env NODE_ENV=test jest test/**/*.test.js --config=jest.config.mjs",
     "test:integration": "cross-env NODE_ENV=test jest test/integration/**/*.test.js --config=jest.config.mjs",
@@ -20,7 +20,7 @@
     "test:all": "NODE_ENV=test jest --config=jest.config.mjs",
     "setup": "cp .env.example .env",
     "postinstall": "npm run build:bundle",
-    "build": "browserify public/js/app.js -t [ babelify --global ] -o public/js/bundle.js"
+    "build": "npx browserify public/js/app.js -t [ babelify --global ] -o public/js/bundle.js"
   },
   "keywords": [
     "pingone",

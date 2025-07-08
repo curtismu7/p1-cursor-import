@@ -367,7 +367,8 @@ export class UIManager {
             { buttonId: 'close-import-status', statusId: 'import-status', viewName: 'import' },
             { buttonId: 'close-export-status', statusId: 'export-status', viewName: 'export' },
             { buttonId: 'close-delete-csv-status', statusId: 'delete-csv-status', viewName: 'delete-csv' },
-            { buttonId: 'close-modify-status', statusId: 'modify-status', viewName: 'modify' }
+            { buttonId: 'close-modify-status', statusId: 'modify-status', viewName: 'modify' },
+            { buttonId: 'close-population-delete-status', statusId: 'population-delete-status', viewName: 'population-delete' }
         ];
 
         progressScreens.forEach(({ buttonId, statusId, viewName }) => {
@@ -968,7 +969,7 @@ export class UIManager {
     _getDefaultStatusMessage(status) {
         switch(status) {
             case 'connected':
-                return 'Successfully connected to PingOne';
+                return '✅ Successfully connected to PingOne';
             case 'connecting':
                 return 'Connecting to PingOne...';
             case 'error':
@@ -998,27 +999,14 @@ export class UIManager {
             return;
         }
 
-        // Safe logging function
-        const safeLog = (message, level = 'log', data = null) => {
-            try {
-                if (this.logger) {
-                    if (typeof this.logger[level] === 'function') {
-                        this.logger[level](message, data);
-                        return;
-                    } else if (typeof this.logger.log === 'function') {
-                        this.logger.log(message, level, data);
-                        return;
-                    }
-                }
-                // Fallback to console
-                if (console[level]) {
-                    console[level](message, data);
-                } else {
-                    console.log(`[${level.toUpperCase()}]`, message, data);
-                }
-            } catch (logError) {
-                console.error('Error in safeLog:', logError);
-            }
+        // Disable server logging during log loading to prevent feedback loop
+        if (this.logger && typeof this.logger.setLoadingLogs === 'function') {
+            this.logger.setLoadingLogs(true);
+        }
+
+        // Use console.log directly to avoid any potential logging feedback loop
+        const debugLog = (message, data = null) => {
+            console.debug(`[UI-Manager] ${message}`, data);
         };
 
         // Get or create log entries container
@@ -1049,14 +1037,14 @@ export class UIManager {
         
         try {
             // Fetch logs from the UI logs endpoint
-            safeLog('Fetching logs from /api/logs/ui...', 'debug');
+            debugLog('Fetching logs from /api/logs/ui...');
             const response = await fetch('/api/logs/ui?limit=1000'); // Fetch more logs for pagination
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             
             const responseData = await response.json();
-            safeLog('Received logs from server', 'debug', { count: responseData.logs?.length });
+            debugLog('Received logs from server', { count: responseData.logs?.length });
             
             // Clear loading indicator
             logEntries.innerHTML = '';
@@ -1092,7 +1080,7 @@ export class UIManager {
                 this.setupPaginationHandlers();
                 
             } else {
-                safeLog('No valid log entries found in response', 'warn');
+                debugLog('No valid log entries found in response');
                 const noLogsElement = document.createElement('div');
                 noLogsElement.className = 'log-entry info';
                 noLogsElement.textContent = 'No logs available';
@@ -1105,7 +1093,7 @@ export class UIManager {
                 this.updatePaginationControls();
             }
         } catch (error) {
-            safeLog(`Error fetching logs: ${error.message}`, 'error', { 
+            console.error(`[UI-Manager] Error fetching logs: ${error.message}`, { 
                 error: {
                     name: error.name,
                     message: error.message,
@@ -1123,6 +1111,11 @@ export class UIManager {
             this.logsPagination.totalRecords = 0;
             this.calculatePagination();
             this.updatePaginationControls();
+        } finally {
+            // Re-enable server logging after log loading is complete
+            if (this.logger && typeof this.logger.setLoadingLogs === 'function') {
+                this.logger.setLoadingLogs(false);
+            }
         }
     }
 
@@ -1218,15 +1211,7 @@ export class UIManager {
      * @param {string} [text] - Optional button text
      */
     setImportButtonState(enabled, text) {
-        const importButton = document.getElementById('start-import-btn');
         const importButtonBottom = document.getElementById('start-import-btn-bottom');
-        
-        if (importButton) {
-            importButton.disabled = !enabled;
-            if (text) {
-                importButton.textContent = text;
-            }
-        }
         
         if (importButtonBottom) {
             importButtonBottom.disabled = !enabled;
@@ -1362,10 +1347,20 @@ export class UIManager {
      * @param {string} type - The type of notification ('success', 'warning', 'error')
      */
     showNotification(message, type = 'info') {
-        // Add green checkmark to success messages if not already present
         let displayMessage = message;
-        if (type === 'success' && !message.startsWith('✅')) {
-            displayMessage = `✅ ${message}`;
+        if (type === 'success' ||
+            (typeof message === 'string' && message.trim().toLowerCase() === 'disclaimer accepted. you can now use the tool.')) {
+            // Ensure exactly one green check mark at the start, never two
+            displayMessage = message.replace(/^✅+\s*/, '');
+            displayMessage = `✅ ${displayMessage}`;
+        } else if (type === 'warning') {
+            // Ensure exactly one warning icon at the start, never two
+            displayMessage = message.replace(/^⚠️+\s*/, '');
+            displayMessage = `⚠️ ${displayMessage}`;
+        } else if (type === 'error') {
+            // Ensure exactly one red cross at the start, never two
+            displayMessage = message.replace(/^❌+\s*/, '');
+            displayMessage = `❌ ${displayMessage}`;
         }
         
         console.log(`[${type}] ${displayMessage}`);
@@ -1696,22 +1691,44 @@ export class UIManager {
 
     setDeletingCsv(isDeleting) {
         const deleteButton = document.getElementById('start-delete-csv-btn');
+        const deleteButtonBottom = document.getElementById('start-delete-csv-btn-bottom');
         const cancelButton = document.getElementById('cancel-delete-csv-btn');
+        const cancelButtonBottom = document.getElementById('cancel-delete-csv-btn-bottom');
+        
         if (deleteButton) {
             deleteButton.disabled = isDeleting;
-            deleteButton.textContent = isDeleting ? 'Deleting...' : 'Delete Users (CSV Safe)';
+            deleteButton.textContent = isDeleting ? 'Deleting...' : 'Delete Users';
         }
+        
+        if (deleteButtonBottom) {
+            deleteButtonBottom.disabled = isDeleting;
+            deleteButtonBottom.textContent = isDeleting ? 'Deleting...' : 'Delete Users';
+        }
+        
         if (cancelButton) {
             cancelButton.style.display = isDeleting ? 'inline-block' : 'none';
+        }
+        
+        if (cancelButtonBottom) {
+            cancelButtonBottom.style.display = isDeleting ? 'inline-block' : 'none';
         }
     }
 
     setDeleteCsvButtonState(enabled, text) {
         const deleteButton = document.getElementById('start-delete-csv-btn');
+        const deleteButtonBottom = document.getElementById('start-delete-csv-btn-bottom');
+        
         if (deleteButton) {
             deleteButton.disabled = !enabled;
             if (text) {
                 deleteButton.textContent = text;
+            }
+        }
+        
+        if (deleteButtonBottom) {
+            deleteButtonBottom.disabled = !enabled;
+            if (text) {
+                deleteButtonBottom.textContent = text;
             }
         }
     }
@@ -1788,22 +1805,44 @@ export class UIManager {
 
     setModifying(isModifying) {
         const modifyButton = document.getElementById('start-modify-btn');
+        const modifyButtonBottom = document.getElementById('start-modify-btn-bottom');
         const cancelButton = document.getElementById('cancel-modify-btn');
+        const cancelButtonBottom = document.getElementById('cancel-modify-btn-bottom');
+        
         if (modifyButton) {
             modifyButton.disabled = isModifying;
             modifyButton.textContent = isModifying ? 'Modifying...' : 'Modify Users';
         }
+        
+        if (modifyButtonBottom) {
+            modifyButtonBottom.disabled = isModifying;
+            modifyButtonBottom.textContent = isModifying ? 'Modifying...' : 'Modify Users';
+        }
+        
         if (cancelButton) {
             cancelButton.style.display = isModifying ? 'inline-block' : 'none';
+        }
+        
+        if (cancelButtonBottom) {
+            cancelButtonBottom.style.display = isModifying ? 'inline-block' : 'none';
         }
     }
 
     setModifyCsvButtonState(enabled, text) {
         const modifyButton = document.getElementById('start-modify-btn');
+        const modifyButtonBottom = document.getElementById('start-modify-btn-bottom');
+        
         if (modifyButton) {
             modifyButton.disabled = !enabled;
             if (text) {
                 modifyButton.textContent = text;
+            }
+        }
+        
+        if (modifyButtonBottom) {
+            modifyButtonBottom.disabled = !enabled;
+            if (text) {
+                modifyButtonBottom.textContent = text;
             }
         }
     }
@@ -2180,27 +2219,21 @@ export class UIManager {
     setImporting(isImporting) {
         this.isImporting = isImporting;
         
-        const importButton = document.getElementById('start-import-btn');
         const importButtonBottom = document.getElementById('start-import-btn-bottom');
-        const cancelButton = document.getElementById('cancel-import-btn');
         const cancelButtonBottom = document.getElementById('cancel-import-btn-bottom');
-        
-        if (importButton) {
-            importButton.disabled = isImporting;
-            importButton.textContent = isImporting ? 'Importing...' : 'Import Users (v1.0.2)';
-        }
         
         if (importButtonBottom) {
             importButtonBottom.disabled = isImporting;
-            importButtonBottom.textContent = isImporting ? 'Importing...' : 'Import Users (v1.0.2)';
-        }
-        
-        if (cancelButton) {
-            cancelButton.style.display = isImporting ? 'inline-block' : 'none';
+            importButtonBottom.textContent = isImporting ? 'Importing...' : 'Import Users (v4.3.1)';
         }
         
         if (cancelButtonBottom) {
             cancelButtonBottom.style.display = isImporting ? 'inline-block' : 'none';
+        }
+        // Show/hide Cancel Import button
+        const cancelBtn = document.getElementById('cancel-import-progress');
+        if (cancelBtn) {
+            cancelBtn.style.display = isImporting ? 'inline-block' : 'none';
         }
     }
 
@@ -2209,12 +2242,7 @@ export class UIManager {
      * @param {string} text - The text to display on import buttons
      */
     setImportButtonText(text) {
-        const importButton = document.getElementById('start-import-btn');
         const importButtonBottom = document.getElementById('start-import-btn-bottom');
-        
-        if (importButton) {
-            importButton.textContent = text;
-        }
         
         if (importButtonBottom) {
             importButtonBottom.textContent = text;

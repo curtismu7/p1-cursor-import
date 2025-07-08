@@ -1,23 +1,67 @@
 import { FileLogger } from './file-logger.js';
 
-class Logger {
-    constructor(logContainer = null) {
-        // Initialize properties
+export class Logger {
+    constructor(optionsOrLogContainer = {}) {
+        // Handle both old signature (logContainer) and new signature (options object)
+        let options = {};
+        let logContainer = null;
+        
+        // If first parameter is an object with maxLogs property, it's the new options format
+        // If it's null, a string, or an HTMLElement, it's the old logContainer format
+        if (optionsOrLogContainer && typeof optionsOrLogContainer === 'object' && 
+            (optionsOrLogContainer.maxLogs !== undefined || optionsOrLogContainer.fileLogger !== undefined)) {
+            // New options format
+            options = optionsOrLogContainer;
+            logContainer = options.logContainer || null;
+        } else {
+            // Old logContainer format
+            logContainer = optionsOrLogContainer;
+            options = {};
+        }
+        
         this.logs = [];
-        this.maxLogs = 1000;
-        this.initialized = false;
+        this.maxLogs = options.maxLogs || 1000;
         this.offlineLogs = [];
+        this.fileLogger = options.fileLogger || null;
+        this.initialized = false;
         this.isOnline = typeof window !== 'undefined' ? window.navigator.onLine : true;
         this.logContainer = null;
+        
+        // Flag to prevent server logging feedback loops
+        this.serverLoggingEnabled = true;
+        this.isLoadingLogs = false;
         
         // Initialize log container
         this._initLogContainer(logContainer);
         
         // Create a safe file logger that won't throw errors
-        this.fileLogger = this._createSafeFileLogger();
+        if (!this.fileLogger) {
+            this.fileLogger = this._createSafeFileLogger();
+        }
         
         // Mark as initialized
         this.initialized = true;
+    }
+
+    /**
+     * Temporarily disable server logging to prevent feedback loops
+     */
+    disableServerLogging() {
+        this.serverLoggingEnabled = false;
+    }
+
+    /**
+     * Re-enable server logging
+     */
+    enableServerLogging() {
+        this.serverLoggingEnabled = true;
+    }
+
+    /**
+     * Set flag to indicate we're loading logs (prevents server logging)
+     */
+    setLoadingLogs(isLoading) {
+        this.isLoadingLogs = isLoading;
     }
     
     /**
@@ -369,23 +413,37 @@ class Logger {
             }
         }
         
-        // Send log to server
-        try {
-            await fetch('/api/logs/ui', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    level,
-                    message,
-                    data
-                })
-            });
-        } catch (error) {
-            console.error('Error sending log to server:', error);
-            // Store logs for later when offline
-            this.offlineLogs.push(logEntry);
+        // Send log to server only if server logging is enabled and we're not loading logs
+        if (this.serverLoggingEnabled && !this.isLoadingLogs) {
+            try {
+                // Additional check: if we're currently fetching logs, skip server logging entirely
+                if (window.location && window.location.href && window.location.href.includes('/api/logs')) {
+                    return logEntry; // Skip server logging if we're on a logs-related page
+                }
+                
+                // Check if we're in a logging operation by looking at the call stack
+                const stack = new Error().stack;
+                if (stack && (stack.includes('loadAndDisplayLogs') || stack.includes('/api/logs'))) {
+                    return logEntry; // Skip server logging if called from log loading functions
+                }
+                
+                await fetch('/api/logs/ui', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ level, message, data })
+                });
+            } catch (error) {
+                console.error('Error sending log to server:', error);
+                this.offlineLogs.push(logEntry);
+            }
+        } else {
+            // Log why we're skipping server logging
+            if (!this.serverLoggingEnabled) {
+                console.debug('Skipping server logging: disabled');
+            }
+            if (this.isLoadingLogs) {
+                console.debug('Skipping server logging: loading logs');
+            }
         }
         
         // Update UI if log container exists
@@ -462,5 +520,3 @@ class Logger {
         return this.log('error', message, data);
     }
 }
-
-export { Logger };

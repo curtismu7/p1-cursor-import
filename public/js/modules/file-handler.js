@@ -22,7 +22,11 @@ class FileHandler {
         
         // Initialize event listeners
         this.initializeFileInput();
+
+
     }
+
+
 
     // ======================
     // File Info Management
@@ -53,6 +57,83 @@ class FileHandler {
     getUsers() {
         return this.lastParsedUsers || [];
     }
+
+    /**
+     * Read file as text using FileReader
+     * @param {File} file - The file to read
+     * @returns {Promise<string>} Promise that resolves with file content
+     */
+    readFileAsText(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (event) => resolve(event.target.result);
+            reader.onerror = () => reject(new Error('Failed to read file'));
+            reader.readAsText(file);
+        });
+    }
+
+    /**
+     * Save the last folder path from a file
+     * @param {File} file - The file to extract folder path from
+     */
+    saveLastFolderPath(file) {
+        try {
+            // Extract folder path from file path if available
+            if (file.webkitRelativePath) {
+                // For webkitRelativePath, get the directory part
+                const pathParts = file.webkitRelativePath.split('/');
+                if (pathParts.length > 1) {
+                    const folderPath = pathParts.slice(0, -1).join('/');
+                    localStorage.setItem('lastFolderPath', folderPath);
+                    this.logger.info('Saved last folder path:', folderPath);
+                }
+            } else if (file.name) {
+                // For regular files, try to extract from the file name
+                // This is a fallback since we can't get the full path due to security restrictions
+                const fileName = file.name;
+                const lastSlashIndex = fileName.lastIndexOf('/');
+                if (lastSlashIndex !== -1) {
+                    const folderPath = fileName.substring(0, lastSlashIndex);
+                    localStorage.setItem('lastFolderPath', folderPath);
+                    this.logger.info('Saved last folder path from filename:', folderPath);
+                }
+            }
+        } catch (error) {
+            this.logger.warn('Could not save folder path:', error.message);
+        }
+    }
+
+    /**
+     * Get the last folder path that was used
+     * @returns {string|null} The last folder path or null if not available
+     */
+    getLastFolderPath() {
+        try {
+            return localStorage.getItem('lastFolderPath');
+        } catch (error) {
+            this.logger.warn('Could not get last folder path:', error.message);
+            return null;
+        }
+    }
+
+    /**
+     * Update the file input label to show last folder path
+     */
+    updateFileLabel() {
+        try {
+            const fileLabel = document.querySelector('.file-label span');
+            if (fileLabel) {
+                const lastFolderPath = this.getLastFolderPath();
+                if (lastFolderPath) {
+                    fileLabel.textContent = `Choose CSV File (Last: ${lastFolderPath})`;
+                } else {
+                    fileLabel.textContent = 'Choose CSV File';
+                }
+            }
+        } catch (error) {
+            this.logger.warn('Could not update file label:', error.message);
+        }
+    }
     
     saveFileInfo(fileInfo) {
         try {
@@ -81,6 +162,19 @@ class FileHandler {
         }
     }
 
+    /**
+     * Clear the last folder path
+     */
+    clearLastFolderPath() {
+        try {
+            localStorage.removeItem('lastFolderPath');
+            this.updateFileLabel();
+            this.logger.info('Cleared last folder path');
+        } catch (error) {
+            this.logger.warn('Could not clear last folder path:', error.message);
+        }
+    }
+
     // ======================
     // File Handling
     // ======================
@@ -95,6 +189,9 @@ class FileHandler {
         
         // Add new event listener
         this.fileInput.addEventListener('change', (event) => this.handleFileSelect(event));
+        
+        // Update file label to show last folder path if available
+        this.updateFileLabel();
     }
     
     /**
@@ -115,6 +212,10 @@ class FileHandler {
             this.logger.warn('No file selected');
             return;
         }
+        
+        // Save the folder path for next time
+        this.saveLastFolderPath(file);
+        
         await this._handleFileInternal(file, event);
     }
 
@@ -125,91 +226,42 @@ class FileHandler {
      * @private
      */
     async _handleFileInternal(file, event) {
-        // Debug: Log the file object structure
-        this.logger.debug('File object received:', {
-            hasFile: !!file,
-            fileType: typeof file,
-            hasName: !!file.name,
-            hasSize: !!file.size,
-            fileName: file.name,
-            fileSize: file.size
-        });
-
-        // Validate file has required properties
-        if (!file.name) {
-            this.logger.error('File object missing name property', { file });
-            this.uiManager.showNotification('Invalid file object: missing file name', 'error');
-            return;
-        }
-
-        // Permissive file type validation: only block known bad extensions
-        const knownBadExtensions = ['.exe', '.js', '.png', '.jpg', '.jpeg', '.gif', '.pdf', '.zip', '.tar', '.gz'];
-        const fileNameLower = file.name.toLowerCase();
-        const hasBadExtension = knownBadExtensions.some(ext => fileNameLower.endsWith(ext));
-        if (hasBadExtension) {
-            this.logger.error('Invalid file type. Please select a CSV or text file.');
-            this.uiManager.showNotification('Please select a CSV or text file.', 'error');
-            return;
-        }
-        // Warn if not .csv/.txt, but allow
-        const allowedExtensions = ['.csv', '.txt', ''];
-        const hasAllowedExtension = allowedExtensions.some(ext => fileNameLower.endsWith(ext));
-        if (!hasAllowedExtension) {
-            this.logger.warn('File does not have a standard CSV or text extension, attempting to process anyway.', { fileName: file.name });
-        }
-
-        // Validate file size (max 10MB)
-        const maxSize = 10 * 1024 * 1024; // 10MB
-        if (file.size > maxSize) {
-            this.logger.error('File too large. Maximum size is 10MB.');
-            this.uiManager.showNotification('File too large. Maximum size is 10MB.', 'error');
-            return;
-        }
-
+        console.log('[CSV] _handleFileInternal called with file:', file.name, 'size:', file.size);
         try {
-            this.logger.info('Processing CSV file', {
-                fileName: file.name,
-                fileSize: file.size,
-                lastModified: file.lastModified
-            });
-            console.log('About to parse CSV file', file);
-
-            // Show loading state
-            this.uiManager.showNotification('Processing CSV file...', 'info');
-
-            // Parse CSV file with robust validation
-            const parseResults = await this.parseCSVFile(file);
-            console.log('CSV parsing completed', parseResults);
+            this.logger.info('Processing file', { fileName: file.name, fileSize: file.size });
             
-            this.logger.info('CSV parsing completed', {
-                totalRows: parseResults.totalRows,
-                validUsers: parseResults.validUsers,
-                invalidUsers: parseResults.invalidUsers,
-                errorCount: parseResults.errors.length,
-                headers: parseResults.headers
-            });
-
-            // Store the parsed results
-            this.currentFile = file;
+            // Validate file type
+            if (!file.name.toLowerCase().endsWith('.csv')) {
+                throw new Error('Invalid file type. Please select a CSV file.');
+            }
+            
+            // Validate file size (10MB limit)
+            const maxSize = 10 * 1024 * 1024; // 10MB
+            if (file.size > maxSize) {
+                throw new Error('File too large. Please select a file smaller than 10MB.');
+            }
+            
+            // Read file content
+            const content = await this.readFileAsText(file);
+            
+            console.log('[CSV] _handleFileInternal: About to parse CSV content, length:', content.length);
+            // Parse CSV with enhanced validation
+            const parseResults = this.parseCSV(content);
+            console.log('[CSV] _handleFileInternal: parseCSV completed, parseResults:', parseResults);
+            
+            // Store parsed users
             this.parsedUsers = parseResults.users;
-            this.lastParsedUsers = parseResults.users; // Also store in lastParsedUsers for compatibility
-            this.parseResults = parseResults;
-
-            // Show results to user
-            let message = `CSV file processed successfully! Found ${parseResults.validUsers} valid users.`;
+            this.lastParsedUsers = [...parseResults.users];
             
-            if (parseResults.invalidUsers > 0) {
-                message += ` ${parseResults.invalidUsers} users had validation errors and will be skipped.`;
-            }
-            
-            if (parseResults.errors.length > 0) {
-                message += ` ${parseResults.errors.length} rows had parsing errors.`;
-            }
-
-            this.uiManager.showNotification(message, parseResults.invalidUsers > 0 ? 'warning' : 'success');
+            // Update UI with results
+            const message = `File processed: ${parseResults.validUsers} valid users, ${parseResults.invalidRows} invalid rows`;
+            this.uiManager.showNotification(message, parseResults.invalidRows > 0 ? 'warning' : 'success');
 
             // Update UI with enhanced file info display
             this.updateFileInfoForElement(file, 'file-info');
+            
+            // Update file label to show last folder path
+            this.updateFileLabel();
 
             // Log detailed errors for debugging
             if (parseResults.errors.length > 0) {
@@ -299,7 +351,9 @@ class FileHandler {
                         throw new Error('File is empty or contains no text');
                     }
                     
+                    console.log('[CSV] About to parse CSV text, length:', text.length);
                     const { headers, rows } = this.parseCSV(text);
+                    console.log('[CSV] parseCSV completed, headers:', headers, 'rows count:', rows.length);
                     
                     // Validate required fields
                     const missingHeaders = this.requiredFields.filter(field => !headers.includes(field));
@@ -342,29 +396,154 @@ class FileHandler {
     // CSV Parsing
     // ======================
     
-    parseCSV(text) {
-        const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+    parseCSV(content) {
+        const lines = content.split('\n').filter(line => line.trim());
         if (lines.length < 2) {
-            throw new Error('CSV must contain at least a header row and one data row');
+            throw new Error('CSV file must have at least a header row and one data row');
         }
-        
+
         const headers = this.parseCSVLine(lines[0]);
-        const rows = [];
+        const requiredHeaders = ['username'];
+        const recommendedHeaders = ['firstName', 'lastName', 'email'];
         
-        for (let i = 1; i < lines.length; i++) {
-            const values = this.parseCSVLine(lines[i]);
-            const row = {};
-            
-            headers.forEach((header, index) => {
-                row[header] = values[index] || '';
+        // Log all headers for debugging
+        console.log('[CSV] All headers:', headers);
+        console.log('[CSV] Required headers:', requiredHeaders);
+        console.log('[CSV] Recommended headers:', recommendedHeaders);
+        
+        // Validate headers
+        const missingRequired = requiredHeaders.filter(h => {
+            const hasHeader = headers.some(header => {
+                const headerLower = header.toLowerCase();
+                const mappedHeader = this.getHeaderMapping(headerLower);
+                const matches = headerLower === h.toLowerCase() || mappedHeader === h;
+                console.log(`[CSV] Checking header "${header}" (${headerLower}) -> "${mappedHeader}" for required "${h}": ${matches}`);
+                return matches;
             });
-            
-            rows.push(row);
-        }
+            console.log(`[CSV] Required header "${h}" found: ${hasHeader}`);
+            return !hasHeader;
+        });
         
-        return { headers, rows };
+        const missingRecommended = recommendedHeaders.filter(h => {
+            const hasHeader = headers.some(header => {
+                const headerLower = header.toLowerCase();
+                const mappedHeader = this.getHeaderMapping(headerLower);
+                const matches = headerLower === h.toLowerCase() || mappedHeader === h;
+                console.log(`[CSV] Checking header "${header}" (${headerLower}) -> "${mappedHeader}" for recommended "${h}": ${matches}`);
+                return matches;
+            });
+            console.log(`[CSV] Recommended header "${h}" found: ${hasHeader}`);
+            return !hasHeader;
+        });
+
+        if (missingRequired.length > 0) {
+            const errorMsg = `Missing required headers: ${missingRequired.join(', ')}. At minimum, you need a 'username' column.`;
+            this.logger.error('CSV validation failed - missing required headers', {
+                missingRequired,
+                availableHeaders: headers,
+                errorMsg
+            });
+            throw new Error(errorMsg);
+        }
+
+        if (missingRecommended.length > 0) {
+            const warningMsg = `Missing recommended headers: ${missingRecommended.join(', ')}. These are not required but recommended for better user data.`;
+            this.logger.warn('CSV validation warning - missing recommended headers', {
+                missingRecommended,
+                availableHeaders: headers,
+                warningMsg
+            });
+            // Show warning but don't throw error
+            if (window.app && window.app.uiManager) {
+                window.app.uiManager.showNotification(warningMsg, 'warning');
+            }
+        }
+
+        const users = [];
+        const errors = [];
+        const warnings = [];
+        let rowNumber = 1; // Start from 1 since 0 is header
+
+        for (let i = 1; i < lines.length; i++) {
+            rowNumber = i + 1; // +1 because we start from header row
+            const line = lines[i].trim();
+            
+            if (!line) continue; // Skip empty lines
+            
+            try {
+                const user = this.parseUserRow(line, headers, rowNumber);
+                
+                // Validate user data
+                const validationResult = this.validateUserData(user, rowNumber);
+                if (validationResult.isValid) {
+                    users.push(user);
+                } else {
+                    errors.push({
+                        row: rowNumber,
+                        user: user,
+                        errors: validationResult.errors,
+                        warnings: validationResult.warnings
+                    });
+                    
+                    // Add warnings to warnings array
+                    warnings.push(...validationResult.warnings.map(w => ({ row: rowNumber, ...w })));
+                }
+            } catch (error) {
+                errors.push({
+                    row: rowNumber,
+                    error: error.message,
+                    line: line
+                });
+            }
+        }
+
+        // Log comprehensive validation results
+        const validationSummary = {
+            totalRows: lines.length - 1,
+            validUsers: users.length,
+            invalidRows: errors.length,
+            warnings: warnings.length,
+            missingRequiredHeaders: missingRequired,
+            missingRecommendedHeaders: missingRecommended,
+            availableHeaders: headers
+        };
+
+        this.logger.info('CSV parsing completed', validationSummary);
+
+        if (errors.length > 0) {
+            const errorDetails = errors.map(e => ({
+                row: e.row,
+                errors: e.errors || [e.error],
+                warnings: e.warnings || []
+            }));
+            
+            this.logger.warn('CSV validation issues found', {
+                totalErrors: errors.length,
+                errorDetails: errorDetails.slice(0, 10) // Log first 10 errors
+            });
+        }
+
+        // Show user-friendly summary
+        this.showValidationSummary(validationSummary, errors, warnings);
+
+        return {
+            users,
+            errors,
+            warnings,
+            totalRows: lines.length - 1,
+            validUsers: users.length,
+            invalidRows: errors.length,
+            headerCount: headers.length,
+            availableHeaders: headers
+        };
     }
-    
+
+    /**
+     * Parse a single CSV line
+     * @param {string} line - CSV line to parse
+     * @param {string} delimiter - Delimiter character
+     * @returns {Array<string>} Array of field values
+     */
     parseCSVLine(line, delimiter = ',') {
         const result = [];
         let current = '';
@@ -392,128 +571,16 @@ class FileHandler {
         result.push(current);
         return result.map(field => field.trim());
     }
-    
-    /**
-     * Parse CSV file and extract users
-     * @param {File} file - CSV file to parse
-     * @returns {Promise<Object>} Parsed users with validation results
-     */
-    async parseCSVFile(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            
-            reader.onload = (event) => {
-                try {
-                    const csvContent = event.target.result;
-                    const lines = csvContent.split('\n').filter(line => line.trim());
-                    
-                    if (lines.length < 2) {
-                        reject(new Error('CSV file must contain at least a header row and one data row'));
-                        return;
-                    }
-                    
-                    // Parse header row
-                    const headers = this.parseCSVRow(lines[0]);
-                    const requiredHeaders = ['username'];
-                    const missingHeaders = requiredHeaders.filter(header => 
-                        !headers.some(h => h.toLowerCase() === header.toLowerCase())
-                    );
-                    
-                    if (missingHeaders.length > 0) {
-                        reject(new Error(`Missing required headers: ${missingHeaders.join(', ')}. Required headers are: ${requiredHeaders.join(', ')}`));
-                        return;
-                    }
-                    
-                    // Parse data rows
-                    const users = [];
-                    const errors = [];
-                    
-                    for (let i = 1; i < lines.length; i++) {
-                        try {
-                            const user = this.parseUserRow(lines[i], headers, i + 1);
-                            if (user) {
-                                users.push(user);
-                            }
-                        } catch (error) {
-                            errors.push({
-                                row: i + 1,
-                                error: error.message,
-                                line: lines[i]
-                            });
-                        }
-                    }
-                    
-                    // Validate parsed users
-                    const validationResults = this.validateParsedUsers(users);
-                    
-                    resolve({
-                        users: validationResults.validUsers,
-                        totalRows: lines.length - 1,
-                        validUsers: validationResults.validUsers.length,
-                        invalidUsers: validationResults.invalidUsers.length,
-                        errors: [...errors, ...validationResults.errors],
-                        headers: headers,
-                        sample: users.slice(0, 5) // First 5 users for preview
-                    });
-                    
-                } catch (error) {
-                    reject(new Error(`Failed to parse CSV file: ${error.message}`));
-                }
-            };
-            
-            reader.onerror = () => {
-                reject(new Error('Failed to read file'));
-            };
-            
-            reader.readAsText(file);
-        });
-    }
-
-    /**
-     * Parse a single CSV row
-     * @param {string} line - CSV line to parse
-     * @returns {Array<string>} Array of header values
-     * @private
-     */
-    parseCSVRow(line) {
-        // Handle quoted fields and commas within quotes
-        const headers = [];
-        let current = '';
-        let inQuotes = false;
-        
-        for (let i = 0; i < line.length; i++) {
-            const char = line[i];
-            
-            if (char === '"') {
-                inQuotes = !inQuotes;
-            } else if (char === ',' && !inQuotes) {
-                headers.push(current.trim());
-                current = '';
-            } else {
-                current += char;
-            }
-        }
-        
-        // Add the last field
-        headers.push(current.trim());
-        
-        return headers;
-    }
 
     /**
      * Parse a user row from CSV
      * @param {string} line - CSV line to parse
      * @param {Array<string>} headers - Header row
      * @param {number} rowNumber - Row number for error reporting
-     * @returns {Object|null} Parsed user object or null if invalid
-     * @private
+     * @returns {Object} Parsed user object
      */
     parseUserRow(line, headers, rowNumber) {
-        if (!line.trim()) {
-            return null; // Skip empty lines
-        }
-        
-        const values = this.parseCSVRow(line);
+        const values = this.parseCSVLine(line);
         
         if (values.length !== headers.length) {
             throw new Error(`Row ${rowNumber}: Number of columns (${values.length}) doesn't match headers (${headers.length})`);
@@ -527,9 +594,10 @@ class FileHandler {
             
             // Handle boolean values
             if (header === 'enabled') {
-                if (value === 'true' || value === '1') {
+                const valueLower = value.toLowerCase();
+                if (valueLower === 'true' || value === '1') {
                     value = true;
-                } else if (value === 'false' || value === '0') {
+                } else if (valueLower === 'false' || value === '0') {
                     value = false;
                 } else if (value === '') {
                     value = true; // Default to enabled
@@ -539,35 +607,9 @@ class FileHandler {
             }
             
             // Map common header variations
-            const headerMap = {
-                'firstname': 'firstName',
-                'first_name': 'firstName',
-                'givenname': 'firstName',
-                'given_name': 'firstName',
-                'lastname': 'lastName',
-                'last_name': 'lastName',
-                'familyname': 'lastName',
-                'family_name': 'lastName',
-                'surname': 'lastName',
-                'emailaddress': 'email',
-                'email_address': 'email',
-                'userid': 'username',
-                'user_id': 'username',
-                'login': 'username',
-                'user': 'username',
-                'populationid': 'populationId',
-                'population_id': 'populationId',
-                'popid': 'populationId',
-                'pop_id': 'populationId'
-            };
-            
-            const mappedHeader = headerMap[header] || header;
+            const mappedHeader = this.getHeaderMapping(header);
+            console.log(`[CSV] Mapping header: "${header}" -> "${mappedHeader}"`);
             user[mappedHeader] = value;
-        }
-        
-        // Validate required fields
-        if (!user.username) {
-            throw new Error(`Row ${rowNumber}: User must have a username`);
         }
         
         // Set default username if not provided
@@ -579,80 +621,161 @@ class FileHandler {
     }
 
     /**
-     * Validate parsed users
-     * @param {Array<Object>} users - Users to validate
-     * @returns {Object} Validation results
-     * @private
+     * Validate user data for a specific row
+     * @param {Object} user - User object to validate
+     * @param {number} rowNumber - Row number for error reporting
+     * @returns {Object} Validation result with isValid, errors, and warnings
      */
-    validateParsedUsers(users) {
-        const validUsers = [];
-        const invalidUsers = [];
+    validateUserData(user, rowNumber) {
         const errors = [];
-        const seenEmails = new Set();
-        const seenUsernames = new Set();
-        
-        for (let i = 0; i < users.length; i++) {
-            const user = users[i];
-            const rowNumber = i + 1;
-            let isValid = true;
-            let errorMessage = '';
-            
-            // Check for duplicate emails
-            if (user.email) {
-                if (seenEmails.has(user.email.toLowerCase())) {
-                    errorMessage = `Duplicate email '${user.email}' found in row ${rowNumber}`;
-                    isValid = false;
-                } else {
-                    seenEmails.add(user.email.toLowerCase());
-                }
-                
-                // Validate email format
-                if (!this.isValidEmail(user.email)) {
-                    errorMessage = `Invalid email format '${user.email}' in row ${rowNumber}`;
-                    isValid = false;
-                }
-            }
-            
-            // Check for duplicate usernames
-            if (user.username) {
-                if (seenUsernames.has(user.username.toLowerCase())) {
-                    errorMessage = `Duplicate username '${user.username}' found in row ${rowNumber}`;
-                    isValid = false;
-                } else {
-                    seenUsernames.add(user.username.toLowerCase());
-                }
-                
-                // Validate username format
-                if (!this.isValidUsername(user.username)) {
-                    errorMessage = `Invalid username format '${user.username}' in row ${rowNumber} (no spaces or special characters)`;
-                    isValid = false;
-                }
-            }
-            
-            if (isValid) {
-                validUsers.push(user);
-            } else {
-                invalidUsers.push(user);
-                errors.push({
-                    row: rowNumber,
-                    user: user.email || user.username || `Row ${rowNumber}`,
-                    error: errorMessage
-                });
-            }
+        const warnings = [];
+
+        // Check required fields
+        if (!user.username || user.username.trim() === '') {
+            errors.push('Username is required and cannot be empty');
         }
-        
+
+        // Check recommended fields
+        if (!user.firstName || user.firstName.trim() === '') {
+            warnings.push('firstName is recommended for better user data');
+        }
+
+        if (!user.lastName || user.lastName.trim() === '') {
+            warnings.push('lastName is recommended for better user data');
+        }
+
+        if (!user.email || user.email.trim() === '') {
+            warnings.push('email is recommended for better user data');
+        }
+
+        // Validate email format if provided
+        if (user.email && user.email.trim() !== '' && !this.isValidEmail(user.email)) {
+            errors.push('Invalid email format');
+        }
+
+        // Validate username format if provided
+        if (user.username && !this.isValidUsername(user.username)) {
+            errors.push('Username contains invalid characters (no spaces or special characters allowed)');
+        }
+
         return {
-            validUsers,
-            invalidUsers,
-            errors
+            isValid: errors.length === 0,
+            errors,
+            warnings
         };
+    }
+
+    /**
+     * Show validation summary to user
+     * @param {Object} summary - Validation summary
+     * @param {Array} errors - Array of errors
+     * @param {Array} warnings - Array of warnings
+     */
+    showValidationSummary(summary, errors, warnings) {
+        let message = '';
+        let type = 'success';
+
+        if (summary.invalidRows > 0) {
+            type = 'error';
+            message = `File validation failed!\n\n`;
+            message += `• Total rows: ${summary.totalRows}\n`;
+            message += `• Valid users: ${summary.validUsers}\n`;
+            message += `• Invalid rows: ${summary.invalidRows}\n`;
+            message += `• Warnings: ${warnings.length}\n\n`;
+            
+            if (summary.missingRequiredHeaders.length > 0) {
+                message += `❌ Missing required headers: ${summary.missingRequiredHeaders.join(', ')}\n`;
+            }
+            
+            if (errors.length > 0) {
+                message += `❌ Data errors found in ${errors.length} row(s)\n`;
+                // Show first few specific errors
+                const firstErrors = errors.slice(0, 3);
+                firstErrors.forEach(error => {
+                    if (error.errors) {
+                        message += `  Row ${error.row}: ${error.errors.join(', ')}\n`;
+                    } else if (error.error) {
+                        message += `  Row ${error.row}: ${error.error}\n`;
+                    }
+                });
+                if (errors.length > 3) {
+                    message += `  ... and ${errors.length - 3} more errors\n`;
+                }
+            }
+        } else if (warnings.length > 0) {
+            type = 'warning';
+            message = `File loaded with warnings:\n\n`;
+            message += `• Total rows: ${summary.totalRows}\n`;
+            message += `• Valid users: ${summary.validUsers}\n`;
+            message += `• Warnings: ${warnings.length}\n\n`;
+            
+            if (summary.missingRecommendedHeaders.length > 0) {
+                message += `⚠️ Missing recommended headers: ${summary.missingRecommendedHeaders.join(', ')}\n`;
+            }
+            
+            // Show first few warnings
+            const firstWarnings = warnings.slice(0, 3);
+            firstWarnings.forEach(warning => {
+                message += `  Row ${warning.row}: ${warning.message || warning}\n`;
+            });
+            if (warnings.length > 3) {
+                message += `  ... and ${warnings.length - 3} more warnings\n`;
+            }
+        } else {
+            message = `File loaded successfully!\n\n`;
+            message += `• Total rows: ${summary.totalRows}\n`;
+            message += `• Valid users: ${summary.validUsers}\n`;
+            message += `• Headers found: ${summary.availableHeaders.join(', ')}`;
+        }
+
+        // Show notification to user
+        if (window.app && window.app.uiManager) {
+            window.app.uiManager.showNotification(message, type);
+        }
+
+        // Log to server
+        this.logger.info('CSV validation summary shown to user', {
+            summary,
+            message,
+            type
+        });
+    }
+
+    /**
+     * Get header mapping for common variations
+     * @param {string} header - Header to map
+     * @returns {string} Mapped header name
+     */
+    getHeaderMapping(header) {
+        const headerMap = {
+            'firstname': 'firstName',
+            'first_name': 'firstName',
+            'givenname': 'firstName',
+            'given_name': 'firstName',
+            'lastname': 'lastName',
+            'last_name': 'lastName',
+            'familyname': 'lastName',
+            'family_name': 'lastName',
+            'surname': 'lastName',
+            'emailaddress': 'email',
+            'email_address': 'email',
+            'userid': 'username',
+            'user_id': 'username',
+            'login': 'username',
+            'user': 'username',
+            'populationid': 'populationId',
+            'population_id': 'populationId',
+            'popid': 'populationId',
+            'pop_id': 'populationId'
+        };
+        
+        return headerMap[header] || header;
     }
 
     /**
      * Check if email is valid
      * @param {string} email - Email to validate
      * @returns {boolean} True if valid
-     * @private
      */
     isValidEmail(email) {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -663,7 +786,6 @@ class FileHandler {
      * Check if username is valid
      * @param {string} username - Username to validate
      * @returns {boolean} True if valid
-     * @private
      */
     isValidUsername(username) {
         // Username should not contain spaces or special characters
@@ -682,7 +804,11 @@ class FileHandler {
      */
     updateFileInfoForElement(file, containerId) {
         const container = document.getElementById(containerId);
-        if (!container || !file) return;
+        console.log('updateFileInfoForElement called:', { containerId, container: !!container, file: !!file });
+        if (!container || !file) {
+            console.warn('updateFileInfoForElement: container or file is null', { containerId, hasContainer: !!container, hasFile: !!file });
+            return;
+        }
         
         const fileSize = this.formatFileSize(file.size);
         const lastModified = new Date(file.lastModified).toLocaleString();
@@ -781,15 +907,11 @@ class FileHandler {
         
         if (!rows || rows.length === 0) {
             this.previewContainer.innerHTML = '<div class="alert alert-info">No data to display</div>';
-            // Disable import buttons if no rows
-            const importBtn = document.getElementById('start-import-btn');
-            const importBtnBottom = document.getElementById('start-import-btn-bottom');
-            if (importBtn) {
-                importBtn.disabled = true;
-            }
-            if (importBtnBottom) {
-                importBtnBottom.disabled = true;
-            }
+                    // Disable import button if no rows
+        const importBtnBottom = document.getElementById('start-import-btn-bottom');
+        if (importBtnBottom) {
+            importBtnBottom.disabled = true;
+        }
             return;
         }
         
@@ -821,20 +943,13 @@ class FileHandler {
         // Check if population choice has been made
         const hasPopulationChoice = this.checkPopulationChoice();
         
-        // Enable import buttons after showing preview (only if population choice is made)
-        const importBtn = document.getElementById('start-import-btn');
+        // Enable import button after showing preview (only if population choice is made)
         const importBtnBottom = document.getElementById('start-import-btn-bottom');
-        if (importBtn) {
-            importBtn.disabled = !hasPopulationChoice;
+        if (importBtnBottom) {
+            importBtnBottom.disabled = !hasPopulationChoice;
             this.logger.log(`Import button ${hasPopulationChoice ? 'enabled' : 'disabled'}`, 'debug');
         } else {
             this.logger.warn('Could not find import button to enable', 'warn');
-        }
-        if (importBtnBottom) {
-            importBtnBottom.disabled = !hasPopulationChoice;
-            this.logger.log(`Bottom import button ${hasPopulationChoice ? 'enabled' : 'disabled'}`, 'debug');
-        } else {
-            this.logger.warn('Could not find bottom import button to enable', 'warn');
         }
     }
     

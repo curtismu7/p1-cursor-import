@@ -30,8 +30,8 @@ body {
 /* Sidebar Styles */
 .sidebar {
     width: var(--sidebar-width);
-    background-color: #2d3748;
-    color: white;
+    background-color: #d1d6db;
+    color: #222;
     padding: 1.5rem 0;
     height: 100vh;
     position: fixed;
@@ -80,14 +80,25 @@ body {
 }
 
 .nav-item.active {
-    background-color: var(--pingone-blue);
+    background-color: #4f8cff;
     border-left: 4px solid var(--pingone-red);
+}
+
+.nav-item.disabled {
+    opacity: 0.5;
+    cursor: not-allowed !important;
+    pointer-events: none;
+}
+
+.nav-item.disabled:hover {
+    background-color: transparent;
+    color: inherit;
 }
 
 /* Notification Area */
 .notification-area {
     position: fixed;
-    top: 20px;
+    top: 70px; /* Move below version badge */
     right: 20px;
     z-index: 1000;
     max-width: 350px;
@@ -296,7 +307,8 @@ h1 {
 
 .import-buttons {
     display: flex;
-    gap: 1rem;
+    align-items: center;
+    gap: 16px;
     margin-bottom: 0.5rem;
 }
 
@@ -362,15 +374,13 @@ h1 {
 }
 
 .file-label {
+    min-height: 44px;
+    padding: 0.75rem 1.5rem;
+    font-size: 0.95rem;
+    border-radius: var(--border-radius);
     display: inline-flex;
     align-items: center;
-    padding: 0.6rem 1.2rem;
-    background-color: var(--pingone-blue);
-    color: white;
-    border-radius: var(--border-radius);
-    cursor: pointer;
-    transition: var(--transition);
-    font-size: 0.9rem;
+    box-sizing: border-box;
 }
 
 .file-label:hover {
@@ -392,10 +402,9 @@ h1 {
     border-radius: var(--border-radius);
     border: 1px solid #e9ecef;
     font-size: 0.9rem;
-    text-align: center;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    text-align: left;
+    white-space: normal;
+    overflow: visible;
     max-width: 100%;
     box-sizing: border-box;
 }
@@ -2056,6 +2065,7 @@ label {
     border-radius: 8px;
     border: 2px solid rgba(255, 255, 255, 0.2);
     text-align: left;
+    transition: background 0.2s, border 0.2s;
 }
 
 .agreement-checkbox input[type="checkbox"] {
@@ -2064,6 +2074,71 @@ label {
     margin-top: 0.25rem;
     cursor: pointer;
     accent-color: #e53e3e;
+    position: relative;
+    z-index: 1;
+}
+
+.agreement-checkbox input[type="checkbox"]:checked {
+    accent-color: #38a169;
+}
+
+.agreement-checkbox input[type="checkbox"]:checked + label {
+    color: #207544;
+    text-shadow: none;
+}
+
+.agreement-checkbox input[type="checkbox"]:checked {
+    /* Remove default accent for custom checkmark */
+    accent-color: #38a169;
+}
+
+.agreement-checkbox input[type="checkbox"]:checked::before {
+    content: '\2714';
+    display: inline-block;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 24px;
+    height: 24px;
+    background: #38a169;
+    color: #fff;
+    font-size: 1.3rem;
+    line-height: 24px;
+    text-align: center;
+    border-radius: 4px;
+    box-shadow: 0 2px 6px rgba(56,161,105,0.15);
+}
+
+.agreement-checkbox input[type="checkbox"]:checked {
+    background: #38a169;
+    border-color: #38a169;
+}
+
+.agreement-checkbox input[type="checkbox"]:checked ~ label {
+    color: #207544;
+}
+
+.agreement-checkbox input[type="checkbox"]:checked ~ label strong {
+    color: #207544;
+}
+
+.agreement-checkbox input[type="checkbox"]:checked ~ label {
+    font-weight: bold;
+}
+
+.agreement-checkbox input[type="checkbox"]:checked ~ label {
+    text-shadow: none;
+}
+
+.agreement-checkbox input[type="checkbox"]:checked ~ label:before {
+    color: #38a169;
+}
+
+.agreement-checkbox.checked,
+.agreement-checkbox input[type="checkbox"]:checked ~ label {
+    background: #e6f9ec !important;
+    border-color: #38a169 !important;
+    transition: background 0.2s, border 0.2s;
 }
 
 .agreement-checkbox label {
@@ -2292,15 +2367,18 @@ label {
 
 /* PingIdentity Footer */
 .pingidentity-footer {
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    background: #071727 !important;
+    color: #fff !important;
     border-top: 2px solid #dee2e6;
-    padding: 20px 0;
+    padding: 8px 0;
     position: fixed;
     bottom: 0;
     left: var(--sidebar-width);
     right: 0;
     z-index: 100;
     box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+    font-size: 12px;
+    min-height: 40px;
 }
 
 .footer-content {
@@ -2311,81 +2389,110 @@ label {
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
-    gap: 20px;
+    gap: 10px;
 }
 
-.footer-logo {
+.footer-left {
     display: flex;
     align-items: center;
+    gap: 8px;
+    font-size: 12px;
 }
 
-.footer-logo-img {
-    height: 30px;
-    width: auto;
-    filter: grayscale(100%);
-    opacity: 0.7;
-}
-
-.footer-text {
-    text-align: right;
-    color: #6c757d;
+.footer-accessibility-icons i {
     font-size: 14px;
-    line-height: 1.4;
+    margin-right: 3px;
+    color: #fff;
+    opacity: 0.8;
 }
 
-.footer-text p {
-    margin: 0;
-    padding: 2px 0;
+.footer-links {
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }
 
-.footer-text p:first-child {
-    font-weight: 600;
-    color: #495057;
+.footer-link {
+    color: #fff;
+    text-decoration: underline;
+    font-weight: 500;
+    opacity: 0.9;
+    transition: color 0.2s;
 }
 
-/* Responsive footer */
-@media (max-width: 768px) {
+.footer-link:hover {
+    color: #ffe066;
+    text-decoration: underline;
+}
+
+.footer-social {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.footer-social-link {
+    color: #fff;
+    font-size: 14px;
+    opacity: 0.85;
+    transition: color 0.2s, opacity 0.2s;
+}
+
+.footer-social-link:hover {
+    color: #ffe066;
+    opacity: 1;
+}
+
+/* Remove old logo styles if not used */
+.footer-logo, .footer-logo-img { display: none !important; }
+
+/* Responsive: stack footer on mobile */
+@media (max-width: 900px) {
     .footer-content {
         flex-direction: column;
-        text-align: center;
+        align-items: flex-start;
+        gap: 10px;
+        text-align: left;
     }
-    
-    .footer-text {
-        text-align: center;
-    }
-    
-    .version-badge-top {
-        top: 10px;
-        right: 10px;
-        font-size: 12px;
-        padding: 6px 10px;
-    }
-    
-    .pingidentity-footer {
-        left: 0; /* Full width on mobile since sidebar is hidden */
+    .footer-left, .footer-links, .footer-social {
+        margin-bottom: 4px;
     }
 }
 
-/* API Secret Eye Icon Button */
+/* API Secret Eye Icon Button - improved alignment and style */
 #toggle-api-secret-visibility {
-    border-left: none;
-    border-radius: 0 4px 4px 0;
-    padding: 0 0.75rem;
+    border: none !important;
+    background: transparent !important;
+    height: 100%;
     display: flex;
     align-items: center;
-    height: 38px;
+    justify-content: center;
+    padding: 0 0.75rem;
     cursor: pointer;
+    box-shadow: none;
+    border-radius: 0 4px 4px 0;
 }
 #toggle-api-secret-visibility:focus {
     outline: none;
     box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
 }
 #api-secret-eye {
-    font-size: 1.1rem;
+    font-size: 1.2rem;
     color: #6c757d;
+    vertical-align: middle;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 #toggle-api-secret-visibility:hover #api-secret-eye {
     color: var(--pingone-blue);
+}
+.input-group > .form-control {
+    border-right: none;
+}
+.input-group > #toggle-api-secret-visibility {
+    border-left: none;
 }
 
 /* Export preferences styling */
@@ -2792,42 +2899,126 @@ label {
   color: #e53935;
 }
 
-/* Modal overlay for import progress */
-.modal-overlay {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  width: 100vw;
-  height: 100vh;
-  background: rgba(30, 34, 44, 0.35);
-  z-index: 2000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.2s;
-}
-
-/* Modal content for import progress */
-.import-status {
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-  padding: 32px 32px 24px 32px;
-  min-width: 350px;
-  max-width: 95vw;
-  max-height: 90vh;
-  overflow-y: auto;
-  position: relative;
-  z-index: 2100;
-  animation: modal-pop-in 0.18s cubic-bezier(.4,2,.6,1) 1;
-}
-@keyframes modal-pop-in {
-  from { transform: scale(0.95) translateY(30px); opacity: 0; }
-  to   { transform: scale(1) translateY(0); opacity: 1; }
-}
-
 /* Blur effect for background when modal is open */
 .blurred {
   filter: blur(5px) grayscale(0.1) brightness(0.98);
   pointer-events: none;
   user-select: none;
+}
+
+/* --- Fix for Modify Page Checkboxes: force standard checkbox appearance and horizontal alignment --- */
+#modify-view .form-check-input[type="checkbox"] {
+  appearance: checkbox !important;
+  -webkit-appearance: checkbox !important;
+  width: 18px;
+  height: 18px;
+  margin-right: 8px;
+  vertical-align: middle;
+  position: static;
+}
+#modify-view .form-check-label {
+  display: inline-block;
+  vertical-align: middle;
+  margin-bottom: 0;
+  font-weight: 500;
+}
+#modify-view .form-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0.5rem;
+}
+
+/* Green shadow box for success notifications and connection status */
+.notification.notification-success, .notification.success, .connection-status.status-connected, .connection-status.connected {
+    background: #e6f9ec !important;
+    color: #207544 !important;
+    border-left: 6px solid #38a169;
+    box-shadow: 0 2px 8px rgba(56, 161, 105, 0.10);
+}
+
+/* Ensure checkmark icons are green and aligned */
+.notification-success .notification-message, .notification.success .notification-message, .connection-status.status-connected, .connection-status.connected {
+    color: #207544 !important;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+}
+
+/* Remove old dark green background for notification.success */
+.notification.success {
+    background: #e6f9ec !important;
+}
+
+/* Responsive: move notification area further down if needed on mobile */
+@media (max-width: 768px) {
+    .notification-area {
+        top: 60px;
+        right: 10px;
+    }
+}
+
+.pingidentity-footer {
+    background: #3D454D !important;
+    color: #fff !important;
+    border-top: 2px solid #dee2e6;
+}
+
+.footer-text {
+    color: #f8f9fa !important;
+}
+
+.footer-text p:first-child {
+    color: #e3e3e3 !important;
+}
+
+#accept-disclaimer.btn-danger:disabled,
+#accept-disclaimer[disabled] {
+    background: #b0b4b9 !important;
+    color: #f8f9fa !important;
+    border: 3px solid #e0e0e0 !important;
+    box-shadow: none !important;
+    opacity: 0.6 !important;
+    cursor: not-allowed !important;
+    filter: grayscale(0.3) brightness(1.1);
+    text-shadow: none !important;
+    transition: all 0.2s;
+}
+#accept-disclaimer.btn-danger:not(:disabled),
+#accept-disclaimer:not([disabled]) {
+    background: #dc3545 !important;
+    color: #fff !important;
+    border: 3px solid #fff !important;
+    box-shadow: 0 0 16px 2px #ff6b6b, 0 4px 16px rgba(220,53,69,0.4);
+    opacity: 1 !important;
+    cursor: pointer !important;
+    filter: none;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.18);
+    transition: all 0.2s;
+}
+#accept-disclaimer.btn-danger:not(:disabled):hover,
+#accept-disclaimer:not([disabled]):hover {
+    background: #b71c1c !important;
+    box-shadow: 0 0 24px 4px #ff6b6b, 0 6px 20px rgba(220,53,69,0.5);
+    transform: translateY(-2px) scale(1.03);
+    transition: all 0.18s;
+}
+
+
+
+#cancel-import-progress.btn-danger,
+#cancel-import-progress {
+    background: #dc3545 !important;
+    color: #fff !important;
+    border: 2px solid #fff !important;
+    font-weight: bold;
+    box-shadow: 0 2px 8px rgba(220,53,69,0.15);
+    transition: background 0.18s, box-shadow 0.18s;
+}
+#cancel-import-progress.btn-danger:hover,
+#cancel-import-progress:hover {
+    background: #b71c1c !important;
+    color: #fff !important;
+    box-shadow: 0 4px 16px rgba(220,53,69,0.25);
 }

@@ -226,6 +226,14 @@ class App {
         document.querySelectorAll('.nav-item').forEach(navItem => {
             navItem.addEventListener('click', (e) => {
                 e.preventDefault();
+                
+                // Check if disclaimer has been accepted
+                const hasAgreed = localStorage.getItem('disclaimer-agreed');
+                if (hasAgreed !== 'true') {
+                    this.uiManager.showNotification('Please accept the disclaimer agreement before using the tool.', 'warning');
+                    return;
+                }
+                
                 const view = navItem.getAttribute('data-view');
                 if (view) {
                     this.showView(view);
@@ -237,6 +245,14 @@ class App {
         document.querySelectorAll('.feature-card').forEach(featureCard => {
             featureCard.addEventListener('click', (e) => {
                 e.preventDefault();
+                
+                // Check if disclaimer has been accepted
+                const hasAgreed = localStorage.getItem('disclaimer-agreed');
+                if (hasAgreed !== 'true') {
+                    this.uiManager.showNotification('Please accept the disclaimer agreement before using the tool.', 'warning');
+                    return;
+                }
+                
                 const view = featureCard.getAttribute('data-view');
                 if (view) {
                     this.showView(view);
@@ -299,7 +315,7 @@ class App {
             });
         }
 
-        // Delete CSV button
+        // Delete CSV button (top)
         const deleteCsvBtn = document.getElementById('start-delete-csv-btn');
         if (deleteCsvBtn) {
             deleteCsvBtn.addEventListener('click', async (e) => {
@@ -308,7 +324,16 @@ class App {
             });
         }
 
-        // Cancel delete CSV button
+        // Delete CSV button (bottom)
+        const deleteCsvBtnBottom = document.getElementById('start-delete-csv-btn-bottom');
+        if (deleteCsvBtnBottom) {
+            deleteCsvBtnBottom.addEventListener('click', async (e) => {
+                e.preventDefault();
+                await this.startDeleteCsv();
+            });
+        }
+
+        // Cancel delete CSV button (top)
         const cancelDeleteCsvBtn = document.getElementById('cancel-delete-csv-btn');
         if (cancelDeleteCsvBtn) {
             cancelDeleteCsvBtn.addEventListener('click', (e) => {
@@ -317,7 +342,16 @@ class App {
             });
         }
 
-        // Modify CSV button
+        // Cancel delete CSV button (bottom)
+        const cancelDeleteCsvBtnBottom = document.getElementById('cancel-delete-csv-btn-bottom');
+        if (cancelDeleteCsvBtnBottom) {
+            cancelDeleteCsvBtnBottom.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.cancelDeleteCsv();
+            });
+        }
+
+        // Modify CSV button (top - removed from HTML)
         const modifyCsvBtn = document.getElementById('start-modify-csv-btn');
         if (modifyCsvBtn) {
             modifyCsvBtn.addEventListener('click', async (e) => {
@@ -326,10 +360,28 @@ class App {
             });
         }
 
-        // Cancel modify CSV button
+        // Modify CSV button (bottom)
+        const modifyCsvBtnBottom = document.getElementById('start-modify-btn-bottom');
+        if (modifyCsvBtnBottom) {
+            modifyCsvBtnBottom.addEventListener('click', async (e) => {
+                e.preventDefault();
+                await this.startModifyCsv();
+            });
+        }
+
+        // Cancel modify CSV button (top - removed from HTML)
         const cancelModifyCsvBtn = document.getElementById('cancel-modify-csv-btn');
         if (cancelModifyCsvBtn) {
             cancelModifyCsvBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.cancelModifyCsv();
+            });
+        }
+
+        // Cancel modify CSV button (bottom)
+        const cancelModifyCsvBtnBottom = document.getElementById('cancel-modify-btn-bottom');
+        if (cancelModifyCsvBtnBottom) {
+            cancelModifyCsvBtnBottom.addEventListener('click', (e) => {
                 e.preventDefault();
                 this.cancelModifyCsv();
             });
@@ -467,56 +519,39 @@ class App {
             });
         }
 
-        // Import button event listeners (top and bottom)
-        const importButton = document.getElementById('start-import-btn');
+        // Import button event listener (bottom only)
         const importButtonBottom = document.getElementById('start-import-btn-bottom');
-        
-        if (importButton) {
-            importButton.addEventListener('click', (e) => {
-                console.log('Top import button clicked');
-                e.preventDefault();
-                this.startImport();
-            });
-            console.log('Top import button event listener attached');
-        } else {
-            console.error('Top import button not found');
-        }
         
         if (importButtonBottom) {
             importButtonBottom.addEventListener('click', (e) => {
-                console.log('Bottom import button clicked');
+                console.log('Import button clicked');
+                console.log('this object:', this);
+                console.log('this.startImport:', this.startImport);
                 e.preventDefault();
-                this.startImport();
+                if (typeof this.startImport === 'function') {
+                    console.log('Calling startImport...');
+                    this.startImport();
+                } else {
+                    console.error('startImport is not a function:', typeof this.startImport);
+                }
             });
-            console.log('Bottom import button event listener attached');
+            console.log('Import button event listener attached');
         } else {
-            console.error('Bottom import button not found');
+            console.error('Import button not found');
         }
 
-        // Cancel import button event listeners (top and bottom)
-        const cancelImportButton = document.getElementById('cancel-import-btn');
+        // Cancel import button event listener (bottom only)
         const cancelImportButtonBottom = document.getElementById('cancel-import-btn-bottom');
-        
-        if (cancelImportButton) {
-            cancelImportButton.addEventListener('click', (e) => {
-                console.log('Top cancel import button clicked');
-                e.preventDefault();
-                this.cancelImport();
-            });
-            console.log('Top cancel import button event listener attached');
-        } else {
-            console.error('Top cancel import button not found');
-        }
         
         if (cancelImportButtonBottom) {
             cancelImportButtonBottom.addEventListener('click', (e) => {
-                console.log('Bottom cancel import button clicked');
+                console.log('Cancel import button clicked');
                 e.preventDefault();
                 this.cancelImport();
             });
-            console.log('Bottom cancel import button event listener attached');
+            console.log('Cancel import button event listener attached');
         } else {
-            console.error('Bottom cancel import button not found');
+            console.error('Cancel import button not found');
         }
 
         // Refresh populations button
@@ -1002,6 +1037,7 @@ class App {
     }
     
     async startImport() {
+        console.log('startImport called');
         if (this.isImporting) return;
         this.isImporting = true;
         this.uiManager.setImporting(true);
@@ -1013,8 +1049,13 @@ class App {
 
         try {
             // Get the parsed users from the file handler
+            console.log('Getting parsed users from file handler...');
             const users = this.fileHandler.getParsedUsers();
+            console.log('Users from file handler:', users);
+            console.log('Users length:', users ? users.length : 'null/undefined');
+            
             if (!users || users.length === 0) {
+                console.error('No users found in CSV file');
                 throw new Error('No users found in CSV file. Please check your file and try again.');
             }
 
@@ -1053,6 +1094,24 @@ class App {
                     }
                     // User chose to continue with fallback
                     this.logger.fileLogger.info('User chose to continue with fallback population');
+                }
+            }
+
+            // Check if CSV has populationId data but checkbox is not checked
+            if (!importOptions.useCsvPopulationId && importOptions.hasCsvPopulationId) {
+                // Show modal to ask user what to do
+                const modalResult = await this.handleCsvPopulationIdFound();
+                if (modalResult.action === 'back') {
+                    this.isImporting = false;
+                    this.currentImportAbortController = null;
+                    return; // User chose to go back
+                } else if (modalResult.action === 'use_csv') {
+                    // User chose to use CSV population IDs, update the options
+                    importOptions.useCsvPopulationId = true;
+                    this.logger.fileLogger.info('User chose to use CSV population IDs');
+                } else {
+                    // User chose to continue with selected population
+                    this.logger.fileLogger.info('User chose to continue with selected population');
                 }
             }
 
@@ -1120,7 +1179,9 @@ class App {
                 pingOneImportOptions
             });
 
+            console.log('About to call pingOneClient.importUsers...');
             const results = await this.pingOneClient.importUsers(validUsers, pingOneImportOptions);
+            console.log('pingOneClient.importUsers completed with results:', results);
 
             // Log final results
             this.logger.fileLogger.info('Import completed', {
@@ -1379,8 +1440,20 @@ class App {
     }
 
     showModifyCsvFileInfo(file) {
+        console.log('[DEBUG] showModifyCsvFileInfo called with file:', file);
+        console.log('[DEBUG] File details:', { name: file.name, size: file.size, type: file.type });
+        
         // Use the enhanced file info display from file handler
         this.fileHandler.updateFileInfoForElement(file, 'modify-file-info');
+        
+        // Additional debugging
+        const fileInfoElement = document.getElementById('modify-file-info');
+        console.log('[DEBUG] modify-file-info element:', fileInfoElement);
+        if (fileInfoElement) {
+            console.log('[DEBUG] Element innerHTML length:', fileInfoElement.innerHTML.length);
+            console.log('[DEBUG] Element display style:', window.getComputedStyle(fileInfoElement).display);
+            console.log('[DEBUG] Element visibility:', window.getComputedStyle(fileInfoElement).visibility);
+        }
     }
 
     async parseCsvFile(file, previewContainerId) {
@@ -1747,40 +1820,76 @@ class App {
             console.error('[ERROR] Disclaimer checkboxes not found');
         }
         
-        // Always enable the button
-        acceptButton.disabled = false;
+        // Function to check if both checkboxes are checked
+        const updateButtonState = () => {
+            const checkboxStates = agreementCheckboxes.map(checkbox => ({
+                id: checkbox ? checkbox.id : 'null',
+                checked: checkbox ? checkbox.checked : false,
+                exists: !!checkbox
+            }));
+            const bothChecked = agreementCheckboxes.every(checkbox => checkbox && checkbox.checked);
+            acceptButton.disabled = !bothChecked;
+            console.log('[DEBUG] Button state updated:', { 
+                checkboxStates, 
+                bothChecked, 
+                disabled: !bothChecked 
+            });
+        };
         
-        // Add event listeners to checkboxes for debugging
+        // Add event listeners to checkboxes
         agreementCheckboxes.forEach(checkbox => {
             if (checkbox) {
+                console.log('[DEBUG] Adding event listener to checkbox:', checkbox.id);
                 checkbox.addEventListener('change', () => {
                     console.log('[DEBUG] Checkbox changed:', checkbox.id, 'checked:', checkbox.checked);
+                    updateButtonState();
                 });
+                // Also add click event as fallback
+                checkbox.addEventListener('click', () => {
+                    console.log('[DEBUG] Checkbox clicked:', checkbox.id, 'checked:', checkbox.checked);
+                    updateButtonState();
+                });
+            } else {
+                console.error('[ERROR] Checkbox is null:', checkbox);
             }
         });
         
         // Add event listener to accept button
         acceptButton.addEventListener('click', () => {
             console.log('[DEBUG] Disclaimer accept button clicked.');
-            // Store agreement in localStorage
-            localStorage.setItem('disclaimer-agreed', 'true');
-            localStorage.setItem('disclaimer-agreed-date', new Date().toISOString());
-            // Hide disclaimer and show feature cards
-            const disclaimer = document.getElementById('disclaimer');
-            const featureCards = document.querySelector('.feature-cards');
-            if (disclaimer) {
-                disclaimer.style.display = 'none';
-            }
-            if (featureCards) {
-                featureCards.style.display = 'grid';
-            }
-            // Make button green and keep it green
+            
+            // Immediately change button to green and update text
             acceptButton.classList.add('btn-success');
             acceptButton.classList.remove('btn-danger');
             acceptButton.innerHTML = '<i class="fas fa-check-circle"></i> I UNDERSTAND AND ACCEPT ALL RISKS';
-            this.uiManager.showNotification('Disclaimer accepted. You can now use the tool.', 'success');
-            this.logger.fileLogger.info('User accepted disclaimer agreement');
+            acceptButton.disabled = true; // Prevent multiple clicks
+            
+            // Add green shadow effect
+            acceptButton.style.boxShadow = '0 0 20px rgba(40, 167, 69, 0.6), 0 4px 8px rgba(40, 167, 69, 0.3)';
+            acceptButton.style.transform = 'scale(1.02)';
+            acceptButton.style.transition = 'all 0.3s ease';
+            
+            // Store agreement in localStorage
+            localStorage.setItem('disclaimer-agreed', 'true');
+            localStorage.setItem('disclaimer-agreed-date', new Date().toISOString());
+            
+            // Wait 2 seconds before hiding disclaimer and showing feature cards
+            setTimeout(() => {
+                const disclaimer = document.getElementById('disclaimer');
+                const featureCards = document.querySelector('.feature-cards');
+                if (disclaimer) {
+                    disclaimer.style.display = 'none';
+                }
+                if (featureCards) {
+                    featureCards.style.display = 'grid';
+                }
+                // Enable navigation tabs after disclaimer is accepted
+                this.enableNavigationTabs();
+                this.uiManager.showNotification('Disclaimer accepted. You can now use the tool.', 'success');
+                this.logger.fileLogger.info('User accepted disclaimer agreement');
+            }, 2000);
         });
+        
         // Check if user has already agreed
         const hasAgreed = localStorage.getItem('disclaimer-agreed');
         const disclaimer = document.getElementById('disclaimer');
@@ -1796,6 +1905,13 @@ class App {
             acceptButton.classList.add('btn-success');
             acceptButton.classList.remove('btn-danger');
             acceptButton.innerHTML = '<i class="fas fa-check-circle"></i> I UNDERSTAND AND ACCEPT ALL RISKS';
+            
+            // Add green shadow effect for already agreed users
+            acceptButton.style.boxShadow = '0 0 20px rgba(40, 167, 69, 0.6), 0 4px 8px rgba(40, 167, 69, 0.3)';
+            acceptButton.style.transform = 'scale(1.02)';
+            acceptButton.style.transition = 'all 0.3s ease';
+            // Enable all navigation tabs
+            this.enableNavigationTabs();
         } else {
             if (disclaimer) {
                 disclaimer.style.display = 'block';
@@ -1803,6 +1919,10 @@ class App {
             if (featureCards) {
                 featureCards.style.display = 'none';
             }
+            // Initialize button state based on checkbox states
+            updateButtonState();
+            // Disable all navigation tabs
+            this.disableNavigationTabs();
         }
     }
 
@@ -2208,34 +2328,63 @@ class App {
         try {
             console.log('Loading populations for import...');
             
+            // Check if the select element exists
+            const importPopulationSelect = document.getElementById('import-population-select');
+            if (!importPopulationSelect) {
+                console.error('import-population-select element not found');
+                return;
+            }
+            
             // First check if PingOne is connected
+            console.log('Checking PingOne connection...');
             const healthResponse = await fetch('/api/health');
             if (healthResponse.ok) {
                 const healthData = await healthResponse.json();
+                console.log('Health check response:', healthData);
                 if (healthData.server && !healthData.server.pingOne) {
-                    // PingOne is not connected, show warning
                     this.uiManager.showWarning('Import Warning', 'PingOne is not connected. Please configure your settings first.');
-                    
-                    // Set default option
-                    const importPopulationSelect = document.getElementById('import-population-select');
-                    if (importPopulationSelect) {
-                        importPopulationSelect.innerHTML = '<option value="">PingOne not connected</option>';
-                    }
+                    importPopulationSelect.innerHTML = '<option value="">PingOne not connected</option>';
                     return;
                 }
             }
-
+            
             // Get populations from PingOne
+            console.log('Fetching populations from /api/pingone/populations...');
             const response = await fetch('/api/pingone/populations');
+            console.log('Population response status:', response.status);
+            
             if (!response.ok) {
                 throw new Error(`Failed to fetch populations: ${response.status}`);
             }
-
-            const populations = await response.json();
-            console.log('Import populations loaded:', populations);
-
+            
+            let populations = await response.json();
+            console.log('Raw populations response:', populations);
+            
+            // Robust: handle {data: string} or array
+            if (Array.isArray(populations)) {
+                console.log('Populations is already an array');
+            } else if (populations && typeof populations.data === 'string') {
+                console.log('Populations.data is a string, parsing...');
+                try {
+                    populations = JSON.parse(populations.data);
+                    console.log('Parsed populations:', populations);
+                } catch (e) {
+                    console.error('Failed to parse populations.data as JSON:', e);
+                    this.logger.fileLogger.error('Failed to parse populations.data as JSON', { error: e.message, data: populations.data });
+                    populations = [];
+                }
+            } else if (populations && Array.isArray(populations.data)) {
+                console.log('Populations.data is an array');
+                populations = populations.data;
+            } else {
+                console.warn('Unexpected populations API response format:', populations);
+                this.logger.fileLogger.warn('Unexpected populations API response format', { populations });
+                populations = [];
+            }
+            
+            console.log('Final populations array:', populations);
+            
             // Update import population select
-            const importPopulationSelect = document.getElementById('import-population-select');
             if (importPopulationSelect) {
                 importPopulationSelect.innerHTML = '<option value="">Select a population...</option>';
                 populations.forEach(population => {
@@ -2243,18 +2392,14 @@ class App {
                     option.value = population.id;
                     option.textContent = population.name;
                     importPopulationSelect.appendChild(option);
+                    console.log('Added population option:', population.name, population.id);
                 });
+                console.log('Population dropdown updated with', populations.length, 'options');
             }
-
         } catch (error) {
             console.error('Error loading populations for import:', error);
             this.logger.fileLogger.error('Failed to load populations for import', { error: error.message });
-            
-            // Show error but don't block the UI
-            this.uiManager.showWarning('Population Loading Warning', 
-                'Failed to load populations from PingOne. You can still use default population or manual entry.');
-            
-            // Set default option
+            this.uiManager.showWarning('Population Loading Warning', 'Failed to load populations from PingOne. You can still use default population or manual entry.');
             const importPopulationSelect = document.getElementById('import-population-select');
             if (importPopulationSelect) {
                 importPopulationSelect.innerHTML = '<option value="">Error loading populations</option>';
@@ -2675,15 +2820,21 @@ class App {
             // Clear existing options
             populationSelect.innerHTML = '<option value="">Loading populations...</option>';
 
-            // Get populations from PingOne
-            const populations = await this.pingOneClient.getPopulations();
+            // Use the same flattened API endpoint that other pages use
+            const response = await fetch('/api/pingone/populations');
+            if (!response.ok) {
+                throw new Error(`Failed to fetch populations: ${response.status}`);
+            }
+
+            const populations = await response.json();
+            console.log('Populations loaded for modify:', populations);
             
-            if (populations && populations._embedded && populations._embedded.populations) {
+            if (populations && Array.isArray(populations) && populations.length > 0) {
                 // Clear loading option
                 populationSelect.innerHTML = '';
                 
                 // Add populations to select
-                populations._embedded.populations.forEach(population => {
+                populations.forEach(population => {
                     const option = document.createElement('option');
                     option.value = population.id;
                     option.textContent = population.name || population.id;
@@ -2691,11 +2842,11 @@ class App {
                 });
 
                 // Set default to first population if available
-                if (populations._embedded.populations.length > 0) {
-                    populationSelect.value = populations._embedded.populations[0].id;
+                if (populations.length > 0) {
+                    populationSelect.value = populations[0].id;
                 }
 
-                console.log('Loaded populations for modify options:', populations._embedded.populations.length);
+                console.log('Loaded populations for modify options:', populations.length);
             } else {
                 populationSelect.innerHTML = '<option value="">No populations found</option>';
                 console.warn('No populations found for modify options');
@@ -2740,11 +2891,19 @@ class App {
             selectedPopulationName = selectedOption?.textContent || '';
         }
 
+        // Auto-detect if CSV has populationId data
+        const users = this.fileHandler.getParsedUsers();
+        const hasCsvPopulationId = users && users.some(user => user.populationId && user.populationId.trim() !== '');
+        
+        // If CSV has populationId data but checkbox is not checked, we'll handle this in startImport
+        const effectiveUseCsvPopulationId = useCsvPopulationId;
+
         return {
             selectedPopulationId,
             selectedPopulationName,
-            useCsvPopulationId,
-            useDefaultPopulation
+            useCsvPopulationId: effectiveUseCsvPopulationId,
+            useDefaultPopulation,
+            hasCsvPopulationId
         };
     }
 
@@ -2769,6 +2928,55 @@ class App {
                 modal.style.display = 'none';
                 modal.classList.remove('show');
                 resolve({ action: 'back' });
+            };
+
+            // Handle continue button
+            continueBtn.onclick = () => {
+                modal.style.display = 'none';
+                modal.classList.remove('show');
+                resolve({ action: 'continue' });
+            };
+
+            // Handle close button
+            const closeBtn = modal.querySelector('.close');
+            if (closeBtn) {
+                closeBtn.onclick = () => {
+                    modal.style.display = 'none';
+                    modal.classList.remove('show');
+                    resolve({ action: 'back' });
+                };
+            }
+        });
+    }
+
+    async handleCsvPopulationIdFound() {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('csv-population-id-modal');
+            const backBtn = document.getElementById('csv-population-modal-back');
+            const useCsvBtn = document.getElementById('csv-population-modal-use-csv');
+            const continueBtn = document.getElementById('csv-population-modal-continue');
+
+            // Show modal
+            modal.style.display = 'block';
+            modal.classList.add('show');
+
+            // Handle back button
+            backBtn.onclick = () => {
+                modal.style.display = 'none';
+                modal.classList.remove('show');
+                resolve({ action: 'back' });
+            };
+
+            // Handle use CSV button
+            useCsvBtn.onclick = () => {
+                // Enable the checkbox
+                const checkbox = document.getElementById('use-csv-population-id');
+                if (checkbox) {
+                    checkbox.checked = true;
+                }
+                modal.style.display = 'none';
+                modal.classList.remove('show');
+                resolve({ action: 'use_csv' });
             };
 
             // Handle continue button
@@ -2866,19 +3074,17 @@ class App {
         const useDefaultPopulation = document.getElementById('use-default-population')?.checked || false;
         const useCsvPopulationId = document.getElementById('use-csv-population-id')?.checked || false;
         
+        // Auto-detect if CSV has populationId data
+        const hasCsvPopulationId = users && users.some(user => user.populationId && user.populationId.trim() !== '');
+        
         const hasSelectedPopulation = selectedPopulationId && selectedPopulationId.trim() !== '';
-        const hasPopulationChoice = hasSelectedPopulation || useDefaultPopulation || useCsvPopulationId;
+        const hasPopulationChoice = hasSelectedPopulation || useDefaultPopulation || useCsvPopulationId || hasCsvPopulationId;
         
         // Enable buttons only if we have users AND a population choice
         const shouldEnable = hasUsers && hasPopulationChoice;
         
-        // Update both import buttons
-        const importBtn = document.getElementById('start-import-btn');
+        // Update import button
         const importBtnBottom = document.getElementById('start-import-btn-bottom');
-        
-        if (importBtn) {
-            importBtn.disabled = !shouldEnable;
-        }
         
         if (importBtnBottom) {
             importBtnBottom.disabled = !shouldEnable;
@@ -2890,7 +3096,8 @@ class App {
             shouldEnable,
             selectedPopulationId: hasSelectedPopulation ? 'selected' : 'none',
             useDefaultPopulation,
-            useCsvPopulationId
+            useCsvPopulationId,
+            hasCsvPopulationId
         });
     }
 
@@ -2899,14 +3106,24 @@ class App {
      */
     updateDeleteCsvButtonState() {
         const startDeleteBtn = document.getElementById('start-delete-csv-btn');
+        const startDeleteBtnBottom = document.getElementById('start-delete-csv-btn-bottom');
         const cancelDeleteBtn = document.getElementById('cancel-delete-csv-btn');
+        const cancelDeleteBtnBottom = document.getElementById('cancel-delete-csv-btn-bottom');
         
         if (startDeleteBtn) {
             startDeleteBtn.disabled = !this.deleteCsvUsers || this.deleteCsvUsers.length === 0;
         }
         
+        if (startDeleteBtnBottom) {
+            startDeleteBtnBottom.disabled = !this.deleteCsvUsers || this.deleteCsvUsers.length === 0;
+        }
+        
         if (cancelDeleteBtn) {
             cancelDeleteBtn.style.display = this.isDeletingCsv ? 'inline-block' : 'none';
+        }
+        
+        if (cancelDeleteBtnBottom) {
+            cancelDeleteBtnBottom.style.display = this.isDeletingCsv ? 'inline-block' : 'none';
         }
     }
 
@@ -2924,22 +3141,32 @@ class App {
             // Clear existing options
             populationSelect.innerHTML = '<option value="">Loading populations...</option>';
 
-            // Get populations from PingOne
-            const populations = await this.pingOneClient.getPopulations();
+            // Use the same flattened API endpoint that other pages use
+            const response = await fetch('/api/pingone/populations');
+            if (!response.ok) {
+                throw new Error(`Failed to fetch populations: ${response.status}`);
+            }
+
+            const populations = await response.json();
+            console.log('Populations loaded for deletion:', populations);
             
-            if (populations && populations._embedded && populations._embedded.populations) {
+            if (populations && Array.isArray(populations) && populations.length > 0) {
                 // Clear loading option
                 populationSelect.innerHTML = '<option value="">Select a population...</option>';
                 
                 // Add populations to select
-                populations._embedded.populations.forEach(population => {
+                populations.forEach(population => {
                     const option = document.createElement('option');
                     option.value = population.id;
                     option.textContent = population.name || population.id;
                     populationSelect.appendChild(option);
                 });
 
-                console.log('Loaded populations for deletion:', populations._embedded.populations.length);
+                console.log('Loaded populations for deletion:', populations.length);
+                console.log('Population details for deletion:');
+                populations.forEach((pop, index) => {
+                    console.log(`  ${index}: id="${pop.id}", name="${pop.name}"`);
+                });
             } else {
                 populationSelect.innerHTML = '<option value="">No populations found</option>';
                 console.warn('No populations found for deletion');
@@ -2981,75 +3208,119 @@ class App {
         }
         const populationId = populationSelect.value;
         const populationName = populationSelect.options[populationSelect.selectedIndex].text;
+        
+        // Debug logging to help identify the issue
+        console.log('Population delete debug:', {
+            selectedValue: populationId,
+            selectedText: populationName,
+            selectedIndex: populationSelect.selectedIndex,
+            totalOptions: populationSelect.options.length
+        });
+        
+        // Log all available options for debugging
+        console.log('Available population options:');
+        for (let i = 0; i < populationSelect.options.length; i++) {
+            const option = populationSelect.options[i];
+            console.log(`  ${i}: value="${option.value}", text="${option.text}"`);
+        }
+        
         // Use modal instead of confirm
         const confirmed = await this.confirmDeleteAction(`<strong>⚠️ WARNING:</strong> This will permanently delete <b>ALL</b> users in the population <b>"${populationName}"</b>. This action cannot be undone.<br><br>Are you absolutely sure you want to continue?`);
         if (!confirmed) return;
         this.isDeletingPopulation = true;
         this.updatePopulationDeleteButtonState();
 
+        // Create AbortController for this delete process
+        this.populationDeleteAbortController = new AbortController();
+
         try {
             // Show progress UI
             this.uiManager.showPopulationDeleteStatus();
 
-            // Get all users in the population
-            this.logger.fileLogger.info('Starting population deletion', { 
+            // Use batch deletion approach instead of getting all users first
+            this.logger.fileLogger.info('Starting batch population deletion', { 
                 populationId, 
                 populationName 
             });
 
-            const users = await this.pingOneClient.getUsersByPopulation(populationId);
+            console.log('[UNIQUE-BATCH-DELETE] Batch deletion logic is running!');
+            this.uiManager.showNotification('🟢 [UNIQUE] Batch deletion logic is running!', 'info');
+
+            const settings = this.pingOneClient.getSettings();
+            let totalDeleted = 0;
+            let totalErrors = 0;
+            let batchCount = 0;
+            const maxBatches = 50; // Safety limit
+            const errors = [];
             
-            if (!users || users.length === 0) {
-                this.uiManager.showNotification(`No users found in population: ${populationName}`, 'info');
-                this.resetPopulationDeleteState();
-                return;
+            while (batchCount < maxBatches) {
+                batchCount++;
+                
+                // Always fetch from page 1 (users shift after deletion)
+                const resp = await this.pingOneClient.request('GET', 
+                    `/environments/${settings.environmentId}/users?limit=100&page=1&filter=population.id eq "${populationId}"`
+                );
+                
+                if (!resp || !resp._embedded || !resp._embedded.users || resp._embedded.users.length === 0) {
+                    if (batchCount === 1) {
+                        this.uiManager.showNotification('✅ Population is already empty - no users found to delete.', 'info');
+                        this.resetPopulationDeleteState();
+                        return;
+                    } else {
+                        this.uiManager.showNotification(`✅ Successfully deleted ${totalDeleted} users from population.`, 'success');
+                        this.resetPopulationDeleteState();
+                        return;
+                    }
+                }
+                
+                const batchUsers = resp._embedded.users;
+                this.uiManager.showLoading(true, `Deleting batch ${batchCount} (${batchUsers.length} users)...`);
+                
+                // Delete users in this batch
+                for (let i = 0; i < batchUsers.length; i++) {
+                    try {
+                        await this.pingOneClient.deleteUser(batchUsers[i].id);
+                        totalDeleted++;
+                        this.uiManager.showLoading(true, `Deleted ${totalDeleted} users so far...`);
+                    } catch (error) {
+                        totalErrors++;
+                        errors.push(`Failed to delete ${batchUsers[i].username}: ${error.message}`);
+                    }
+                }
+                
+                // Small delay between batches
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            this.uiManager.showLoading(false);
+            
+            if (totalErrors === 0) {
+                this.uiManager.showNotification(`✅ Successfully deleted ${totalDeleted} users from population.`, 'success');
+            } else {
+                this.uiManager.showNotification(`⚠️ Deleted ${totalDeleted} users. ${totalErrors} errors occurred.`, 'warning');
+                console.error('Delete errors:', errors);
             }
 
-            this.logger.fileLogger.info('Found users to delete', { 
-                populationId, 
-                populationName, 
-                userCount: users.length 
-            });
-
-            // Start deletion process
-            await this.deleteUsersFromPopulation(users, populationName);
+            this.resetPopulationDeleteState();
 
         } catch (error) {
-            console.error('Population deletion failed:', error);
-            this.logger.fileLogger.error('Population deletion failed', { 
-                populationId, 
-                populationName, 
-                error: error.message 
-            });
-            this.uiManager.showNotification(`Failed to delete users from population: ${error.message}`, 'error');
+            if (error.name === 'AbortError') {
+                this.logger.fileLogger.info('Population deletion aborted by user');
+                this.uiManager.showNotification('Population deletion cancelled', 'info');
+            } else {
+                console.error('Population deletion failed:', error);
+                this.logger.fileLogger.error('Population deletion failed', { 
+                    populationId, 
+                    populationName, 
+                    error: error.message 
+                });
+                this.uiManager.showNotification(`Failed to delete users from population: ${error.message}`, 'error');
+            }
             this.resetPopulationDeleteState();
         }
     }
 
-    /**
-     * Show population delete confirmation dialog
-     */
-    async showPopulationDeleteConfirmation(populationName) {
-        return new Promise((resolve) => {
-            const confirmed = confirm(
-                `⚠️ WARNING: This action will permanently delete ALL users in the population "${populationName}".\n\n` +
-                `This action cannot be undone. Are you absolutely sure you want to proceed?\n\n` +
-                `Type "DELETE" to confirm:`
-            );
-
-            if (confirmed) {
-                const userInput = prompt('Type "DELETE" to confirm the deletion of all users:');
-                resolve(userInput === 'DELETE');
-            } else {
-                resolve(false);
-            }
-        });
-    }
-
-    /**
-     * Delete users from a population
-     */
-    async deleteUsersFromPopulation(users, populationName) {
+    async deleteUsersFromPopulation(users, populationName, signal) {
         const totalUsers = users.length;
         let deletedCount = 0;
         let failedCount = 0;
@@ -3062,11 +3333,14 @@ class App {
 
         for (let i = 0; i < users.length; i++) {
             const user = users[i];
-            
             try {
                 // Check if we should cancel
-                if (this.cancelPopulationDelete) {
-                    this.logger.fileLogger.info('Population deletion cancelled by user');
+                if (signal && signal.aborted) {
+                    this.logger.fileLogger.info('Population deletion cancelled by user (abort signal)');
+                    throw new DOMException('Population deletion cancelled', 'AbortError');
+                }
+                if (this.isPopulationDeleteCancelled) {
+                    this.logger.fileLogger.info('Population deletion cancelled by user (legacy flag)');
                     break;
                 }
 
@@ -3079,7 +3353,7 @@ class App {
                 });
 
                 // Delete the user
-                await this.pingOneClient.deleteUser(user.id);
+                await this.pingOneClient.deleteUser(user.id, { signal });
                 deletedCount++;
 
                 this.logger.fileLogger.info('User deleted successfully', { 
@@ -3089,17 +3363,33 @@ class App {
                 });
 
                 // Rate limiting
-                await this.delay(1000 / this.settings.rateLimit);
+                const rateLimit = this.settings?.rateLimit || 50; // Default to 50 if not set
+                await this.delay(1000 / rateLimit);
 
             } catch (error) {
-                console.error(`Failed to delete user ${user.username}:`, error);
-                this.logger.fileLogger.error('Failed to delete user', { 
-                    userId: user.id, 
-                    username: user.username,
-                    populationName,
-                    error: error.message 
-                });
-                failedCount++;
+                if (error.name === 'AbortError') {
+                    this.logger.fileLogger.info('Population deletion aborted during user delete');
+                    break;
+                }
+                // If user not found (404), count as skipped
+                if (error.status === 404 || (error.message && error.message.includes('404'))) {
+                    skippedCount++;
+                    this.logger.fileLogger.warn('User not found, skipping', {
+                        userId: user.id,
+                        username: user.username,
+                        populationName,
+                        error: error.message
+                    });
+                } else {
+                    console.error(`Failed to delete user ${user.username}:`, error);
+                    this.logger.fileLogger.error('Failed to delete user', { 
+                        userId: user.id, 
+                        username: user.username,
+                        populationName,
+                        error: error.message 
+                    });
+                    failedCount++;
+                }
             }
         }
 
@@ -3121,40 +3411,18 @@ class App {
             skipped: skippedCount
         });
 
-        this.resetPopulationDeleteState();
+        // Reset state but keep progress window open
+        this.isDeletingPopulation = false;
+        this.isPopulationDeleteCancelled = false;
+        this.updatePopulationDeleteButtonState();
+        // Don't hide the progress window - let user close it manually
     }
 
-    /**
-     * Update population delete progress
-     */
-    updatePopulationDeleteProgress(current, total, message, counts = {}) {
-        const progressBar = document.getElementById('population-delete-progress');
-        const progressPercent = document.getElementById('population-delete-progress-percent');
-        const progressText = document.getElementById('population-delete-progress-text');
-        const progressCount = document.getElementById('population-delete-progress-count');
-        const successCount = document.getElementById('population-delete-success-count');
-        const failedCount = document.getElementById('population-delete-failed-count');
-        const skippedCount = document.getElementById('population-delete-skipped-count');
-
-        if (progressBar) {
-            const percent = total > 0 ? (current / total) * 100 : 0;
-            progressBar.style.width = `${percent}%`;
-            progressBar.setAttribute('aria-valuenow', percent);
-        }
-
-        if (progressPercent) progressPercent.textContent = `${Math.round((current / total) * 100)}%`;
-        if (progressText) progressText.textContent = message;
-        if (progressCount) progressCount.textContent = `${current} of ${total} users`;
-        if (successCount) successCount.textContent = counts.success || 0;
-        if (failedCount) failedCount.textContent = counts.failed || 0;
-        if (skippedCount) skippedCount.textContent = counts.skipped || 0;
-    }
-
-    /**
-     * Cancel population deletion
-     */
     cancelPopulationDelete() {
-        this.cancelPopulationDelete = true;
+        this.isPopulationDeleteCancelled = true;
+        if (this.populationDeleteAbortController) {
+            this.populationDeleteAbortController.abort();
+        }
         this.uiManager.showNotification('Population deletion cancelled', 'info');
         this.resetPopulationDeleteState();
     }
@@ -3164,7 +3432,7 @@ class App {
      */
     resetPopulationDeleteState() {
         this.isDeletingPopulation = false;
-        this.cancelPopulationDelete = false;
+        this.isPopulationDeleteCancelled = false;
         this.updatePopulationDeleteButtonState();
         this.uiManager.hidePopulationDeleteStatus();
     }
@@ -3307,7 +3575,7 @@ class App {
         // Environment Delete Section
         const deleteEnvironmentCheckbox = document.getElementById('delete-all-users-env-checkbox');
         const environmentDeleteControls = document.getElementById('environment-delete-controls');
-        const deleteEnvironmentBtn = document.getElementById('deleteEnvironmentBtn');
+        const deleteEnvironmentBtn = document.getElementById('delete-all-users-env-btn');
 
         if (deleteEnvironmentCheckbox) {
             deleteEnvironmentCheckbox.addEventListener('change', (e) => {
@@ -3392,6 +3660,89 @@ class App {
         }
     }
 
+    showPopulationWarningModal() {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('population-warning-modal');
+            const settingsBtn = document.getElementById('population-warning-settings');
+            const okBtn = document.getElementById('population-warning-ok');
+
+            if (!modal || !settingsBtn || !okBtn) {
+                resolve('ok');
+                return;
+            }
+
+            // Show modal
+            modal.style.display = 'flex';
+
+            // Handle settings button
+            const handleSettings = () => {
+                modal.style.display = 'none';
+                this.showView('settings');
+                resolve('settings');
+            };
+
+            // Handle OK button
+            const handleOk = () => {
+                modal.style.display = 'none';
+                resolve('ok');
+            };
+
+            // Handle escape key and click outside modal
+            const handleClose = () => {
+                modal.style.display = 'none';
+                resolve('ok');
+            };
+
+            // Set up event listeners
+            settingsBtn.onclick = handleSettings;
+            okBtn.onclick = handleOk;
+            
+            // Handle escape key
+            const handleEscape = (e) => {
+                if (e.key === 'Escape') {
+                    handleClose();
+                    document.removeEventListener('keydown', handleEscape);
+                }
+            };
+            document.addEventListener('keydown', handleEscape);
+
+            // Handle click outside modal
+            modal.onclick = (e) => {
+                if (e.target === modal) {
+                    handleClose();
+                }
+            };
+
+            // Clean up event listeners when modal is closed
+            const cleanup = () => {
+                settingsBtn.onclick = null;
+                okBtn.onclick = null;
+                modal.onclick = null;
+                document.removeEventListener('keydown', handleEscape);
+            };
+
+            // Override the close handlers to include cleanup
+            const originalHandleSettings = handleSettings;
+            const originalHandleOk = handleOk;
+            const originalHandleClose = handleClose;
+
+            settingsBtn.onclick = () => {
+                cleanup();
+                originalHandleSettings();
+            };
+            okBtn.onclick = () => {
+                cleanup();
+                originalHandleOk();
+            };
+            modal.onclick = (e) => {
+                if (e.target === modal) {
+                    cleanup();
+                    originalHandleClose();
+                }
+            };
+        });
+    }
+
     async startDeleteUsersFromCsv() {
         const fileInput = document.getElementById('csvFile');
         const file = fileInput.files[0];
@@ -3444,6 +3795,8 @@ class App {
     }
 
     async startDeleteAllUsersInPopulation() {
+        console.log('[UNIQUE-BATCH-DELETE] Batch deletion logic is running!');
+        this.uiManager.showNotification('🟢 [UNIQUE] Batch deletion logic is running!', 'info');
         const populationSelect = document.getElementById('population-delete-select');
         const populationId = populationSelect.value;
         
@@ -3452,47 +3805,68 @@ class App {
             return;
         }
 
-        this.uiManager.showLoading(true, 'Fetching users in population...');
+        this.uiManager.showLoading(true, 'Starting batch deletion...');
         
         try {
-            const users = await this.pingOneClient.getAllUsersInPopulation(populationId);
-            
-            if (users.length === 0) {
-                this.uiManager.showLoading(false);
-                this.uiManager.showNotification('No users found in the selected population.', 'info');
-                return;
-            }
-
-            this.uiManager.showLoading(true, `Deleting ${users.length} users from population...`);
-            
-            let deletedCount = 0;
-            let errorCount = 0;
+            const settings = this.pingOneClient.getSettings();
+            let totalDeleted = 0;
+            let totalErrors = 0;
+            let batchCount = 0;
+            const maxBatches = 50; // Safety limit
             const errors = [];
-
-            for (let i = 0; i < users.length; i++) {
-                const user = users[i];
-                try {
-                    await this.pingOneClient.deleteUser(user.id);
-                    deletedCount++;
-                    this.uiManager.showLoading(true, `Deleted ${deletedCount}/${users.length} users...`);
-                } catch (error) {
-                    errorCount++;
-                    errors.push(`Failed to delete ${user.username || user.id}: ${error.message}`);
+            
+            while (batchCount < maxBatches) {
+                batchCount++;
+                
+                // Always fetch from page 1 (users shift after deletion)
+                const resp = await this.pingOneClient.request('GET', 
+                    `/environments/${settings.environmentId}/users?limit=100&page=1&filter=population.id eq "${populationId}"`
+                );
+                
+                if (!resp || !resp._embedded || !resp._embedded.users || resp._embedded.users.length === 0) {
+                    if (batchCount === 1) {
+                        this.uiManager.showLoading(false);
+                        this.uiManager.showNotification('✅ Population is already empty - no users found to delete.', 'info');
+                        return;
+                    } else {
+                        this.uiManager.showLoading(false);
+                        this.uiManager.showNotification(`✅ Successfully deleted ${totalDeleted} users from population.`, 'success');
+                        return;
+                    }
                 }
+                
+                const batchUsers = resp._embedded.users;
+                this.uiManager.showLoading(true, `Deleting batch ${batchCount} (${batchUsers.length} users)...`);
+                
+                // Delete users in this batch
+                for (let i = 0; i < batchUsers.length; i++) {
+                    try {
+                        await this.pingOneClient.deleteUser(batchUsers[i].id);
+                        totalDeleted++;
+                        this.uiManager.showLoading(true, `Deleted ${totalDeleted} users so far...`);
+                    } catch (error) {
+                        totalErrors++;
+                        errors.push(`Failed to delete ${batchUsers[i].username}: ${error.message}`);
+                    }
+                }
+                
+                // Small delay between batches
+                await new Promise(resolve => setTimeout(resolve, 100));
             }
-
+            
             this.uiManager.showLoading(false);
             
-            if (errorCount === 0) {
-                this.uiManager.showNotification(`Successfully deleted ${deletedCount} users from population.`, 'success');
+            if (totalErrors === 0) {
+                this.uiManager.showNotification(`✅ Successfully deleted ${totalDeleted} users from population.`, 'success');
             } else {
-                this.uiManager.showNotification(`Deleted ${deletedCount} users. ${errorCount} errors occurred.`, 'warning');
+                this.uiManager.showNotification(`⚠️ Deleted ${totalDeleted} users. ${totalErrors} errors occurred.`, 'warning');
                 console.error('Delete errors:', errors);
             }
 
         } catch (error) {
             this.uiManager.showLoading(false);
-            this.uiManager.showNotification('Error deleting users from population: ' + error.message, 'error');
+            this.uiManager.showNotification('❌ Error deleting users from population: ' + error.message, 'error');
+            console.error('Population deletion error:', error);
         }
     }
 
@@ -3501,12 +3875,16 @@ class App {
         if (!populationSelect) return;
 
         try {
-            const populationsResp = await this.pingOneClient.getPopulations();
-            const populations = populationsResp && populationsResp._embedded && populationsResp._embedded.populations
-                ? populationsResp._embedded.populations
-                : [];
+            const response = await fetch('/api/pingone/populations');
+            if (!response.ok) {
+                throw new Error(`Failed to fetch populations: ${response.status}`);
+            }
+            
+            const populations = await response.json();
+            const populationsArray = Array.isArray(populations) ? populations : [];
+            
             populationSelect.innerHTML = '<option value="">Select a population...</option>';
-            populations.forEach(population => {
+            populationsArray.forEach(population => {
                 const option = document.createElement('option');
                 option.value = population.id;
                 option.textContent = population.name;
@@ -3544,6 +3922,67 @@ class App {
         }
 
         return users;
+    }
+
+    /**
+     * Update population delete progress
+     */
+    updatePopulationDeleteProgress(current, total, message, counts = {}) {
+        const progressBar = document.getElementById('population-delete-progress');
+        const progressPercent = document.getElementById('population-delete-progress-percent');
+        const progressText = document.getElementById('population-delete-progress-text');
+        const progressCount = document.getElementById('population-delete-progress-count');
+        const successCount = document.getElementById('population-delete-success-count');
+        const failedCount = document.getElementById('population-delete-failed-count');
+        const skippedCount = document.getElementById('population-delete-skipped-count');
+
+        if (progressBar) {
+            const percent = total > 0 ? (current / total) * 100 : 0;
+            progressBar.style.width = `${percent}%`;
+            progressBar.setAttribute('aria-valuenow', percent);
+        }
+
+        if (progressPercent) progressPercent.textContent = `${Math.round((current / total) * 100)}%`;
+        if (progressText) progressText.textContent = message;
+        if (progressCount) progressCount.textContent = `${current} of ${total} users`;
+        if (successCount) successCount.textContent = counts.success || 0;
+        if (failedCount) failedCount.textContent = counts.failed || 0;
+        if (skippedCount) skippedCount.textContent = counts.skipped || 0;
+    }
+
+    /**
+     * Utility method to delay execution for rate limiting
+     * @param {number} ms - Milliseconds to delay
+     * @returns {Promise} Promise that resolves after the delay
+     */
+    delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    /**
+     * Disable all navigation tabs when disclaimer is not accepted
+     */
+    disableNavigationTabs() {
+        const navItems = document.querySelectorAll('.nav-item');
+        navItems.forEach(navItem => {
+            navItem.classList.add('disabled');
+            navItem.style.opacity = '0.5';
+            navItem.style.cursor = 'not-allowed';
+            navItem.title = 'Please accept the disclaimer agreement first';
+        });
+    }
+
+    /**
+     * Enable all navigation tabs after disclaimer is accepted
+     */
+    enableNavigationTabs() {
+        const navItems = document.querySelectorAll('.nav-item');
+        navItems.forEach(navItem => {
+            navItem.classList.remove('disabled');
+            navItem.style.opacity = '1';
+            navItem.style.cursor = 'pointer';
+            navItem.title = '';
+        });
     }
 }
 

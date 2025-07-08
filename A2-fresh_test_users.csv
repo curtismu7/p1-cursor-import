@@ -1,4 +1,4 @@
 username,email,firstName,lastName,password,active
-olduser001,olduser001@mailinator.com,Alice2a,Johnson2,TestPassaBC!,true
-olduser002,olduser002@mailinator.com,BobB,Wilsona,TestPass123!,true
-olduser003,olduser003@mailinator.com,CarolL,Davis22,TestPass123!,false 
+oldauser001,olduser001@mailinator.com,Alice2a,Johnson2,TestPassaBC!,true
+oldauser002,olduser002@mailinator.com,BobB,Wilsona,$2b$12$SrmHBuTWrFSp2EzDYCNPIOxYzWwfvNQhzwg4EfmGq38MdnLJ6x.IS,true
+oldauser003,olduser003@mailinator.com,CarolL,Davis22,$2b$12$SrmHBuTWrFSp2EzDYCNPIOxYzWwfvNQhzwg4EfmGq38MdnLJ6x.IS,false 

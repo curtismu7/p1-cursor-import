@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: pingone-import
+    env: node
+    plan: starter
+    buildCommand: npm install && npm run build:bundle
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+    healthCheckPath: /api/health
+    autoDeploy: true
+    region: oregon
+    scaling:
+      minInstances: 0
+      maxInstances: 1 
