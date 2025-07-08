@@ -77,7 +77,21 @@ app.use((err, req, res, next) => {
 });
 
 // Create HTTP server
-const PORT = process.env.PORT || 3001;
+const PORT = parseInt(process.env.PORT) || 3001;
+
+// Validate port range
+if (PORT < 0 || PORT > 65535) {
+    console.error(`Invalid port number: ${PORT}. Port must be between 0 and 65535.`);
+    process.exit(1);
+}
+
+// Debug: Log the port value and type
+console.log(`🔍 PORT debugging:`, {
+    rawEnvPort: process.env.PORT,
+    parsedPort: PORT,
+    portType: typeof PORT,
+    portValid: PORT >= 0 && PORT <= 65535
+});
 const server = httpServer.listen(PORT, () => {
   console.log(`Test server running on port ${PORT}`);
 });

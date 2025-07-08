@@ -22,7 +22,21 @@ console.log('- PINGONE_REGION:', process.env.PINGONE_REGION || 'Not set');
 
 // Initialize Express app
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = parseInt(process.env.PORT) || 3001;
+
+// Validate port range
+if (PORT < 0 || PORT > 65535) {
+    console.error(`Invalid port number: ${PORT}. Port must be between 0 and 65535.`);
+    process.exit(1);
+}
+
+// Debug: Log the port value and type
+console.log(`🔍 PORT debugging:`, {
+    rawEnvPort: process.env.PORT,
+    parsedPort: PORT,
+    portType: typeof PORT,
+    portValid: PORT >= 0 && PORT <= 65535
+});
 
 // Add body parsing middleware with increased limit for JSON and URL-encoded data
 app.use(express.json({ limit: '10mb' }));
@@ -1316,7 +1330,14 @@ const startServer = async () => {
                 serverState.isInitializing = false;
                 serverState.isInitialized = true;
                 
-                const { address, port } = server.address();
+                const serverAddress = server.address();
+                if (!serverAddress) {
+                    const error = new Error('Server address is null - server may not have started properly');
+                    console.error(`❌ Server error: ${error.message}`);
+                    reject(error);
+                    return;
+                }
+                const { address, port } = serverAddress;
                 const host = address === '::' ? '127.0.0.1' : address; // Always use 127.0.0.1 for consistency
                 const url = `http://${host}:${port}`;
                 

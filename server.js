@@ -25,7 +25,21 @@ dotenv.config();
 
 // Initialize Express app
 const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = parseInt(process.env.PORT) || 4000;
+
+// Validate port range
+if (PORT < 0 || PORT > 65535) {
+    console.error(`Invalid port number: ${PORT}. Port must be between 0 and 65535.`);
+    process.exit(1);
+}
+
+// Debug: Log the port value and type
+console.log(`🔍 PORT debugging:`, {
+    rawEnvPort: process.env.PORT,
+    parsedPort: PORT,
+    portType: typeof PORT,
+    portValid: PORT >= 0 && PORT <= 65535
+});
 
 // Function to create rate limiter with configurable settings
 function createRateLimiter(maxRequests = 50) {
@@ -1984,26 +1998,44 @@ const startServer = async () => {
         }, LISTEN_TIMEOUT);
         
         // Create HTTP server
-        server = app.listen(PORT, '0.0.0.0', () => {
-            if (isResolved) return;
-            clearTimeout(timeoutId);
-            isResolved = true;
-            
-            const address = server.address();
-            const host = address.address === '::' ? 'localhost' : address.address;
-            const url = `http://${host}:${address.port}`;
-            
-            serverState.isInitialized = true;
-            serverState.isInitializing = false;
-            serverState.lastError = null;
-            
-            logTime(`✅ Server running at ${url}`);
-            logTime(`   Environment: ${process.env.NODE_ENV || 'development'}`);
-            logTime(`   PID: ${process.pid}`);
-            logTime(`   PingOne: ${serverState.pingOneInitialized ? 'Connected' : 'Not connected'}`);
-            
-            resolve(server);
-        });
+        try {
+            server = app.listen(PORT, '0.0.0.0', () => {
+                if (isResolved) return;
+                clearTimeout(timeoutId);
+                isResolved = true;
+                
+                try {
+                    const address = server.address();
+                    if (!address) {
+                        const error = new Error('Server address is null - server may not have started properly');
+                        logTime(`❌ Server error: ${error.message}`);
+                        reject(error);
+                        return;
+                    }
+                    const host = address.address === '::' ? 'localhost' : address.address;
+                    const url = `http://${host}:${address.port}`;
+                    
+                    serverState.isInitialized = true;
+                    serverState.isInitializing = false;
+                    serverState.lastError = null;
+                    
+                    logTime(`✅ Server running at ${url}`);
+                    logTime(`   Environment: ${process.env.NODE_ENV || 'development'}`);
+                    logTime(`   PID: ${process.pid}`);
+                    logTime(`   PingOne: ${serverState.pingOneInitialized ? 'Connected' : 'Not connected'}`);
+                    
+                    resolve(server);
+                } catch (addressError) {
+                    const error = new Error(`Failed to get server address: ${addressError.message}`);
+                    logTime(`❌ Server error: ${error.message}`);
+                    reject(error);
+                }
+            });
+        } catch (listenError) {
+            const error = new Error(`Failed to start server: ${listenError.message}`);
+            logTime(`❌ Server error: ${error.message}`);
+            reject(error);
+        }
         
         // Handle server errors
         server.on('error', (error) => {
@@ -2154,9 +2186,17 @@ const startServer = async () => {
                 serverState.isInitializing = false;
                 serverState.isInitialized = true;
                 
-                const { address, port } = server.address();
-                const host = address === '::' ? '127.0.0.1' : address; // Always use 127.0.0.1 for consistency
-                const url = `http://${host}:${port}`;
+                try {
+                    const serverAddress = server.address();
+                    if (!serverAddress) {
+                        const error = new Error('Server address is null - server may not have started properly');
+                        console.error(`❌ Server error: ${error.message}`);
+                        reject(error);
+                        return;
+                    }
+                    const { address, port } = serverAddress;
+                    const host = address === '::' ? '127.0.0.1' : address; // Always use 127.0.0.1 for consistency
+                    const url = `http://${host}:${port}`;
                 
                 // Wait for PingOne initialization to complete (with timeout)
                 try {
@@ -2204,7 +2244,12 @@ const startServer = async () => {
                 // Clean up and resolve
                 cleanup();
                 resolve(server);
-            });
+            } catch (addressError) {
+                const error = new Error(`Failed to get server address: ${addressError.message}`);
+                console.error(`❌ Server error: ${error.message}`);
+                reject(error);
+            }
+        });
             
             // Handle server errors after startup
             server.on('error', (error) => {
