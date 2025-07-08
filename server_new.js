@@ -1557,3 +1557,15 @@ const startServer = async () => {
 // Start the server
 // Export for production use
 module.exports = app;
+
+// If this file is run directly, start the server
+if (require.main === module) {
+    startServer()
+        .then(server => {
+            console.log('✅ Server started successfully');
+        })
+        .catch(error => {
+            console.error('❌ Failed to start server:', error.message);
+            process.exit(1);
+        });
+}
