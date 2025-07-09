@@ -4269,10 +4269,16 @@ class FileHandler {
         fileSize: file.size
       });
 
-      // Validate file type
-      if (!file.name.toLowerCase().endsWith('.csv')) {
-        throw new Error('Invalid file type. Please select a CSV file.');
+      // Validate file type - allow files without extensions or with any extension except known bad ones
+      const fileName = file.name || '';
+      const fileExt = this.getFileExtension(fileName).toLowerCase();
+      const knownBadExts = ['exe', 'js', 'png', 'jpg', 'jpeg', 'gif', 'pdf', 'zip', 'tar', 'gz'];
+      if (fileExt && knownBadExts.includes(fileExt)) {
+        const errorMsg = `Unsupported file type: ${fileExt}. Please upload a CSV or text file.`;
+        this.logger.error(errorMsg, { fileName, fileExt });
+        throw new Error(errorMsg);
       }
+      // Accept all other extensions and blank/unknown types (including files with no extension)
 
       // Validate file size (10MB limit)
       const maxSize = 10 * 1024 * 1024; // 10MB
