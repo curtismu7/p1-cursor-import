@@ -3020,45 +3020,51 @@ class App {
    * Load populations for deletion dropdown
    */
   async loadPopulationsForDeletion() {
+    console.log('[DEBUG] loadPopulationsForDeletion called');
     try {
       const populationSelect = document.getElementById('population-delete-select');
+      console.log('[DEBUG] Population select element:', populationSelect);
       if (!populationSelect) {
-        console.warn('Population delete select not found');
+        console.warn('[DEBUG] Population delete select not found');
         return;
       }
-
+      console.log('[DEBUG] Clearing existing options and setting loading state');
       // Clear existing options
       populationSelect.innerHTML = '<option value="">Loading populations...</option>';
-
+      console.log('[DEBUG] Fetching populations from API...');
       // Use the same flattened API endpoint that other pages use
       const response = await fetch('/api/pingone/populations');
+      console.log('[DEBUG] API response status:', response.status, response.ok);
       if (!response.ok) {
         throw new Error(`Failed to fetch populations: ${response.status}`);
       }
       const populations = await response.json();
-      console.log('Populations loaded for deletion:', populations);
+      console.log('[DEBUG] Populations loaded for deletion:', populations);
       if (populations && Array.isArray(populations) && populations.length > 0) {
+        console.log('[DEBUG] Found populations, adding to select dropdown');
         // Clear loading option
         populationSelect.innerHTML = '<option value="">Select a population...</option>';
 
         // Add populations to select
-        populations.forEach(population => {
+        populations.forEach((population, index) => {
+          console.log(`[DEBUG] Adding population ${index}:`, population);
           const option = document.createElement('option');
           option.value = population.id;
           option.textContent = population.name || population.id;
           populationSelect.appendChild(option);
         });
-        console.log('Loaded populations for deletion:', populations.length);
-        console.log('Population details for deletion:');
+        console.log('[DEBUG] Loaded populations for deletion:', populations.length);
+        console.log('[DEBUG] Population details for deletion:');
         populations.forEach((pop, index) => {
           console.log(`  ${index}: id="${pop.id}", name="${pop.name}"`);
         });
       } else {
+        console.log('[DEBUG] No populations found or invalid response');
         populationSelect.innerHTML = '<option value="">No populations found</option>';
-        console.warn('No populations found for deletion');
+        console.warn('[DEBUG] No populations found for deletion');
       }
     } catch (error) {
-      console.error('Failed to load populations for deletion:', error);
+      console.error('[DEBUG] Failed to load populations for deletion:', error);
       const populationSelect = document.getElementById('population-delete-select');
       if (populationSelect) {
         populationSelect.innerHTML = '<option value="">Error loading populations</option>';
@@ -3070,14 +3076,25 @@ class App {
    * Update population delete button state
    */
   updatePopulationDeleteButtonState() {
+    console.log('[DEBUG] updatePopulationDeleteButtonState called');
     const startDeleteBtn = document.getElementById('start-population-delete-btn');
     const cancelDeleteBtn = document.getElementById('cancel-population-delete-btn');
     const populationSelect = document.getElementById('population-delete-select');
+    console.log('[DEBUG] Button state elements:', {
+      startDeleteBtn: !!startDeleteBtn,
+      cancelDeleteBtn: !!cancelDeleteBtn,
+      populationSelect: !!populationSelect,
+      populationSelectValue: populationSelect?.value,
+      isDeletingPopulation: this.isDeletingPopulation
+    });
     if (startDeleteBtn && populationSelect) {
-      startDeleteBtn.disabled = !populationSelect.value || this.isDeletingPopulation;
+      const shouldDisable = !populationSelect.value || this.isDeletingPopulation;
+      startDeleteBtn.disabled = shouldDisable;
+      console.log('[DEBUG] Start delete button disabled:', shouldDisable);
     }
     if (cancelDeleteBtn) {
       cancelDeleteBtn.style.display = this.isDeletingPopulation ? 'inline-block' : 'none';
+      console.log('[DEBUG] Cancel delete button display:', this.isDeletingPopulation ? 'inline-block' : 'none');
     }
   }
 
@@ -3385,25 +3402,47 @@ class App {
     this.uiManager.showNotification(`Environment delete completed: ${deleted} deleted, ${failed} failed`, deleted > 0 ? 'success' : 'warning');
   }
   setupDeletePage() {
+    console.log('[DEBUG] setupDeletePage called');
+
     // Population Delete Section
     const deletePopulationCheckbox = document.getElementById('delete-all-users-population-checkbox');
     const populationDeleteControls = document.getElementById('population-delete-controls');
     const deletePopulationBtn = document.getElementById('delete-all-users-population-btn');
     const populationSelect = document.getElementById('population-delete-select');
+    console.log('[DEBUG] Delete page elements found:', {
+      deletePopulationCheckbox: !!deletePopulationCheckbox,
+      populationDeleteControls: !!populationDeleteControls,
+      deletePopulationBtn: !!deletePopulationBtn,
+      populationSelect: !!populationSelect
+    });
     if (deletePopulationCheckbox) {
+      console.log('[DEBUG] Setting up population checkbox event listener');
       deletePopulationCheckbox.addEventListener('change', e => {
+        console.log('[DEBUG] Population checkbox changed:', e.target.checked);
         populationDeleteControls.style.display = e.target.checked ? 'block' : 'none';
         if (e.target.checked) {
+          console.log('[DEBUG] Loading populations for deletion...');
           this.loadPopulationsForDeletion();
         }
       });
+
+      // Load populations immediately if checkbox is already checked
+      if (deletePopulationCheckbox.checked) {
+        console.log('[DEBUG] Population checkbox is already checked, loading populations immediately');
+        this.loadPopulationsForDeletion();
+      }
     }
     if (deletePopulationBtn) {
+      console.log('[DEBUG] Setting up population delete button click handler');
       deletePopulationBtn.addEventListener('click', () => {
+        console.log('[DEBUG] Population delete button clicked');
+        console.log('[DEBUG] Population select value:', populationSelect?.value);
         if (!populationSelect.value) {
+          console.log('[DEBUG] No population selected, showing error');
           this.uiManager.showNotification('Please select a population first.', 'error');
           return;
         }
+        console.log('[DEBUG] Starting population delete process');
         this.startPopulationDelete();
       });
     }
