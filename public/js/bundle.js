@@ -3385,31 +3385,6 @@ class App {
     this.uiManager.showNotification(`Environment delete completed: ${deleted} deleted, ${failed} failed`, deleted > 0 ? 'success' : 'warning');
   }
   setupDeletePage() {
-    // CSV Delete Section
-    const deleteCsvCheckbox = document.getElementById('delete-csv-checkbox');
-    const csvDeleteControls = document.getElementById('csv-delete-controls');
-    const deleteCsvBtn = document.getElementById('deleteCsvBtn');
-    const csvFileInput = document.getElementById('csvFile');
-    if (deleteCsvCheckbox) {
-      deleteCsvCheckbox.addEventListener('change', e => {
-        csvDeleteControls.style.display = e.target.checked ? 'block' : 'none';
-        if (!e.target.checked) {
-          csvFileInput.value = '';
-        }
-      });
-    }
-    if (deleteCsvBtn) {
-      deleteCsvBtn.addEventListener('click', () => {
-        if (!csvFileInput.files[0]) {
-          this.uiManager.showNotification('Please select a CSV file first.', 'error');
-          return;
-        }
-        this.showDeleteWarning('CSV', () => {
-          this.startDeleteUsersFromCsv();
-        });
-      });
-    }
-
     // Population Delete Section
     const deletePopulationCheckbox = document.getElementById('delete-all-users-population-checkbox');
     const populationDeleteControls = document.getElementById('population-delete-controls');
