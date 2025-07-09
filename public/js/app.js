@@ -3069,7 +3069,7 @@ class App {
             this.uiManager.showLoading(true, 'Processing modify file...');
             
             // Parse the CSV file
-            const users = await this.parseCsvFile(file, 'modify-csv-preview-container');
+            const users = await this.parseCsvFile(file, 'modify-preview-container');
             
             // Store the users for modification
             this.modifyCsvUsers = users;
