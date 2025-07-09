@@ -872,17 +872,18 @@ class App {
             
             const response = await this.localClient.get('/api/health');
             
-            if (!response || !response.server) {
+            if (!response) {
                 throw new Error('Invalid response from server');
             }
             
-            const { server } = response;
+            // Handle both old format (with server object) and new format (direct properties)
+            const serverData = response.server || response;
             
-            if (!server) {
+            if (!serverData) {
                 throw new Error('Server status not available');
             }
             
-            const { pingOneInitialized, lastError } = server;
+            const { pingOneInitialized, lastError } = serverData;
             
             if (pingOneInitialized) {
                 this.logger.fileLogger.info('Server is connected to PingOne');
