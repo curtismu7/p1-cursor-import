@@ -787,10 +787,18 @@ export class UIManager {
             // Update main connection status
             const mainUpdateSuccess = this._updateStatusElement('connection-status', normalizedStatus, normalizedMessage);
             
-            // Also update settings status if needed and possible
+            // Only update settings status if explicitly requested AND we're on the settings page
             let settingsUpdateSuccess = true;
             if (updateSettingsStatus) {
-                settingsUpdateSuccess = this.updateSettingsConnectionStatus(normalizedStatus, normalizedMessage);
+                // Check if we're currently on the settings page
+                const settingsView = document.getElementById('settings-view');
+                const isOnSettingsPage = settingsView && settingsView.style.display !== 'none';
+                
+                if (isOnSettingsPage) {
+                    settingsUpdateSuccess = this.updateSettingsConnectionStatus(normalizedStatus, normalizedMessage);
+                } else {
+                    console.debug('Not updating settings connection status - not on settings page');
+                }
             }
             
             // Update any UI elements that depend on connection status
