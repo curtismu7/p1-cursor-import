@@ -103,7 +103,7 @@ class App {
                 
                 // Now that factory is initialized, get the clients
                 this.pingOneClient = apiFactory.getPingOneClient();
-                this.localClient = apiFactory.getLocalClient();
+                this.localClient = apiFactory.getLocalClient('http://localhost:4000');
                 
                 // Patch localClient to show UI warning on 429 errors
                 if (this.localClient && this.localClient.post) {

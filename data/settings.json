@@ -1,13 +1,13 @@
 {
   "environmentId": "b9817c16-9910-4415-b67e-4ac687da74d9",
   "apiClientId": "26e7f07c-11a4-402a-b064-07b55aee189e",
-  "apiSecret": "enc:Z3LtyeYo0obXqibyt60MAT9+aLIYEoJkT4R1unP16XyRGp3puMcpHiT1tPdfGsyIYJ5pusvZz73eOwpb8KbVfRYiRlFaQN25U7zTOlnWp6i4NBsn7rFNIRGEYPg=",
+  "apiSecret": "enc:ANde9J9nve0Iakf2GowHXVeaiw0Z/yoLjKehJIp3wj6OhrXfZbiLpMZ4wEbjm4MF38YvBMtFOk8paUZe7S1Y60F+33SO+HLPNasS/kyJPMbP09ru/gj6422ucso=",
   "populationId": "",
   "region": "NorthAmerica",
   "rateLimit": 90,
   "connectionStatus": "connected",
   "connectionMessage": "Connected",
-  "lastConnectionTest": "2025-07-08T09:10:11.890Z",
+  "lastConnectionTest": "2025-07-09T13:49:47.204Z",
   "autoSave": true,
   "lastUsedDirectory": "",
   "theme": "light",
@@ -16,7 +16,7 @@
   "test": "value",
   "environment-id": "b9817c16-9910-4415-b67e-4ac687da74d9",
   "api-client-id": "26e7f07c-11a4-402a-b064-07b55aee189e",
-  "api-secret": "enc:Z3LtyeYo0obXqibyt60MAT9+aLIYEoJkT4R1unP16XyRGp3puMcpHiT1tPdfGsyIYJ5pusvZz73eOwpb8KbVfRYiRlFaQN25U7zTOlnWp6i4NBsn7rFNIRGEYPg=",
+  "api-secret": "9p3hLItWFzw5BxKjH3.~TIGVPP~uj4os6fY93170dMvXadn1GEsWTP2lHSTAoevq",
   "population-id": "",
   "rate-limit": "90"
 }
