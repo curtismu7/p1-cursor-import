@@ -73,19 +73,20 @@ class FileHandler {
     }
 
     /**
-     * Save the last folder path from a file
-     * @param {File} file - The file to extract folder path from
+     * Save the last folder path that was used
+     * @param {File} file - The selected file
+     * @param {string} operationType - The operation type ('import', 'delete', 'modify')
      */
-    saveLastFolderPath(file) {
+    saveLastFolderPath(file, operationType = 'import') {
         try {
-            // Extract folder path from file path if available
+            let folderPath = null;
+            
+            // Try to extract folder path from different sources
             if (file.webkitRelativePath) {
                 // For webkitRelativePath, get the directory part
                 const pathParts = file.webkitRelativePath.split('/');
                 if (pathParts.length > 1) {
-                    const folderPath = pathParts.slice(0, -1).join('/');
-                    localStorage.setItem('lastFolderPath', folderPath);
-                    this.logger.info('Saved last folder path:', folderPath);
+                    folderPath = pathParts.slice(0, -1).join('/');
                 }
             } else if (file.name) {
                 // For regular files, try to extract from the file name
@@ -93,11 +94,22 @@ class FileHandler {
                 const fileName = file.name;
                 const lastSlashIndex = fileName.lastIndexOf('/');
                 if (lastSlashIndex !== -1) {
-                    const folderPath = fileName.substring(0, lastSlashIndex);
-                    localStorage.setItem('lastFolderPath', folderPath);
-                    this.logger.info('Saved last folder path from filename:', folderPath);
+                    folderPath = fileName.substring(0, lastSlashIndex);
                 }
             }
+            
+            if (folderPath) {
+                // Save with operation-specific key
+                const storageKey = `lastFolderPath_${operationType}`;
+                localStorage.setItem(storageKey, folderPath);
+                this.logger.info(`Saved last folder path for ${operationType}:`, folderPath);
+            }
+            
+            // Also save a general last folder path
+            if (folderPath) {
+                localStorage.setItem('lastFolderPath', folderPath);
+            }
+            
         } catch (error) {
             this.logger.warn('Could not save folder path:', error.message);
         }
@@ -105,11 +117,21 @@ class FileHandler {
 
     /**
      * Get the last folder path that was used
+     * @param {string} operationType - The operation type ('import', 'delete', 'modify')
      * @returns {string|null} The last folder path or null if not available
      */
-    getLastFolderPath() {
+    getLastFolderPath(operationType = 'import') {
         try {
-            return localStorage.getItem('lastFolderPath');
+            // First try to get operation-specific folder path
+            const operationKey = `lastFolderPath_${operationType}`;
+            let folderPath = localStorage.getItem(operationKey);
+            
+            // Fall back to general last folder path
+            if (!folderPath) {
+                folderPath = localStorage.getItem('lastFolderPath');
+            }
+            
+            return folderPath;
         } catch (error) {
             this.logger.warn('Could not get last folder path:', error.message);
             return null;
@@ -118,21 +140,81 @@ class FileHandler {
 
     /**
      * Update the file input label to show last folder path
+     * @param {string} operationType - The operation type ('import', 'delete', 'modify')
      */
-    updateFileLabel() {
+    updateFileLabel(operationType = 'import') {
         try {
-            const fileLabel = document.querySelector('.file-label span');
+            // Find the appropriate file label based on operation type
+            let fileLabel = null;
+            let fileInput = null;
+            
+            switch (operationType) {
+                case 'import':
+                    fileLabel = document.querySelector('label[for="csv-file"] span');
+                    fileInput = document.getElementById('csv-file');
+                    break;
+                case 'delete':
+                    fileLabel = document.querySelector('label[for="delete-csv-file"] span');
+                    fileInput = document.getElementById('delete-csv-file');
+                    break;
+                case 'modify':
+                    fileLabel = document.querySelector('label[for="modify-csv-file"] span');
+                    fileInput = document.getElementById('modify-csv-file');
+                    break;
+                default:
+                    fileLabel = document.querySelector('.file-label span');
+                    break;
+            }
+            
             if (fileLabel) {
-                const lastFolderPath = this.getLastFolderPath();
+                const lastFolderPath = this.getLastFolderPath(operationType);
                 if (lastFolderPath) {
-                    fileLabel.textContent = `Choose CSV File (Last: ${lastFolderPath})`;
+                    // Show a shortened version of the path for better UI
+                    const shortPath = this.shortenPath(lastFolderPath);
+                    fileLabel.textContent = `Choose CSV File (Last: ${shortPath})`;
+                    fileLabel.title = `Last used folder: ${lastFolderPath}`;
                 } else {
                     fileLabel.textContent = 'Choose CSV File';
+                    fileLabel.title = 'Select a CSV file to process';
                 }
             }
         } catch (error) {
             this.logger.warn('Could not update file label:', error.message);
         }
+    }
+    
+    /**
+     * Shorten a file path for display in the UI
+     * @param {string} path - The full path
+     * @returns {string} The shortened path
+     */
+    shortenPath(path) {
+        if (!path) return '';
+        
+        const maxLength = 30;
+        if (path.length <= maxLength) {
+            return path;
+        }
+        
+        // Try to keep the most relevant parts
+        const parts = path.split('/');
+        if (parts.length <= 2) {
+            return path.length > maxLength ? '...' + path.slice(-maxLength + 3) : path;
+        }
+        
+        // Keep first and last parts, add ellipsis in middle
+        const firstPart = parts[0];
+        const lastPart = parts[parts.length - 1];
+        const middleParts = parts.slice(1, -1);
+        
+        let result = firstPart;
+        if (middleParts.length > 0) {
+            result += '/.../' + lastPart;
+        } else {
+            result += '/' + lastPart;
+        }
+        
+        return result.length > maxLength ? '...' + result.slice(-maxLength + 3) : result;
     }
     
     saveFileInfo(fileInfo) {
@@ -214,7 +296,7 @@ class FileHandler {
         }
         
         // Save the folder path for next time
-        this.saveLastFolderPath(file);
+        this.saveLastFolderPath(file, 'import');
         
         await this._handleFileInternal(file, event);
     }
@@ -267,7 +349,7 @@ class FileHandler {
             this.updateFileInfoForElement(file, 'file-info');
             
             // Update file label to show last folder path
-            this.updateFileLabel();
+            this.updateFileLabel('import');
 
             // Log detailed errors for debugging
             if (parseResults.errors.length > 0) {

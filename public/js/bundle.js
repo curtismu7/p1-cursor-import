@@ -106,7 +106,7 @@ class App {
 
         // Now that factory is initialized, get the clients
         this.pingOneClient = _apiFactory.apiFactory.getPingOneClient();
-                        this.localClient = _apiFactory.apiFactory.getLocalClient('http://localhost:4000');
+        this.localClient = _apiFactory.apiFactory.getLocalClient('http://localhost:4000');
 
         // Patch localClient to show UI warning on 429 errors
         if (this.localClient && this.localClient.post) {
@@ -636,16 +636,28 @@ class App {
         // Load populations for import when import view is shown
         if (view === 'import') {
           await this.loadPopulationsForImport();
+          // Update file label to show last folder path for import operation
+          if (this.fileHandler) {
+            this.fileHandler.updateFileLabel('import');
+          }
         }
 
         // Load populations for modify when modify view is shown
         if (view === 'modify') {
           await this.loadModifyPopulations();
+          // Update file label to show last folder path for modify operation
+          if (this.fileHandler) {
+            this.fileHandler.updateFileLabel('modify');
+          }
         }
 
         // Load populations for delete when delete view is shown
         if (view === 'delete') {
           await this.loadPopulationsForDeletion();
+          // Update file label to show last folder path for delete operation
+          if (this.fileHandler) {
+            this.fileHandler.updateFileLabel('delete');
+          }
         }
 
         // Load logs when logs view is shown
@@ -1757,7 +1769,7 @@ class App {
 
       // Initialize API clients
       this.pingOneClient = this.factory.getPingOneClient();
-                      this.localClient = this.factory.getLocalClient('http://localhost:4000');
+      this.localClient = this.factory.getLocalClient('http://localhost:4000');
       this.logger.fileLogger.info('API clients initialized successfully');
 
       // Now that API clients are ready, restore settings to UI
@@ -2867,6 +2879,11 @@ class App {
         fileSize: file.size
       });
 
+      // Save the folder path for next time
+      if (this.fileHandler) {
+        this.fileHandler.saveLastFolderPath(file, 'delete');
+      }
+
       // Show loading state
       this.uiManager.showLoading(true, 'Processing delete file...');
 
@@ -2881,6 +2898,11 @@ class App {
 
       // Update button state
       this.updateDeleteCsvButtonState();
+
+      // Update file label to show last folder path
+      if (this.fileHandler) {
+        this.fileHandler.updateFileLabel('delete');
+      }
 
       // Show success message
       this.uiManager.showNotification(`✅ Successfully processed ${users.length} users for deletion`, 'success');
@@ -2902,6 +2924,11 @@ class App {
         fileSize: file.size
       });
 
+      // Save the folder path for next time
+      if (this.fileHandler) {
+        this.fileHandler.saveLastFolderPath(file, 'modify');
+      }
+
       // Show loading state
       this.uiManager.showLoading(true, 'Processing modify file...');
 
@@ -2916,6 +2943,11 @@ class App {
 
       // Update button state
       this.updateModifyCsvButtonState();
+
+      // Update file label to show last folder path
+      if (this.fileHandler) {
+        this.fileHandler.updateFileLabel('modify');
+      }
 
       // Show success message
       this.uiManager.showNotification(`✅ Successfully processed ${users.length} users for modification`, 'success');
@@ -4112,19 +4144,21 @@ class FileHandler {
   }
 
   /**
-   * Save the last folder path from a file
-   * @param {File} file - The file to extract folder path from
+   * Save the last folder path that was used
+   * @param {File} file - The selected file
+   * @param {string} operationType - The operation type ('import', 'delete', 'modify')
    */
   saveLastFolderPath(file) {
+    let operationType = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'import';
     try {
-      // Extract folder path from file path if available
+      let folderPath = null;
+
+      // Try to extract folder path from different sources
       if (file.webkitRelativePath) {
         // For webkitRelativePath, get the directory part
         const pathParts = file.webkitRelativePath.split('/');
         if (pathParts.length > 1) {
-          const folderPath = pathParts.slice(0, -1).join('/');
-          localStorage.setItem('lastFolderPath', folderPath);
-          this.logger.info('Saved last folder path:', folderPath);
+          folderPath = pathParts.slice(0, -1).join('/');
         }
       } else if (file.name) {
         // For regular files, try to extract from the file name
@@ -4132,10 +4166,19 @@ class FileHandler {
         const fileName = file.name;
         const lastSlashIndex = fileName.lastIndexOf('/');
         if (lastSlashIndex !== -1) {
-          const folderPath = fileName.substring(0, lastSlashIndex);
-          localStorage.setItem('lastFolderPath', folderPath);
-          this.logger.info('Saved last folder path from filename:', folderPath);
+          folderPath = fileName.substring(0, lastSlashIndex);
         }
+      }
+      if (folderPath) {
+        // Save with operation-specific key
+        const storageKey = `lastFolderPath_${operationType}`;
+        localStorage.setItem(storageKey, folderPath);
+        this.logger.info(`Saved last folder path for ${operationType}:`, folderPath);
+      }
+
+      // Also save a general last folder path
+      if (folderPath) {
+        localStorage.setItem('lastFolderPath', folderPath);
       }
     } catch (error) {
       this.logger.warn('Could not save folder path:', error.message);
@@ -4144,11 +4187,21 @@ class FileHandler {
 
   /**
    * Get the last folder path that was used
+   * @param {string} operationType - The operation type ('import', 'delete', 'modify')
    * @returns {string|null} The last folder path or null if not available
    */
   getLastFolderPath() {
+    let operationType = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 'import';
     try {
-      return localStorage.getItem('lastFolderPath');
+      // First try to get operation-specific folder path
+      const operationKey = `lastFolderPath_${operationType}`;
+      let folderPath = localStorage.getItem(operationKey);
+
+      // Fall back to general last folder path
+      if (!folderPath) {
+        folderPath = localStorage.getItem('lastFolderPath');
+      }
+      return folderPath;
     } catch (error) {
       this.logger.warn('Could not get last folder path:', error.message);
       return null;
@@ -4157,21 +4210,77 @@ class FileHandler {
 
   /**
    * Update the file input label to show last folder path
+   * @param {string} operationType - The operation type ('import', 'delete', 'modify')
    */
   updateFileLabel() {
+    let operationType = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 'import';
     try {
-      const fileLabel = document.querySelector('.file-label span');
+      // Find the appropriate file label based on operation type
+      let fileLabel = null;
+      let fileInput = null;
+      switch (operationType) {
+        case 'import':
+          fileLabel = document.querySelector('label[for="csv-file"] span');
+          fileInput = document.getElementById('csv-file');
+          break;
+        case 'delete':
+          fileLabel = document.querySelector('label[for="delete-csv-file"] span');
+          fileInput = document.getElementById('delete-csv-file');
+          break;
+        case 'modify':
+          fileLabel = document.querySelector('label[for="modify-csv-file"] span');
+          fileInput = document.getElementById('modify-csv-file');
+          break;
+        default:
+          fileLabel = document.querySelector('.file-label span');
+          break;
+      }
       if (fileLabel) {
-        const lastFolderPath = this.getLastFolderPath();
+        const lastFolderPath = this.getLastFolderPath(operationType);
         if (lastFolderPath) {
-          fileLabel.textContent = `Choose CSV File (Last: ${lastFolderPath})`;
+          // Show a shortened version of the path for better UI
+          const shortPath = this.shortenPath(lastFolderPath);
+          fileLabel.textContent = `Choose CSV File (Last: ${shortPath})`;
+          fileLabel.title = `Last used folder: ${lastFolderPath}`;
         } else {
           fileLabel.textContent = 'Choose CSV File';
+          fileLabel.title = 'Select a CSV file to process';
         }
       }
     } catch (error) {
       this.logger.warn('Could not update file label:', error.message);
     }
+  }
+
+  /**
+   * Shorten a file path for display in the UI
+   * @param {string} path - The full path
+   * @returns {string} The shortened path
+   */
+  shortenPath(path) {
+    if (!path) return '';
+    const maxLength = 30;
+    if (path.length <= maxLength) {
+      return path;
+    }
+
+    // Try to keep the most relevant parts
+    const parts = path.split('/');
+    if (parts.length <= 2) {
+      return path.length > maxLength ? '...' + path.slice(-maxLength + 3) : path;
+    }
+
+    // Keep first and last parts, add ellipsis in middle
+    const firstPart = parts[0];
+    const lastPart = parts[parts.length - 1];
+    const middleParts = parts.slice(1, -1);
+    let result = firstPart;
+    if (middleParts.length > 0) {
+      result += '/.../' + lastPart;
+    } else {
+      result += '/' + lastPart;
+    }
+    return result.length > maxLength ? '...' + result.slice(-maxLength + 3) : result;
   }
   saveFileInfo(fileInfo) {
     try {
@@ -4251,7 +4360,7 @@ class FileHandler {
     }
 
     // Save the folder path for next time
-    this.saveLastFolderPath(file);
+    this.saveLastFolderPath(file, 'import');
     await this._handleFileInternal(file, event);
   }
 
@@ -4275,7 +4384,10 @@ class FileHandler {
       const knownBadExts = ['exe', 'js', 'png', 'jpg', 'jpeg', 'gif', 'pdf', 'zip', 'tar', 'gz'];
       if (fileExt && knownBadExts.includes(fileExt)) {
         const errorMsg = `Unsupported file type: ${fileExt}. Please upload a CSV or text file.`;
-        this.logger.error(errorMsg, { fileName, fileExt });
+        this.logger.error(errorMsg, {
+          fileName,
+          fileExt
+        });
         throw new Error(errorMsg);
       }
       // Accept all other extensions and blank/unknown types (including files with no extension)
@@ -4305,7 +4417,7 @@ class FileHandler {
       this.updateFileInfoForElement(file, 'file-info');
 
       // Update file label to show last folder path
-      this.updateFileLabel();
+      this.updateFileLabel('import');
 
       // Log detailed errors for debugging
       if (parseResults.errors.length > 0) {
@@ -9369,19 +9481,18 @@ class UIManager {
       // Update main connection status
       const mainUpdateSuccess = this._updateStatusElement('connection-status', normalizedStatus, normalizedMessage);
 
-                  // Only update settings status if explicitly requested AND we're on the settings page
-            let settingsUpdateSuccess = true;
-            if (updateSettingsStatus) {
-                // Check if we're currently on the settings page
-                const settingsView = document.getElementById('settings-view');
-                const isOnSettingsPage = settingsView && settingsView.style.display !== 'none';
-                
-                if (isOnSettingsPage) {
-                    settingsUpdateSuccess = this.updateSettingsConnectionStatus(normalizedStatus, normalizedMessage);
-                } else {
-                    console.debug('Not updating settings connection status - not on settings page');
-                }
-            }
+      // Only update settings status if explicitly requested AND we're on the settings page
+      let settingsUpdateSuccess = true;
+      if (updateSettingsStatus) {
+        // Check if we're currently on the settings page
+        const settingsView = document.getElementById('settings-view');
+        const isOnSettingsPage = settingsView && settingsView.style.display !== 'none';
+        if (isOnSettingsPage) {
+          settingsUpdateSuccess = this.updateSettingsConnectionStatus(normalizedStatus, normalizedMessage);
+        } else {
+          console.debug('Not updating settings connection status - not on settings page');
+        }
+      }
 
       // Update any UI elements that depend on connection status
       this._updateConnectionDependentUI(normalizedStatus);

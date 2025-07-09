@@ -637,16 +637,28 @@ class App {
                 // Load populations for import when import view is shown
                 if (view === 'import') {
                     await this.loadPopulationsForImport();
+                    // Update file label to show last folder path for import operation
+                    if (this.fileHandler) {
+                        this.fileHandler.updateFileLabel('import');
+                    }
                 }
                 
                 // Load populations for modify when modify view is shown
                 if (view === 'modify') {
                     await this.loadModifyPopulations();
+                    // Update file label to show last folder path for modify operation
+                    if (this.fileHandler) {
+                        this.fileHandler.updateFileLabel('modify');
+                    }
                 }
                 
                 // Load populations for delete when delete view is shown
                 if (view === 'delete') {
                     await this.loadPopulationsForDeletion();
+                    // Update file label to show last folder path for delete operation
+                    if (this.fileHandler) {
+                        this.fileHandler.updateFileLabel('delete');
+                    }
                 }
                 
                 // Load logs when logs view is shown
@@ -3005,6 +3017,11 @@ class App {
         try {
             this.logger.fileLogger.info('Processing delete CSV file', { fileName: file.name, fileSize: file.size });
             
+            // Save the folder path for next time
+            if (this.fileHandler) {
+                this.fileHandler.saveLastFolderPath(file, 'delete');
+            }
+            
             // Show loading state
             this.uiManager.showLoading(true, 'Processing delete file...');
             
@@ -3019,6 +3036,11 @@ class App {
             
             // Update button state
             this.updateDeleteCsvButtonState();
+            
+            // Update file label to show last folder path
+            if (this.fileHandler) {
+                this.fileHandler.updateFileLabel('delete');
+            }
             
             // Show success message
             this.uiManager.showNotification(`✅ Successfully processed ${users.length} users for deletion`, 'success');
@@ -3038,6 +3060,11 @@ class App {
         try {
             this.logger.fileLogger.info('Processing modify CSV file', { fileName: file.name, fileSize: file.size });
             
+            // Save the folder path for next time
+            if (this.fileHandler) {
+                this.fileHandler.saveLastFolderPath(file, 'modify');
+            }
+            
             // Show loading state
             this.uiManager.showLoading(true, 'Processing modify file...');
             
@@ -3052,6 +3079,11 @@ class App {
             
             // Update button state
             this.updateModifyCsvButtonState();
+            
+            // Update file label to show last folder path
+            if (this.fileHandler) {
+                this.fileHandler.updateFileLabel('modify');
+            }
             
             // Show success message
             this.uiManager.showNotification(`✅ Successfully processed ${users.length} users for modification`, 'success');
