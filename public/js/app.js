@@ -1782,7 +1782,7 @@ class App {
             
             // Initialize API clients
             this.pingOneClient = this.factory.getPingOneClient();
-            this.localClient = this.factory.getLocalClient();
+            this.localClient = this.factory.getLocalClient('http://localhost:4000');
             this.logger.fileLogger.info('API clients initialized successfully');
             
             // Now that API clients are ready, restore settings to UI

@@ -129,7 +129,7 @@ class App {
 
         // Now that factory is initialized, get the clients
         this.pingOneClient = _apiFactory.apiFactory.getPingOneClient();
-        this.localClient = _apiFactory.apiFactory.getLocalClient();
+                    this.localClient = _apiFactory.apiFactory.getLocalClient('http://localhost:4000');
         this.logger.fileLogger.info('API clients initialized successfully');
       } catch (error) {
         const errorMsg = "Failed to initialize API: ".concat(error.message);
@@ -806,7 +806,7 @@ class App {
 
       // Initialize API clients
       this.pingOneClient = this.factory.getPingOneClient();
-      this.localClient = this.factory.getLocalClient();
+                  this.localClient = this.factory.getLocalClient('http://localhost:4000');
       this.logger.fileLogger.info('API clients initialized successfully');
 
       // Now that API clients are ready, load settings
