@@ -47,6 +47,10 @@
                     <i class="fas fa-list"></i>
                     <span>Logs</span>
                 </li>
+                <li class="nav-item" data-view="progress">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Progress</span>
+                </li>
             </ul>
         </nav>
 
@@ -1032,6 +1036,151 @@
                     
                     <div id="export-preview-container" class="preview-container">
                         <!-- Export preview will be displayed here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Progress View -->
+            <div id="progress-view" class="view">
+                <div class="progress-header">
+                    <h1><i class="fas fa-chart-line"></i> Operation Progress</h1>
+                    <p class="text-muted">Monitor the status of all operations across the application</p>
+                </div>
+                
+                <div class="progress-content">
+                    <!-- Import Progress Section -->
+                    <div class="progress-section">
+                        <h3><i class="fas fa-upload"></i> Import Operations</h3>
+                        <div class="progress-card">
+                            <div class="progress-status">
+                                <span class="status-label">Last Import:</span>
+                                <span id="progress-import-status" class="status-value">No recent imports</span>
+                            </div>
+                            <div class="progress-details">
+                                <div class="detail-item">
+                                    <span class="detail-label">Operation:</span>
+                                    <span id="progress-import-operation">-</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Timestamp:</span>
+                                    <span id="progress-import-timestamp">-</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Details:</span>
+                                    <span id="progress-import-details">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Export Progress Section -->
+                    <div class="progress-section">
+                        <h3><i class="fas fa-download"></i> Export Operations</h3>
+                        <div class="progress-card">
+                            <div class="progress-status">
+                                <span class="status-label">Last Export:</span>
+                                <span id="progress-export-status" class="status-value">No recent exports</span>
+                            </div>
+                            <div class="progress-details">
+                                <div class="detail-item">
+                                    <span class="detail-label">Operation:</span>
+                                    <span id="progress-export-operation">-</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Timestamp:</span>
+                                    <span id="progress-export-timestamp">-</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Details:</span>
+                                    <span id="progress-export-details">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Delete Progress Section -->
+                    <div class="progress-section">
+                        <h3><i class="fas fa-trash"></i> Delete Operations</h3>
+                        <div class="progress-card">
+                            <div class="progress-status">
+                                <span class="status-label">Last Delete:</span>
+                                <span id="progress-delete-status" class="status-value">No recent deletes</span>
+                            </div>
+                            <div class="progress-details">
+                                <div class="detail-item">
+                                    <span class="detail-label">Operation:</span>
+                                    <span id="progress-delete-operation">-</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Timestamp:</span>
+                                    <span id="progress-delete-timestamp">-</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Details:</span>
+                                    <span id="progress-delete-details">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Modify Progress Section -->
+                    <div class="progress-section">
+                        <h3><i class="fas fa-edit"></i> Modify Operations</h3>
+                        <div class="progress-card">
+                            <div class="progress-status">
+                                <span class="status-label">Last Modify:</span>
+                                <span id="progress-modify-status" class="status-value">No recent modifications</span>
+                            </div>
+                            <div class="progress-details">
+                                <div class="detail-item">
+                                    <span class="detail-label">Operation:</span>
+                                    <span id="progress-modify-operation">-</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Timestamp:</span>
+                                    <span id="progress-modify-timestamp">-</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Details:</span>
+                                    <span id="progress-modify-details">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Settings Progress Section -->
+                    <div class="progress-section">
+                        <h3><i class="fas fa-cog"></i> Settings Operations</h3>
+                        <div class="progress-card">
+                            <div class="progress-status">
+                                <span class="status-label">Last Settings Update:</span>
+                                <span id="progress-settings-status" class="status-value">No recent settings updates</span>
+                            </div>
+                            <div class="progress-details">
+                                <div class="detail-item">
+                                    <span class="detail-label">Operation:</span>
+                                    <span id="progress-settings-operation">-</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Timestamp:</span>
+                                    <span id="progress-settings-timestamp">-</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Details:</span>
+                                    <span id="progress-settings-details">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Refresh Button -->
+                    <div class="progress-actions" style="text-align: center; margin-top: 2rem;">
+                        <button id="refresh-progress-btn" class="btn btn-primary">
+                            <i class="fas fa-sync-alt"></i> Refresh Progress
+                        </button>
+                        <button id="clear-progress-history-btn" class="btn btn-secondary">
+                            <i class="fas fa-trash"></i> Clear History
+                        </button>
                     </div>
                 </div>
             </div>

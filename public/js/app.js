@@ -419,6 +419,21 @@ class App {
             console.error('API Secret toggle elements not found:', { apiSecretInput: !!apiSecretInput, toggleApiSecretBtn: !!toggleApiSecretBtn });
         }
 
+        // Progress page event listeners
+        const refreshProgressBtn = document.getElementById('refresh-progress-btn');
+        if (refreshProgressBtn) {
+            refreshProgressBtn.addEventListener('click', () => {
+                this.refreshProgressPage();
+            });
+        }
+
+        const clearProgressHistoryBtn = document.getElementById('clear-progress-history-btn');
+        if (clearProgressHistoryBtn) {
+            clearProgressHistoryBtn.addEventListener('click', () => {
+                this.clearProgressHistory();
+            });
+        }
+
         // File upload event listeners
         const csvFileInput = document.getElementById('csv-file');
         console.log('CSV file input element:', csvFileInput);
@@ -664,6 +679,11 @@ class App {
                 // Load logs when logs view is shown
                 if (view === 'logs') {
                     await this.uiManager.loadAndDisplayLogs();
+                }
+                
+                // Refresh progress page when progress view is shown
+                if (view === 'progress') {
+                    this.refreshProgressPage();
                 }
                 
                 // Update navigation
@@ -4035,6 +4055,147 @@ class App {
             navItem.style.cursor = 'pointer';
             navItem.title = '';
         });
+    }
+
+    /**
+     * Refresh the progress page with current status
+     */
+    refreshProgressPage() {
+        console.log('Refreshing progress page...');
+        
+        // Get the last run status from the UI manager
+        const lastRunStatus = this.uiManager.lastRunStatus || {};
+        
+        // Update each operation section
+        this.updateProgressSection('import', lastRunStatus['import']);
+        this.updateProgressSection('export', lastRunStatus['export']);
+        this.updateProgressSection('delete-csv', lastRunStatus['delete-csv']);
+        this.updateProgressSection('modify', lastRunStatus['modify']);
+        this.updateProgressSection('settings', lastRunStatus['settings']);
+        
+        this.uiManager.showNotification('Progress page refreshed', 'info');
+    }
+
+    /**
+     * Update a specific progress section
+     */
+    updateProgressSection(operation, status) {
+        if (!status) {
+            this.setDefaultProgressStatus(operation);
+            return;
+        }
+
+        const statusElement = document.getElementById(`progress-${operation}-status`);
+        const operationElement = document.getElementById(`progress-${operation}-operation`);
+        const timestampElement = document.getElementById(`progress-${operation}-timestamp`);
+        const detailsElement = document.getElementById(`progress-${operation}-details`);
+
+        if (statusElement) {
+            statusElement.textContent = this.getStatusDisplayText(status.status);
+            statusElement.className = `status-value ${this.getStatusClass(status.status)}`;
+        }
+
+        if (operationElement) {
+            operationElement.textContent = status.operation || 'Unknown Operation';
+        }
+
+        if (timestampElement) {
+            timestampElement.textContent = status.timestamp ? 
+                new Date(status.timestamp).toLocaleString() : '-';
+        }
+
+        if (detailsElement) {
+            detailsElement.textContent = status.details || '-';
+        }
+
+        // Update the progress status container styling
+        const statusContainer = statusElement?.closest('.progress-status');
+        if (statusContainer) {
+            statusContainer.className = `progress-status ${this.getStatusClass(status.status)}`;
+        }
+    }
+
+    /**
+     * Set default status for a progress section
+     */
+    setDefaultProgressStatus(operation) {
+        const statusElement = document.getElementById(`progress-${operation}-status`);
+        const operationElement = document.getElementById(`progress-${operation}-operation`);
+        const timestampElement = document.getElementById(`progress-${operation}-timestamp`);
+        const detailsElement = document.getElementById(`progress-${operation}-details`);
+
+        const defaultTexts = {
+            'import': 'No recent imports',
+            'export': 'No recent exports',
+            'delete-csv': 'No recent deletes',
+            'modify': 'No recent modifications',
+            'settings': 'No recent settings updates'
+        };
+
+        if (statusElement) {
+            statusElement.textContent = defaultTexts[operation] || 'No recent activity';
+            statusElement.className = 'status-value ready';
+        }
+
+        if (operationElement) operationElement.textContent = '-';
+        if (timestampElement) timestampElement.textContent = '-';
+        if (detailsElement) detailsElement.textContent = '-';
+
+        // Reset the progress status container styling
+        const statusContainer = statusElement?.closest('.progress-status');
+        if (statusContainer) {
+            statusContainer.className = 'progress-status ready';
+        }
+    }
+
+    /**
+     * Get display text for status
+     */
+    getStatusDisplayText(status) {
+        const statusMap = {
+            'Ready': 'Ready',
+            'In Progress': 'In Progress',
+            'Completed': 'Completed',
+            'Failed': 'Failed',
+            'Error': 'Error',
+            'Cancelled': 'Cancelled'
+        };
+        return statusMap[status] || status || 'Unknown';
+    }
+
+    /**
+     * Get CSS class for status
+     */
+    getStatusClass(status) {
+        const classMap = {
+            'Ready': 'ready',
+            'In Progress': 'in-progress',
+            'Completed': 'completed',
+            'Failed': 'failed',
+            'Error': 'failed',
+            'Cancelled': 'failed'
+        };
+        return classMap[status] || 'ready';
+    }
+
+    /**
+     * Clear progress history
+     */
+    clearProgressHistory() {
+        if (confirm('Are you sure you want to clear all progress history? This action cannot be undone.')) {
+            // Clear the UI manager's last run status
+            this.uiManager.lastRunStatus = {};
+            this.uiManager.savePersistedStatus();
+            
+            // Reset all progress sections to default
+            this.setDefaultProgressStatus('import');
+            this.setDefaultProgressStatus('export');
+            this.setDefaultProgressStatus('delete-csv');
+            this.setDefaultProgressStatus('modify');
+            this.setDefaultProgressStatus('settings');
+            
+            this.uiManager.showNotification('Progress history cleared', 'success');
+        }
     }
 }
 
