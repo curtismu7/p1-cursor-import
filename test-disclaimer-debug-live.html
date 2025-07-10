@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disclaimer Button Debug - Live Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        .checkbox-group {
+            margin: 10px 0;
+        }
+        .checkbox-group input[type="checkbox"] {
+            margin-right: 10px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .log {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        .info { color: #17a2b8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Disclaimer Button Debug - Live Test</h1>
+        
+        <div class="test-section">
+            <h3>Test 1: Direct Element Access</h3>
+            <button onclick="testDirectAccess()" class="btn btn-secondary">Test Direct Access</button>
+            <div id="direct-access-log" class="log"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Test 2: Simulate Real App Elements</h3>
+            <div class="checkbox-group">
+                <input type="checkbox" id="test-disclaimer-agreement">
+                <label for="test-disclaimer-agreement">I agree to the terms</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="test-risk-acceptance">
+                <label for="test-risk-acceptance">I accept the risks</label>
+            </div>
+            <button id="test-accept-disclaimer" class="btn btn-secondary" disabled>
+                I UNDERSTAND AND ACCEPT ALL RISKS
+            </button>
+            <button onclick="testSimulatedElements()" class="btn btn-secondary">Test Simulated Elements</button>
+            <div id="simulated-log" class="log"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Test 3: Check Real App Elements</h3>
+            <button onclick="checkRealAppElements()" class="btn btn-secondary">Check Real App Elements</button>
+            <div id="real-app-log" class="log"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Test 4: Test App Initialization</h3>
+            <button onclick="testAppInit()" class="btn btn-secondary">Test App Init</button>
+            <div id="app-init-log" class="log"></div>
+        </div>
+    </div>
+
+    <script>
+        function log(message, type = 'info', targetId) {
+            const logElement = document.getElementById(targetId);
+            if (logElement) {
+                const timestamp = new Date().toLocaleTimeString();
+                const className = type === 'error' ? 'error' : type === 'success' ? 'success' : 'info';
+                logElement.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+                logElement.scrollTop = logElement.scrollHeight;
+            }
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        function testDirectAccess() {
+            const logId = 'direct-access-log';
+            log('=== Testing Direct Element Access ===', 'info', logId);
+            
+            // Test if we can access the real app elements
+            const disclaimerCheckbox = document.getElementById('disclaimer-agreement');
+            const riskCheckbox = document.getElementById('risk-acceptance');
+            const acceptButton = document.getElementById('accept-disclaimer');
+            
+            log(`Disclaimer checkbox found: ${!!disclaimerCheckbox}`, disclaimerCheckbox ? 'success' : 'error', logId);
+            log(`Risk checkbox found: ${!!riskCheckbox}`, riskCheckbox ? 'success' : 'error', logId);
+            log(`Accept button found: ${!!acceptButton}`, acceptButton ? 'success' : 'error', logId);
+            
+            if (disclaimerCheckbox && riskCheckbox && acceptButton) {
+                log('All elements found! Testing functionality...', 'success', logId);
+                
+                // Test checkbox states
+                log(`Disclaimer checkbox checked: ${disclaimerCheckbox.checked}`, 'info', logId);
+                log(`Risk checkbox checked: ${riskCheckbox.checked}`, 'info', logId);
+                log(`Accept button disabled: ${acceptButton.disabled}`, 'info', logId);
+                
+                // Test button classes
+                const hasDangerClass = acceptButton.classList.contains('btn-danger');
+                const hasSecondaryClass = acceptButton.classList.contains('btn-secondary');
+                log(`Button has danger class: ${hasDangerClass}`, 'info', logId);
+                log(`Button has secondary class: ${hasSecondaryClass}`, 'info', logId);
+                
+            } else {
+                log('Some elements not found - app may not be loaded yet', 'error', logId);
+            }
+        }
+
+        function testSimulatedElements() {
+            const logId = 'simulated-log';
+            log('=== Testing Simulated Elements ===', 'info', logId);
+            
+            const disclaimerCheckbox = document.getElementById('test-disclaimer-agreement');
+            const riskCheckbox = document.getElementById('test-risk-acceptance');
+            const acceptButton = document.getElementById('test-accept-disclaimer');
+            
+            log('Setting up event listeners...', 'info', logId);
+            
+            // Function to check agreement status
+            const checkAgreementStatus = () => {
+                const disclaimerChecked = disclaimerCheckbox.checked;
+                const riskChecked = riskCheckbox.checked;
+                const bothChecked = disclaimerChecked && riskChecked;
+                
+                log(`Agreement status: disclaimer=${disclaimerChecked}, risk=${riskChecked}, both=${bothChecked}`, 'info', logId);
+                
+                // Enable/disable button
+                acceptButton.disabled = !bothChecked;
+                
+                // Update button appearance
+                if (bothChecked) {
+                    acceptButton.classList.remove('btn-secondary');
+                    acceptButton.classList.add('btn-danger');
+                    log('✅ Button enabled', 'success', logId);
+                } else {
+                    acceptButton.classList.remove('btn-danger');
+                    acceptButton.classList.add('btn-secondary');
+                    log('❌ Button disabled', 'error', logId);
+                }
+            };
+            
+            // Set up event listeners
+            disclaimerCheckbox.addEventListener('change', (e) => {
+                log(`Disclaimer checkbox changed: ${e.target.checked}`, 'info', logId);
+                checkAgreementStatus();
+            });
+            
+            riskCheckbox.addEventListener('change', (e) => {
+                log(`Risk checkbox changed: ${e.target.checked}`, 'info', logId);
+                checkAgreementStatus();
+            });
+            
+            acceptButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                log('Accept button clicked!', 'success', logId);
+                
+                if (disclaimerCheckbox.checked && riskCheckbox.checked) {
+                    log('✅ Both checkboxes checked - disclaimer accepted!', 'success', logId);
+                } else {
+                    log('❌ Button clicked but checkboxes not checked', 'error', logId);
+                }
+            });
+            
+            // Initial status check
+            checkAgreementStatus();
+            log('Simulated disclaimer setup complete', 'success', logId);
+        }
+
+        function checkRealAppElements() {
+            const logId = 'real-app-log';
+            log('=== Checking Real App Elements ===', 'info', logId);
+            
+            // Check if app is loaded
+            if (typeof window.app !== 'undefined') {
+                log('App is loaded!', 'success', logId);
+                log(`App type: ${typeof window.app}`, 'info', logId);
+                log(`App has setupDisclaimerAgreement: ${typeof window.app.setupDisclaimerAgreement}`, 'info', logId);
+                
+                // Try to call the setup function
+                try {
+                    window.app.setupDisclaimerAgreement();
+                    log('✅ setupDisclaimerAgreement called successfully', 'success', logId);
+                } catch (error) {
+                    log(`❌ Error calling setupDisclaimerAgreement: ${error.message}`, 'error', logId);
+                }
+                
+            } else {
+                log('App not loaded yet', 'error', logId);
+            }
+            
+            // Check elements
+            const elements = [
+                'disclaimer-agreement',
+                'risk-acceptance', 
+                'accept-disclaimer'
+            ];
+            
+            elements.forEach(id => {
+                const element = document.getElementById(id);
+                log(`${id}: ${!!element}`, element ? 'success' : 'error', logId);
+                if (element) {
+                    log(`  - type: ${element.type || 'N/A'}`, 'info', logId);
+                    log(`  - checked: ${element.checked || 'N/A'}`, 'info', logId);
+                    log(`  - disabled: ${element.disabled || 'N/A'}`, 'info', logId);
+                }
+            });
+        }
+
+        function testAppInit() {
+            const logId = 'app-init-log';
+            log('=== Testing App Initialization ===', 'info', logId);
+            
+            // Check if app is initialized
+            if (typeof window.app !== 'undefined') {
+                log('App exists', 'success', logId);
+                
+                // Check disclaimer status
+                try {
+                    const disclaimerAccepted = window.app.checkDisclaimerStatus();
+                    log(`Disclaimer previously accepted: ${disclaimerAccepted}`, 'info', logId);
+                } catch (error) {
+                    log(`Error checking disclaimer status: ${error.message}`, 'error', logId);
+                }
+                
+                // Try to manually setup disclaimer
+                try {
+                    window.app.setupDisclaimerAgreement();
+                    log('✅ Manual disclaimer setup completed', 'success', logId);
+                } catch (error) {
+                    log(`❌ Error in manual disclaimer setup: ${error.message}`, 'error', logId);
+                }
+                
+            } else {
+                log('App not available', 'error', logId);
+            }
+        }
+
+        // Auto-run some tests when page loads
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                log('Page loaded, running initial tests...', 'info', 'direct-access-log');
+                testDirectAccess();
+                
+                setTimeout(() => {
+                    log('Running app element checks...', 'info', 'real-app-log');
+                    checkRealAppElements();
+                }, 1000);
+            }, 500);
+        });
+    </script>
+</body>
+</html> 

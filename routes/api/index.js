@@ -908,4 +908,71 @@ router.get('/pingone/populations', async (req, res, next) => {
     }
 });
 
+// Dedicated endpoint to get access token for frontend
+router.post('/pingone/get-token', async (req, res, next) => {
+    try {
+        console.log('[DEBUG] /api/pingone/get-token called from routes/api/index.js');
+        
+        // Get token manager from app
+        const tokenManager = req.app.get('tokenManager');
+        if (!tokenManager) {
+            console.error('[DEBUG] Token manager not available');
+            return res.status(500).json({ 
+                success: false,
+                error: 'Token manager not available',
+                message: 'Server token manager is not initialized'
+            });
+        }
+        
+        console.log('[DEBUG] Token manager found, getting access token...');
+        
+        // Get access token
+        const token = await tokenManager.getAccessToken();
+        if (!token) {
+            console.error('[DEBUG] Failed to get access token');
+            return res.status(500).json({ 
+                success: false,
+                error: 'Failed to get access token',
+                message: 'Could not authenticate with PingOne'
+            });
+        }
+        
+        console.log('[DEBUG] Access token obtained, getting token info...');
+        
+        // Get token expiry information
+        const tokenInfo = tokenManager.getTokenInfo();
+        
+        console.log('[DEBUG] Token retrieved successfully, token info:', {
+            hasToken: !!token,
+            tokenLength: token ? token.length : 0,
+            expiresIn: tokenInfo ? tokenInfo.expiresIn : 'unknown',
+            isValid: tokenInfo ? tokenInfo.isValid : false
+        });
+        
+        // Return token in the format expected by PingOneClient
+        const response = {
+            success: true,
+            access_token: token,
+            expires_in: tokenInfo ? tokenInfo.expiresIn : 3600, // Default to 1 hour if not available
+            token_type: 'Bearer',
+            message: 'Token retrieved successfully'
+        };
+        
+        console.log('[DEBUG] Sending response to frontend');
+        res.json(response);
+        
+    } catch (error) {
+        console.error('[DEBUG] Error in /api/pingone/get-token:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get token',
+            message: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString(),
+            path: '/api/pingone/get-token',
+            method: 'POST'
+        });
+    }
+});
+
 export default router;

@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test getTotalUsers Fix</title>
+    <link rel="stylesheet" href="public/css/styles.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding: 20px;
+            background-color: #f5f7fa;
+        }
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f8fafc;
+        }
+        .test-button {
+            background: #4299e1;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .test-button:hover {
+            background: #3182ce;
+        }
+        .test-button:disabled {
+            background: #a0aec0;
+            cursor: not-allowed;
+        }
+        .log-area {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🧪 Test getTotalUsers Fix</h1>
+        <p>This page tests the <code>getTotalUsers()</code> method that was missing from FileHandler.</p>
+        
+        <div class="test-section">
+            <h3>📁 File Selection Test</h3>
+            <input type="file" id="test-file-input" accept=".csv" style="margin-bottom: 10px;">
+            <br>
+            <button class="test-button" onclick="testFileHandler()">Test FileHandler Methods</button>
+            <button class="test-button" onclick="testGetTotalUsers()">Test getTotalUsers()</button>
+            <button class="test-button" onclick="clearLog()">Clear Log</button>
+        </div>
+
+        <div class="test-section">
+            <h3>📊 Test Results</h3>
+            <div id="test-results"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>📝 Debug Log</h3>
+            <div id="debug-log" class="log-area"></div>
+        </div>
+    </div>
+
+    <script src="public/js/bundle.js"></script>
+    <script>
+        let fileHandler = null;
+        let testFile = null;
+
+        function log(message, type = 'info') {
+            const logArea = document.getElementById('debug-log');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${type.toUpperCase()}: ${message}`;
+            logArea.innerHTML += logEntry + '\n';
+            logArea.scrollTop = logArea.scrollHeight;
+            console.log(logEntry);
+        }
+
+        function clearLog() {
+            document.getElementById('debug-log').innerHTML = '';
+        }
+
+        function showStatus(message, type = 'info') {
+            const resultsArea = document.getElementById('test-results');
+            const statusDiv = document.createElement('div');
+            statusDiv.className = `status ${type}`;
+            statusDiv.textContent = message;
+            resultsArea.appendChild(statusDiv);
+        }
+
+        function clearResults() {
+            document.getElementById('test-results').innerHTML = '';
+        }
+
+        async function testFileHandler() {
+            clearResults();
+            log('Starting FileHandler test...');
+
+            try {
+                // Check if window.app exists
+                if (!window.app) {
+                    throw new Error('window.app not found - make sure the main app is loaded');
+                }
+
+                // Get the fileHandler from the app
+                fileHandler = window.app.fileHandler;
+                if (!fileHandler) {
+                    throw new Error('fileHandler not found in window.app');
+                }
+
+                log('✅ FileHandler found in window.app');
+
+                // Test if getTotalUsers method exists
+                if (typeof fileHandler.getTotalUsers !== 'function') {
+                    throw new Error('getTotalUsers() method is missing from FileHandler');
+                }
+
+                log('✅ getTotalUsers() method exists');
+
+                // Test if getCurrentFile method exists
+                if (typeof fileHandler.getCurrentFile !== 'function') {
+                    throw new Error('getCurrentFile() method is missing from FileHandler');
+                }
+
+                log('✅ getCurrentFile() method exists');
+
+                // Test if getUsers method exists
+                if (typeof fileHandler.getUsers !== 'function') {
+                    throw new Error('getUsers() method is missing from FileHandler');
+                }
+
+                log('✅ getUsers() method exists');
+
+                showStatus('✅ All FileHandler methods are available', 'success');
+                log('FileHandler test completed successfully');
+
+            } catch (error) {
+                log(`❌ Error: ${error.message}`, 'error');
+                showStatus(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testGetTotalUsers() {
+            clearResults();
+            log('Starting getTotalUsers() test...');
+
+            try {
+                if (!fileHandler) {
+                    throw new Error('FileHandler not initialized. Run "Test FileHandler Methods" first.');
+                }
+
+                // Test getTotalUsers with no file
+                const totalUsersNoFile = fileHandler.getTotalUsers();
+                log(`getTotalUsers() with no file: ${totalUsersNoFile}`);
+                showStatus(`📊 Total users (no file): ${totalUsersNoFile}`, 'info');
+
+                // Test with a file if selected
+                const fileInput = document.getElementById('test-file-input');
+                if (fileInput.files.length > 0) {
+                    testFile = fileInput.files[0];
+                    log(`Processing file: ${testFile.name} (${testFile.size} bytes)`);
+
+                    // Set the file in the fileHandler
+                    await fileHandler.setFile(testFile);
+                    log('✅ File set in FileHandler');
+
+                    // Test getTotalUsers after file is set
+                    const totalUsersWithFile = fileHandler.getTotalUsers();
+                    log(`getTotalUsers() with file: ${totalUsersWithFile}`);
+                    showStatus(`📊 Total users (with file): ${totalUsersWithFile}`, 'success');
+
+                    // Test getUsers
+                    const users = fileHandler.getUsers();
+                    log(`getUsers() returns ${users.length} users`);
+                    showStatus(`👥 Parsed users: ${users.length}`, 'info');
+
+                    // Test getCurrentFile
+                    const currentFile = fileHandler.getCurrentFile();
+                    if (currentFile) {
+                        log(`getCurrentFile() returns: ${currentFile.name}`);
+                        showStatus(`📁 Current file: ${currentFile.name}`, 'info');
+                    } else {
+                        log('getCurrentFile() returns null');
+                        showStatus('📁 Current file: null', 'info');
+                    }
+
+                } else {
+                    log('No file selected for testing');
+                    showStatus('⚠️ No file selected. Select a CSV file to test with data.', 'info');
+                }
+
+            } catch (error) {
+                log(`❌ Error in getTotalUsers test: ${error.message}`, 'error');
+                showStatus(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Set up file input change handler
+        document.getElementById('test-file-input').addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                const file = e.target.files[0];
+                log(`File selected: ${file.name} (${file.size} bytes)`);
+                showStatus(`📁 File selected: ${file.name}`, 'info');
+            }
+        });
+
+        // Initialize when page loads
+        window.addEventListener('load', function() {
+            log('Page loaded, ready for testing');
+            showStatus('🚀 Test page ready. Select a CSV file and run tests.', 'info');
+        });
+    </script>
+</body>
+</html> 

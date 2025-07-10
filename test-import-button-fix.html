@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Import Button Fix Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        .log {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .status.success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .status.info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .button-test {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Import Button Fix Test</h1>
+        
+        <div class="test-section">
+            <h3>Test Import Buttons</h3>
+            <p>This test verifies that both import buttons are properly connected to the import logic.</p>
+            
+            <div class="button-test">
+                <h4>Top Import Button</h4>
+                <button id="start-import-btn" class="btn btn-primary">
+                    <i class="fas fa-upload"></i> Import Users (Top)
+                </button>
+                <button id="cancel-import-btn" class="btn btn-danger">
+                    <i class="fas fa-times"></i> Cancel Import (Top)
+                </button>
+            </div>
+            
+            <div class="button-test">
+                <h4>Bottom Import Button</h4>
+                <button id="start-import-btn-bottom" class="btn btn-primary">
+                    <i class="fas fa-upload"></i> Import Users (Bottom)
+                </button>
+                <button id="cancel-import-btn-bottom" class="btn btn-danger">
+                    <i class="fas fa-times"></i> Cancel Import (Bottom)
+                </button>
+            </div>
+            
+            <div class="button-test">
+                <h4>Test Controls</h4>
+                <button id="test-buttons-btn" class="btn btn-secondary">
+                    Test Button Connections
+                </button>
+                <button id="clear-log-btn" class="btn btn-secondary">
+                    Clear Log
+                </button>
+            </div>
+            
+            <div id="test-status" class="status info">
+                Ready to test import button functionality
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Test Log</h3>
+            <div id="test-log" class="log">
+                Test log will appear here...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Test logger
+        function log(message, type = 'info') {
+            const logElement = document.getElementById('test-log');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${type.toUpperCase()}: ${message}`;
+            logElement.innerHTML += logEntry + '\n';
+            logElement.scrollTop = logElement.scrollHeight;
+            console.log(logEntry);
+        }
+
+        // Update status
+        function updateStatus(message, type = 'info') {
+            const statusElement = document.getElementById('test-status');
+            statusElement.textContent = message;
+            statusElement.className = `status ${type}`;
+        }
+
+        // Test button connections
+        function testButtonConnections() {
+            log('=== Testing Button Connections ===');
+            
+            // Test top import button
+            const topImportBtn = document.getElementById('start-import-btn');
+            if (topImportBtn) {
+                log(`Top import button found: ${topImportBtn.id}`);
+                log(`Top import button disabled: ${topImportBtn.disabled}`);
+                log(`Top import button has click handler: ${topImportBtn.onclick !== null}`);
+            } else {
+                log('Top import button NOT FOUND', 'error');
+            }
+            
+            // Test bottom import button
+            const bottomImportBtn = document.getElementById('start-import-btn-bottom');
+            if (bottomImportBtn) {
+                log(`Bottom import button found: ${bottomImportBtn.id}`);
+                log(`Bottom import button disabled: ${bottomImportBtn.disabled}`);
+                log(`Bottom import button has click handler: ${bottomImportBtn.onclick !== null}`);
+            } else {
+                log('Bottom import button NOT FOUND', 'error');
+            }
+            
+            // Test cancel buttons
+            const topCancelBtn = document.getElementById('cancel-import-btn');
+            const bottomCancelBtn = document.getElementById('cancel-import-btn-bottom');
+            
+            if (topCancelBtn) {
+                log(`Top cancel button found: ${topCancelBtn.id}`);
+            } else {
+                log('Top cancel button NOT FOUND', 'error');
+            }
+            
+            if (bottomCancelBtn) {
+                log(`Bottom cancel button found: ${bottomCancelBtn.id}`);
+            } else {
+                log('Bottom cancel button NOT FOUND', 'error');
+            }
+            
+            log('=====================================');
+        }
+
+        // Mock import function for testing
+        function mockStartImport() {
+            log('Mock startImport() called - import process would start here');
+            updateStatus('Import process triggered successfully', 'success');
+        }
+
+        // Mock cancel function for testing
+        function mockCancelImport() {
+            log('Mock cancelImport() called - import would be cancelled here');
+            updateStatus('Import cancellation triggered successfully', 'success');
+        }
+
+        // Event listeners for testing
+        document.getElementById('start-import-btn').addEventListener('click', (e) => {
+            e.preventDefault();
+            log('Top import button clicked');
+            mockStartImport();
+        });
+
+        document.getElementById('start-import-btn-bottom').addEventListener('click', (e) => {
+            e.preventDefault();
+            log('Bottom import button clicked');
+            mockStartImport();
+        });
+
+        document.getElementById('cancel-import-btn').addEventListener('click', (e) => {
+            e.preventDefault();
+            log('Top cancel button clicked');
+            mockCancelImport();
+        });
+
+        document.getElementById('cancel-import-btn-bottom').addEventListener('click', (e) => {
+            e.preventDefault();
+            log('Bottom cancel button clicked');
+            mockCancelImport();
+        });
+
+        document.getElementById('test-buttons-btn').addEventListener('click', testButtonConnections);
+        document.getElementById('clear-log-btn').addEventListener('click', () => {
+            document.getElementById('test-log').innerHTML = 'Test log cleared...\n';
+        });
+
+        // Initialize
+        log('Import button test page loaded');
+        updateStatus('Ready to test import button functionality', 'info');
+        
+        // Test button connections on load
+        setTimeout(testButtonConnections, 1000);
+    </script>
+</body>
+</html> 

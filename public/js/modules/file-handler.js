@@ -51,11 +51,43 @@ class FileHandler {
     }
     
     /**
+     * Set a file and process it
+     * @param {File} file - The file to set and process
+     * @returns {Promise} Promise that resolves when file is processed
+     */
+    async setFile(file) {
+        try {
+            this.logger.info('Setting file', { fileName: file.name, fileSize: file.size });
+            
+            // Store the current file reference
+            this.currentFile = file;
+            
+            // Process the file using the existing internal method
+            await this._handleFileInternal(file);
+            
+            return { success: true, file };
+        } catch (error) {
+            this.logger.error('Failed to set file', { error: error.message, fileName: file.name });
+            throw error;
+        }
+    }
+    
+    /**
      * Get the list of parsed users
      * @returns {Array} Array of user objects
      */
     getUsers() {
         return this.lastParsedUsers || [];
+    }
+
+    /**
+     * Get the total number of users parsed from the CSV file
+     * @returns {number} Total number of users
+     */
+    getTotalUsers() {
+        const totalUsers = this.validationResults.total || 0;
+        console.log('[CSV] getTotalUsers() called, returning:', totalUsers, 'validationResults:', this.validationResults);
+        return totalUsers;
     }
 
     /**
@@ -341,6 +373,22 @@ class FileHandler {
             this.parsedUsers = parseResults.users;
             this.lastParsedUsers = [...parseResults.users];
             
+            // Update validation results for getTotalUsers() method
+            this.validationResults = {
+                total: parseResults.users.length,
+                valid: parseResults.validUsers || parseResults.users.length,
+                errors: parseResults.errors.length,
+                warnings: parseResults.warnings.length
+            };
+            
+            // Add debug logging
+            console.log('[CSV] File parsed successfully:', {
+                totalUsers: this.validationResults.total,
+                validUsers: this.validationResults.valid,
+                errors: this.validationResults.errors,
+                warnings: this.validationResults.warnings
+            });
+            
             // Update UI with results
             const message = `File processed: ${parseResults.validUsers} valid users, ${parseResults.invalidRows} invalid rows`;
             this.uiManager.showNotification(message, parseResults.invalidRows > 0 ? 'warning' : 'success');
@@ -460,6 +508,22 @@ class FileHandler {
                     
                     // Also store in parsedUsers for compatibility with getParsedUsers
                     this.parsedUsers = this.lastParsedUsers;
+                    
+                    // Update validation results for getTotalUsers() method
+                    this.validationResults = {
+                        total: this.lastParsedUsers.length,
+                        valid: this.lastParsedUsers.length,
+                        errors: 0,
+                        warnings: 0
+                    };
+                    
+                    // Add debug logging
+                    console.log('[CSV] File parsed successfully (processCSV):', {
+                        totalUsers: this.validationResults.total,
+                        validUsers: this.validationResults.valid,
+                        errors: this.validationResults.errors,
+                        warnings: this.validationResults.warnings
+                    });
                     
                     resolve({ 
                         success: true, 

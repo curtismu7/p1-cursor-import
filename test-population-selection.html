@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Population Selection Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .result { margin: 10px 0; padding: 10px; background: #f5f5f5; border-radius: 3px; }
+        button { padding: 10px 15px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        select { padding: 8px; margin: 5px; border: 1px solid #ddd; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>Population Selection Test</h1>
+    
+    <div class="test-section">
+        <h2>Test Population Dropdown</h2>
+        <label for="test-population-select">Select Population:</label>
+        <select id="test-population-select">
+            <option value="">Select a population...</option>
+            <option value="pop1">Test Population 1</option>
+            <option value="pop2">Test Population 2</option>
+            <option value="pop3">Test Population 3</option>
+        </select>
+        
+        <button onclick="testGetValue()">Test Get Value</button>
+        <button onclick="testGetImportOptions()">Test Get Import Options</button>
+        
+        <div id="test-results"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Simulate Import Button Click</h2>
+        <button onclick="simulateImport()">Simulate Import</button>
+        <div id="import-results"></div>
+    </div>
+
+    <script>
+        function testGetValue() {
+            const select = document.getElementById('test-population-select');
+            const value = select.value;
+            const text = select.selectedOptions[0]?.text || '';
+            
+            const result = `
+                <div class="result">
+                    <strong>Current Selection:</strong><br>
+                    Value: ${value}<br>
+                    Text: ${text}<br>
+                    All options: ${Array.from(select.options).map(opt => `${opt.value}="${opt.text}"`).join(', ')}
+                </div>
+            `;
+            
+            document.getElementById('test-results').innerHTML = result;
+        }
+        
+        function testGetImportOptions() {
+            // Simulate the getImportOptions function
+            const select = document.getElementById('test-population-select');
+            const selectedPopulationId = select?.value;
+            const selectedPopulationName = select?.selectedOptions[0]?.text || '';
+            
+            const result = `
+                <div class="result">
+                    <strong>getImportOptions Simulation:</strong><br>
+                    Population ID: ${selectedPopulationId || 'NOT_SELECTED'}<br>
+                    Population Name: ${selectedPopulationName || 'NOT_SELECTED'}<br>
+                    Would return: ${selectedPopulationId ? 'SUCCESS' : 'NULL (no population selected)'}
+                </div>
+            `;
+            
+            document.getElementById('test-results').innerHTML = result;
+        }
+        
+        function simulateImport() {
+            const select = document.getElementById('test-population-select');
+            const selectedPopulationId = select?.value;
+            const selectedPopulationName = select?.selectedOptions[0]?.text || '';
+            
+            if (!selectedPopulationId) {
+                document.getElementById('import-results').innerHTML = `
+                    <div class="result" style="background: #f8d7da; color: #721c24;">
+                        <strong>Error:</strong> No population selected. Please select a population before starting the import.
+                    </div>
+                `;
+                return;
+            }
+            
+            document.getElementById('import-results').innerHTML = `
+                <div class="result" style="background: #d4edda; color: #155724;">
+                    <strong>Import Started:</strong><br>
+                    Population ID: ${selectedPopulationId}<br>
+                    Population Name: ${selectedPopulationName}<br>
+                    Status: Import would proceed with selected population
+                </div>
+            `;
+        }
+        
+        // Add change event listener to track selection changes
+        document.getElementById('test-population-select').addEventListener('change', function() {
+            console.log('Population selection changed:', {
+                value: this.value,
+                text: this.selectedOptions[0]?.text
+            });
+        });
+    </script>
+</body>
+</html> 

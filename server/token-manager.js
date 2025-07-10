@@ -327,6 +327,28 @@ class TokenManager {
     }
 
     /**
+     * Get token information including expiry details
+     * @returns {Object|null} Token info object or null if no token
+     */
+    getTokenInfo() {
+        if (!this.token || !this.tokenExpiry) {
+            return null;
+        }
+        
+        const now = Date.now();
+        const expiresIn = Math.max(0, this.tokenExpiry - now);
+        
+        return {
+            accessToken: this.token,
+            expiresIn: Math.floor(expiresIn / 1000), // Convert to seconds
+            tokenType: 'Bearer',
+            expiresAt: this.tokenExpiry,
+            lastRefresh: this.lastTokenRequest,
+            isValid: expiresIn > (2 * 60 * 1000) // Valid if more than 2 minutes left
+        };
+    }
+
+    /**
      * Clear the current token (force a new one to be fetched on next request)
      */
     clearToken() {

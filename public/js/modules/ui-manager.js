@@ -56,11 +56,24 @@ export class UIManager {
     showNotification(type, message, details = '') {
         try {
             const notification = document.createElement('div');
-            notification.className = `alert alert-${type === 'error' ? 'danger' : type} alert-dismissible fade show`;
+            notification.className = `status-message status-${type} alert-dismissible fade show`;
+            notification.setAttribute('role', 'alert');
+            notification.setAttribute('aria-live', 'polite');
+            
+            // Get icon and styling based on type
+            const iconConfig = this.getStatusIconConfig(type);
+            
             notification.innerHTML = `
-                <strong>${message}</strong>
-                ${details ? `<br><small>${details}</small>` : ''}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                <div class="status-message-content">
+                    <span class="status-icon" aria-hidden="true">${iconConfig.icon}</span>
+                    <div class="status-text">
+                        <strong class="status-title">${message}</strong>
+                        ${details ? `<div class="status-details">${details}</div>` : ''}
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close notification">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
             `;
             
             // Use the correct notification area
@@ -78,6 +91,41 @@ export class UIManager {
         } catch (error) {
             console.error('Error showing notification:', error);
         }
+    }
+
+    getStatusIconConfig(type) {
+        const configs = {
+            success: {
+                icon: '✅',
+                bgColor: '#d4edda',
+                borderColor: '#c3e6cb',
+                textColor: '#155724',
+                iconColor: '#28a745'
+            },
+            warning: {
+                icon: '⚠️',
+                bgColor: '#fff3cd',
+                borderColor: '#ffeaa7',
+                textColor: '#856404',
+                iconColor: '#ffc107'
+            },
+            error: {
+                icon: '❌',
+                bgColor: '#f8d7da',
+                borderColor: '#f5c6cb',
+                textColor: '#721c24',
+                iconColor: '#dc3545'
+            },
+            info: {
+                icon: 'ℹ️',
+                bgColor: '#d1ecf1',
+                borderColor: '#bee5eb',
+                textColor: '#0c5460',
+                iconColor: '#17a2b8'
+            }
+        };
+        
+        return configs[type] || configs.info;
     }
 
     updateConnectionStatus(status, message = '') {
@@ -172,7 +220,7 @@ export class UIManager {
         return messages[status] || 'Unknown status';
     }
 
-    showImportStatus(totalUsers, populationName = '') {
+    showImportStatus(totalUsers, populationName = '', populationId = '') {
         // Show modal overlay
         const overlay = document.getElementById('import-progress-modal-overlay');
         if (overlay) overlay.style.display = 'flex';
@@ -184,10 +232,10 @@ export class UIManager {
         
         this.isImporting = true;
         this.updateLastRunStatus('import', 'User Import', 'In Progress', `Importing ${totalUsers} users`, { total: totalUsers, success: 0, failed: 0, skipped: 0 });
-        this.updateImportProgress(0, totalUsers, 'Starting import...', {}, populationName);
+        this.updateImportProgress(0, totalUsers, 'Starting import...', {}, populationName, populationId);
     }
 
-    updateImportProgress(current, total, message, counts = {}, populationName = '') {
+    updateImportProgress(current, total, message, counts = {}, populationName = '', populationId = '') {
         const progressBar = document.getElementById('import-progress');
         const progressPercent = document.getElementById('import-progress-percent');
         const progressText = document.getElementById('import-progress-text');
@@ -196,6 +244,7 @@ export class UIManager {
         const failedCount = document.getElementById('import-failed-count');
         const skippedCount = document.getElementById('import-skipped-count');
         const populationNameElement = document.getElementById('import-population-name');
+        const populationIdElement = document.getElementById('import-population-id');
 
         // Ensure percent is always defined before use
         const percent = total > 0 ? (current / total) * 100 : 0;
@@ -205,7 +254,6 @@ export class UIManager {
             progressBar.setAttribute('aria-valuenow', percent);
         }
         if (progressPercent) progressPercent.textContent = `${Math.round(percent)}%`;
-        // Only append population name if defined and non-empty
         if (progressText) progressText.textContent = `${message}` + (populationName ? ` - ${populationName}` : '');
         if (progressCount) progressCount.textContent = `${current}/${total}`;
         
@@ -214,10 +262,17 @@ export class UIManager {
         if (failedCount) failedCount.textContent = counts.failed || 0;
         if (skippedCount) skippedCount.textContent = counts.skipped || 0;
         
-        // Update population name
-        if (populationNameElement && populationName) {
-            populationNameElement.textContent = populationName;
-            populationNameElement.setAttribute('data-content', populationName);
+        // Update population name (show 'Not selected' if empty)
+        if (populationNameElement) {
+            const displayName = populationName && populationName.trim() ? populationName : 'Not selected';
+            populationNameElement.textContent = displayName;
+            populationNameElement.setAttribute('data-content', displayName);
+        }
+        // Update population ID (show 'Not set' if empty)
+        if (populationIdElement) {
+            const displayId = populationId && populationId.trim() ? populationId : 'Not set';
+            populationIdElement.textContent = displayId;
+            populationIdElement.setAttribute('data-content', displayId);
         }
 
         // Add progress log entry
@@ -317,7 +372,7 @@ export class UIManager {
         if (skippedCount) skippedCount.textContent = '0';
     }
 
-    showDeleteStatus(totalUsers) {
+    showDeleteStatus(totalUsers, populationName = '', populationId = '') {
         const overlay = document.getElementById('delete-progress-modal-overlay');
         if (overlay) overlay.style.display = 'flex';
         
@@ -328,10 +383,10 @@ export class UIManager {
         
         this.isDeleting = true;
         this.updateLastRunStatus('delete', 'User Delete', 'In Progress', `Deleting ${totalUsers} users`, { total: totalUsers, success: 0, failed: 0, skipped: 0 });
-        this.updateDeleteProgress(0, totalUsers, 'Starting delete...');
+        this.updateDeleteProgress(0, totalUsers, 'Starting delete...', {}, populationName, populationId);
     }
 
-    updateDeleteProgress(current, total, message, counts = {}) {
+    updateDeleteProgress(current, total, message, counts = {}, populationName = '', populationId = '') {
         const progressBar = document.getElementById('delete-progress');
         const progressPercent = document.getElementById('delete-progress-percent');
         const progressText = document.getElementById('delete-progress-text');
@@ -339,6 +394,8 @@ export class UIManager {
         const successCount = document.getElementById('delete-success-count');
         const failedCount = document.getElementById('delete-failed-count');
         const skippedCount = document.getElementById('delete-skipped-count');
+        const populationNameElement = document.getElementById('delete-population-name');
+        const populationIdElement = document.getElementById('delete-population-id');
 
         const percent = total > 0 ? (current / total) * 100 : 0;
 
@@ -353,6 +410,19 @@ export class UIManager {
         if (successCount) successCount.textContent = counts.success || 0;
         if (failedCount) failedCount.textContent = counts.failed || 0;
         if (skippedCount) skippedCount.textContent = counts.skipped || 0;
+        
+        // Update population name (show 'Not selected' if empty)
+        if (populationNameElement) {
+            const displayName = populationName && populationName.trim() ? populationName : 'Not selected';
+            populationNameElement.textContent = displayName;
+            populationNameElement.setAttribute('data-content', displayName);
+        }
+        // Update population ID (show 'Not set' if empty)
+        if (populationIdElement) {
+            const displayId = populationId && populationId.trim() ? populationId : 'Not set';
+            populationIdElement.textContent = displayId;
+            populationIdElement.setAttribute('data-content', displayId);
+        }
 
         this.addProgressLogEntry(message, 'info', counts, 'delete');
         this.updateLastRunStatus('delete', 'User Delete', 'In Progress', message, counts);

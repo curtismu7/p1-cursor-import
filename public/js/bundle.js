@@ -1,375 +1,413 @@
 (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
 "use strict";
 
+function _interopRequireDefault(e) {
+  return e && e.__esModule ? e : {
+    "default": e
+  };
+}
+module.exports = _interopRequireDefault, module.exports.__esModule = true, module.exports["default"] = module.exports;
+
+},{}],2:[function(require,module,exports){
+"use strict";
+
+var _interopRequireDefault = require("@babel/runtime/helpers/interopRequireDefault");
 var _logger = require("./modules/logger.js");
-var _uiManager = require("./modules/ui-manager.js");
-var _fileHandler = require("./modules/file-handler.js");
+var _fileLogger = require("./modules/file-logger.js");
 var _settingsManager = require("./modules/settings-manager.js");
-var _apiFactory = require("./modules/api-factory.js");
+var _uiManager = require("./modules/ui-manager.js");
+var _localApiClient = require("./modules/local-api-client.js");
+var _pingoneClient = require("./modules/pingone-client.js");
+var _tokenManager = _interopRequireDefault(require("./modules/token-manager.js"));
+var _fileHandler = require("./modules/file-handler.js");
 var _versionManager = require("./modules/version-manager.js");
-var _featureFlags = require("./modules/feature-flags.js");
+var _apiFactory = require("./modules/api-factory.js");
 // Main application entry point
 
+/**
+ * Simple Secret Field Toggle - Handles only the eye icon visibility toggle
+ */
+class SecretFieldToggle {
+  constructor() {
+    this.inputElement = null;
+    this.eyeButton = null;
+    this.isVisible = false;
+    this.actualValue = '';
+    this.isInitialized = false;
+  }
+
+  /**
+   * Initialize the secret field toggle
+   */
+  init() {
+    if (this.isInitialized) {
+      return;
+    }
+    this.inputElement = document.getElementById('api-secret');
+    this.eyeButton = document.getElementById('toggle-api-secret-visibility');
+    if (!this.inputElement || !this.eyeButton) {
+      console.error('❌ Secret field elements not found');
+      console.error('Input element:', !!this.inputElement);
+      console.error('Eye button:', !!this.eyeButton);
+      return;
+    }
+    console.log('✅ Secret field elements found');
+    console.log('Input element ID:', this.inputElement.id);
+    console.log('Eye button ID:', this.eyeButton.id);
+
+    // Set up the eye button click handler
+    this.setupToggleHandler();
+    this.isInitialized = true;
+    console.log('✅ Secret field toggle initialized');
+  }
+
+  /**
+   * Set up the toggle button click handler
+   */
+  setupToggleHandler() {
+    // Remove any existing listeners
+    this.eyeButton.removeEventListener('click', this.handleToggleClick);
+
+    // Add the click handler
+    this.eyeButton.addEventListener('click', this.handleToggleClick.bind(this));
+    console.log('Secret field toggle handler set up');
+  }
+
+  /**
+   * Handle the toggle button click
+   */
+  handleToggleClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('🔍 Eye button clicked!');
+    console.log('Current visibility:', this.isVisible);
+    console.log('Current value length:', this.actualValue.length);
+
+    // Toggle visibility
+    this.isVisible = !this.isVisible;
+
+    // Update the input field
+    this.updateInputField();
+
+    // Update the eye icon
+    this.updateEyeIcon();
+    console.log('✅ Toggle completed!');
+    console.log('New visibility:', this.isVisible);
+    console.log('Input type:', this.inputElement.type);
+    console.log('Input value length:', this.inputElement.value.length);
+  }
+
+  /**
+   * Update the input field based on visibility state
+   */
+  updateInputField() {
+    if (!this.inputElement) {
+      return;
+    }
+    if (this.isVisible) {
+      // Show the actual value
+      this.inputElement.type = 'text';
+      this.inputElement.value = this.actualValue;
+    } else {
+      // Show masked value
+      this.inputElement.type = 'password';
+      this.inputElement.value = this.actualValue || '';
+    }
+  }
+
+  /**
+   * Update the eye icon to reflect current state
+   */
+  updateEyeIcon() {
+    if (!this.eyeButton) {
+      return;
+    }
+    const iconElement = this.eyeButton.querySelector('i');
+    if (!iconElement) {
+      return;
+    }
+    if (this.isVisible) {
+      // Show eye (visible state)
+      iconElement.classList.remove('fa-eye-slash');
+      iconElement.classList.add('fa-eye');
+    } else {
+      // Show eye-slash (hidden state)
+      iconElement.classList.remove('fa-eye');
+      iconElement.classList.add('fa-eye-slash');
+    }
+  }
+
+  /**
+   * Set the secret value (called when form is populated)
+   */
+  setValue(value) {
+    this.actualValue = value || '';
+
+    // Always start in hidden state
+    this.isVisible = false;
+
+    // Update the display
+    this.updateInputField();
+    this.updateEyeIcon();
+    console.log('Secret field value set, length:', this.actualValue.length);
+  }
+
+  /**
+   * Get the current secret value
+   */
+  getValue() {
+    return this.actualValue;
+  }
+
+  /**
+   * Handle input changes (when user types)
+   */
+  handleInputChange() {
+    if (!this.inputElement) {
+      return;
+    }
+
+    // Add input event listener
+    this.inputElement.addEventListener('input', e => {
+      this.actualValue = e.target.value;
+      console.log('Secret field input changed, new length:', this.actualValue.length);
+    });
+  }
+}
 class App {
   constructor() {
-    try {
-      console.log('App constructor starting...');
+    // Initialize core components
+    this.logger = new _logger.Logger();
+    this.fileLogger = new _fileLogger.FileLogger();
+    this.settingsManager = new _settingsManager.SettingsManager(this.logger);
+    this.uiManager = new _uiManager.UIManager(this.logger);
+    this.localClient = new _localApiClient.LocalAPIClient();
+    this.tokenManager = new _tokenManager.default(this.logger);
+    this.fileHandler = new _fileHandler.FileHandler(this.logger, this.uiManager);
+    this.versionManager = new _versionManager.VersionManager(this.logger);
 
-      // Initialize logger with the log container
-      const logContainer = document.getElementById('logs-container');
-      console.log('Log container found:', !!logContainer);
-      this.logger = new _logger.Logger(logContainer);
+    // Initialize secret field manager
+    this.secretFieldToggle = new SecretFieldToggle();
 
-      // Initialize settings manager first as it's used by other components
-      this.settingsManager = new _settingsManager.SettingsManager(this.logger);
+    // Initialize state
+    this.currentView = 'import';
+    this.isImporting = false;
+    this.isExporting = false;
+    this.isDeleting = false;
+    this.isModifying = false;
 
-      // Initialize UI components
-      this.uiManager = new _uiManager.UIManager(this.logger);
-      this.fileHandler = new _fileHandler.FileHandler(this.logger, this.uiManager);
-
-      // Call disclaimer setup immediately after UI is ready
-      this.setupDisclaimerAgreement();
-      console.log('Core components initialized:', {
-        logger: !!this.logger,
-        settingsManager: !!this.settingsManager,
-        uiManager: !!this.uiManager,
-        fileHandler: !!this.fileHandler
-      });
-
-      // Make UI manager available globally for other modules
-      window.uiManager = this.uiManager;
-      this.versionManager = new _versionManager.VersionManager();
-
-      // Track import state
-      this.isImporting = false;
-      this.isDeletingCsv = false;
-      this.isModifying = false;
-      this.isExporting = false;
-      this.currentImportAbortController = null;
-      this.currentDeleteAbortController = null;
-      this.currentModifyAbortController = null;
-      this.currentExportAbortController = null;
-
-      // Track delete state
-      this.deleteCsvUsers = [];
-      this.modifyCsvUsers = [];
-
-      // Initialize API clients as null - they'll be set in initializeAsync()
-      this.pingOneClient = null;
-      this.localClient = null;
-      this.factory = null;
-
-      // Show loading state
-      this.uiManager.showLoading('Initializing application...');
-
-      // Start async initialization
-      this.initializeAsync().catch(error => {
-        const errorMsg = `Failed to initialize application: ${error.message}`;
-        this.logger.fileLogger.error(errorMsg, {
-          error
-        });
-        this.uiManager.showError('Initialization Error', errorMsg);
-      });
-
-      // Bind methods
-      this.handleFileSelect = this.handleFileSelect.bind(this);
-      this.handleSaveSettings = this.handleSaveSettings.bind(this);
-      this.testPingOneConnection = this.testPingOneConnection.bind(this);
-      this.cancelImport = this.cancelImport.bind(this);
-      this.handleDeleteCsvFileSelect = this.handleDeleteCsvFileSelect.bind(this);
-      this.handleModifyCsvFileSelect = this.handleModifyCsvFileSelect.bind(this);
-
-      // Initialize the application
-      this.init();
-      console.log('App constructor completed');
-    } catch (error) {
-      console.error('Error initializing application:', error);
-      // Try to show error in UI if possible
-      const errorContainer = document.getElementById('app-error');
-      if (errorContainer) {
-        errorContainer.textContent = `Initialization error: ${error.message}`;
-        errorContainer.style.display = 'block';
-      }
-      throw error; // Re-throw to be caught by the global error handler
-    }
+    // Abort controllers
+    this.importAbortController = null;
+    this.exportAbortController = null;
+    this.deleteAbortController = null;
+    this.modifyAbortController = null;
+    this.populationPromptShown = false;
+    this.populationChoice = null; // 'override', 'ignore', 'use-csv'
   }
   async init() {
-    var _this = this;
     try {
-      // Add initial test logs
-      this.logger.fileLogger.info('Application starting...');
-      this.logger.fileLogger.debug('Logger initialized');
+      console.log('Initializing app...');
 
-      // Initialize API factory and clients
-      try {
-        this.logger.fileLogger.info('Initializing API factory...');
-        await (0, _apiFactory.initAPIFactory)(this.logger, this.settingsManager);
+      // Initialize API Factory first
+      await this.initAPIFactory();
 
-        // Now that factory is initialized, get the clients
-        this.pingOneClient = _apiFactory.apiFactory.getPingOneClient();
-        this.localClient = _apiFactory.apiFactory.getLocalClient('http://localhost:4000');
+      // Initialize API clients
+      this.pingOneClient = _apiFactory.apiFactory.getPingOneClient(this.logger, this.settingsManager);
 
-        // Patch localClient to show UI warning on 429 errors
-        if (this.localClient && this.localClient.post) {
-          const origPost = this.localClient.post.bind(this.localClient);
-          this.localClient.post = async function () {
-            try {
-              return await origPost(...arguments);
-            } catch (error) {
-              if (error?.response?.status === 429 && _this.uiManager) {
-                _this.uiManager.showRateLimitWarning('You are being rate limited. Please wait and try again.');
-              }
-              throw error;
-            }
-          };
-        }
-        this.logger.fileLogger.info('API clients initialized successfully');
+      // Initialize UI manager
+      await this.uiManager.init();
 
-        // Patch fetch to show UI warning on 429 errors
-        const originalFetch = window.fetch;
-        window.fetch = async function () {
-          try {
-            const response = await originalFetch(...arguments);
-            if (response.status === 429 && _this.uiManager) {
-              _this.uiManager.showRateLimitWarning('You are being rate limited. Please wait and try again.');
-            }
-            return response;
-          } catch (error) {
-            if (error?.response?.status === 429 && _this.uiManager) {
-              _this.uiManager.showRateLimitWarning('You are being rate limited. Please wait and try again.');
-            }
-            throw error;
-          }
-        };
-        this.logger.fileLogger.info('Fetch patched for rate limit warnings');
-      } catch (error) {
-        const errorMsg = `Failed to initialize API: ${error.message}`;
-        this.logger.fileLogger.error(errorMsg, {
-          error
-        });
-        throw new Error(errorMsg);
-      }
-      this.logger.fileLogger.info('Initializing UI components');
+      // Initialize file handler
+      this.fileHandler = new _fileHandler.FileHandler(this.logger, this.uiManager);
 
-      // Set up event listeners
+      // Initialize secret field toggle
+      this.secretFieldToggle = new SecretFieldToggle();
+      this.secretFieldToggle.init();
+
+      // Load settings
+      await this.loadSettings();
+
+      // Setup event listeners
       this.setupEventListeners();
 
-      // Check server connection status first
-      await this.checkServerConnectionStatus();
-
-      // Check settings and restore previous file if available
-      await this.checkSettingsAndRestore();
-
-      // --- NEW: Check for cached token and update UI ---
-      if (this.pingOneClient) {
-        const cachedToken = this.pingOneClient.getCachedToken();
-        if (cachedToken) {
-          // Update UI to show connected status
-          let timeLeftMsg = '';
-          if (typeof localStorage !== 'undefined') {
-            const expiry = localStorage.getItem('pingone_token_expiry');
-            if (expiry) {
-              const expiryTime = parseInt(expiry, 10);
-              const now = Date.now();
-              const msLeft = expiryTime - now;
-              if (msLeft > 0) {
-                const min = Math.floor(msLeft / 60000);
-                const sec = Math.floor(msLeft % 60000 / 1000);
-                timeLeftMsg = ` (expires in ${min}m ${sec}s)`;
-              }
-            }
-          }
-          const msg = `✅ Using cached PingOne Worker token${timeLeftMsg}`;
-          if (this.uiManager && this.uiManager.updateConnectionStatus) {
-            this.uiManager.updateConnectionStatus('connected', msg);
-          }
-          if (this.uiManager && this.uiManager.showNotification) {
-            this.uiManager.showNotification(msg, 'success');
-          }
-          // Enable import actions/buttons if needed
-          if (this.updateImportButtonState) {
-            this.updateImportButtonState();
-          }
-        } else {
-          // No valid token, show disconnected status as a warning
-          if (this.uiManager && this.uiManager.updateConnectionStatus) {
-            this.uiManager.updateConnectionStatus('disconnected', 'No PingOne token found. Please get a token.', 'warning');
-          }
-          if (this.uiManager && this.uiManager.showNotification) {
-            this.uiManager.showNotification('No PingOne token found. Please get a token.', 'warning');
-          }
-        }
-      }
-      this.logger.fileLogger.info('Application initialization complete');
-    } catch (error) {
-      const errorMsg = `Error initializing application: ${error.message}`;
-      this.logger.fileLogger.error(errorMsg, {
-        error
-      });
-      console.error('Initialization error:', error);
-
-      // Show error in UI if possible
-      if (this.uiManager) {
-        this.uiManager.showError('Initialization Error', errorMsg);
+      // Check disclaimer status and setup if needed
+      const disclaimerPreviouslyAccepted = this.checkDisclaimerStatus();
+      if (!disclaimerPreviouslyAccepted) {
+        console.log('Disclaimer not previously accepted, setting up disclaimer agreement');
+        this.setupDisclaimerAgreement();
       } else {
-        // Fallback error display
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'error-message';
-        errorDiv.style.color = 'red';
-        errorDiv.style.padding = '1rem';
-        errorDiv.style.margin = '1rem';
-        errorDiv.style.border = '1px solid #f5c6cb';
-        errorDiv.style.borderRadius = '4px';
-        errorDiv.style.backgroundColor = '#f8d7da';
-        errorDiv.textContent = errorMsg;
-        document.body.prepend(errorDiv);
+        console.log('Disclaimer previously accepted, tool already enabled');
       }
+
+      // Check server connection status
+      await this.checkServerConnectionStatus();
+      console.log('App initialization complete');
+    } catch (error) {
+      console.error('Error initializing app:', error);
+      this.logger.error('App initialization failed', error);
     }
   }
-  async checkSettingsAndRestore() {
+  async initAPIFactory() {
     try {
-      this.logger.fileLogger.info('Checking for saved settings...');
+      await (0, _apiFactory.initAPIFactory)(this.logger, this.settingsManager);
+      console.log('✅ API Factory initialized successfully');
+    } catch (error) {
+      console.error('❌ Failed to initialize API Factory:', error);
+      throw error;
+    }
+  }
+  async loadPopulations() {
+    try {
+      console.log('🔄 Loading populations from PingOne...');
+      const response = await this.localClient.get('/api/pingone/populations');
 
-      // Get settings from the settings manager
-      const settings = await this.settingsManager.getSettings();
-      if (settings && Object.keys(settings).length > 0) {
-        this.logger.fileLogger.info('Found saved settings', {
-          hasSettings: true
-        });
-
-        // Update the form with saved settings
-        this.populateSettingsForm(settings);
-
-        // Check if we have a previously loaded file
-        if (settings.lastLoadedFile) {
-          this.logger.fileLogger.info('Found last loaded file in settings', {
-            fileName: settings.lastLoadedFile.name,
-            size: settings.lastLoadedFile.size
-          });
-
-          // Update UI to show the loaded file
-          this.uiManager.updateFileInfo(settings.lastLoadedFile);
-        }
-        return true;
+      // The populations API returns the data directly as an array
+      if (Array.isArray(response)) {
+        console.log('✅ Populations loaded successfully:', response.length, 'populations');
+        this.populatePopulationDropdown(response);
       } else {
-        this.logger.fileLogger.info('No saved settings found');
-        return false;
+        console.error('❌ Failed to load populations - invalid response format:', response);
+        this.showPopulationLoadError();
       }
     } catch (error) {
-      const errorMsg = `Error checking/restoring settings: ${error.message}`;
-      this.logger.fileLogger.error(errorMsg, {
-        error
-      });
-      console.error(errorMsg, error);
-      throw error; // Re-throw to be handled by the caller
+      console.error('❌ Error loading populations:', error);
+      this.showPopulationLoadError();
+    }
+  }
+  populatePopulationDropdown(populations) {
+    const populationSelect = document.getElementById('import-population-select');
+    if (!populationSelect) {
+      console.error('❌ Population select element not found');
+      return;
+    }
+
+    // Clear existing options
+    populationSelect.innerHTML = '';
+
+    // Add default option
+    const defaultOption = document.createElement('option');
+    defaultOption.value = '';
+    defaultOption.textContent = 'Select a population...';
+    populationSelect.appendChild(defaultOption);
+
+    // Add population options
+    populations.forEach(population => {
+      const option = document.createElement('option');
+      option.value = population.id;
+      option.textContent = population.name;
+      populationSelect.appendChild(option);
+    });
+    console.log('✅ Population dropdown populated with', populations.length, 'populations');
+
+    // Enable the select element
+    populationSelect.disabled = false;
+  }
+  showPopulationLoadError() {
+    const populationSelect = document.getElementById('import-population-select');
+    if (populationSelect) {
+      populationSelect.innerHTML = '<option value="">Failed to load populations</option>';
+      populationSelect.disabled = true;
+    }
+    this.uiManager.showError('Failed to load populations', 'Please check your PingOne connection and try again.');
+  }
+  updateImportButtonState() {
+    const populationSelect = document.getElementById('import-population-select');
+    const hasFile = this.fileHandler.getCurrentFile() !== null;
+    const hasPopulation = populationSelect && populationSelect.value && populationSelect.value !== '';
+    console.log('=== Update Import Button State ===');
+    console.log('Has file:', hasFile);
+    console.log('Has population:', hasPopulation);
+    console.log('Population value:', populationSelect ? populationSelect.value : 'No select element');
+    console.log('====================================');
+
+    // Get both import buttons
+    const topImportBtn = document.getElementById('start-import-btn');
+    const bottomImportBtn = document.getElementById('start-import-btn-bottom');
+    const shouldEnable = hasFile && hasPopulation;
+    if (topImportBtn) {
+      topImportBtn.disabled = !shouldEnable;
+    }
+    if (bottomImportBtn) {
+      bottomImportBtn.disabled = !shouldEnable;
+    }
+    console.log('Import buttons enabled:', shouldEnable);
+    // At the end, show the population prompt if needed
+    this.showPopulationChoicePrompt();
+  }
+  async loadSettings() {
+    try {
+      const response = await this.localClient.get('/api/settings');
+      if (response.success && response.data) {
+        // Convert kebab-case to camelCase for the form
+        let populationId = response.data['population-id'] || '';
+        if (populationId === 'not set') populationId = '';
+        const settings = {
+          environmentId: response.data['environment-id'] || '',
+          apiClientId: response.data['api-client-id'] || '',
+          apiSecret: response.data['api-secret'] || '',
+          populationId,
+          region: response.data['region'] || 'NorthAmerica',
+          rateLimit: response.data['rate-limit'] || 90
+        };
+        this.populateSettingsForm(settings);
+        this.logger.info('Settings loaded and populated into form');
+      } else {
+        this.logger.warn('No settings found or failed to load settings');
+      }
+    } catch (error) {
+      this.logger.error('Failed to load settings:', error);
     }
   }
   setupEventListeners() {
-    console.log('Setting up event listeners...');
-
-    // General navigation event listeners for all nav items
-    document.querySelectorAll('.nav-item').forEach(navItem => {
-      navItem.addEventListener('click', e => {
-        e.preventDefault();
-
-        // Check if disclaimer has been accepted
-        const hasAgreed = localStorage.getItem('disclaimer-agreed');
-        if (hasAgreed !== 'true') {
-          this.uiManager.showNotification('Please accept the disclaimer agreement before using the tool.', 'warning');
-          return;
-        }
-        const view = navItem.getAttribute('data-view');
-        if (view) {
-          this.showView(view);
-        }
-      });
-    });
-
-    // Feature card navigation event listeners
-    document.querySelectorAll('.feature-card').forEach(featureCard => {
-      featureCard.addEventListener('click', e => {
-        e.preventDefault();
-
-        // Check if disclaimer has been accepted
-        const hasAgreed = localStorage.getItem('disclaimer-agreed');
-        if (hasAgreed !== 'true') {
-          this.uiManager.showNotification('Please accept the disclaimer agreement before using the tool.', 'warning');
-          return;
-        }
-        const view = featureCard.getAttribute('data-view');
-        if (view) {
-          this.showView(view);
-        }
-      });
-    });
-
-    // Settings form submission
-    const settingsForm = document.getElementById('settings-form');
-    if (settingsForm) {
-      settingsForm.addEventListener('submit', async e => {
-        e.preventDefault();
-        const formData = new FormData(settingsForm);
-        const settings = Object.fromEntries(formData.entries());
-        await this.handleSaveSettings(settings);
-      });
-    }
-
-    // Get token button
-    const getTokenBtn = document.getElementById('get-token-btn');
-    if (getTokenBtn) {
-      getTokenBtn.addEventListener('click', async () => {
-        const originalClass = getTokenBtn.className;
-        const originalHTML = getTokenBtn.innerHTML;
-        try {
-          // Show loading spinner
-          getTokenBtn.disabled = true;
-          getTokenBtn.classList.add('loading');
-          getTokenBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Getting Token...';
-          // FIX: Always call the method that triggers getAccessToken and saves the token
-          if (this.pingOneClient && typeof this.pingOneClient.getAccessToken === 'function') {
-            await this.pingOneClient.getAccessToken();
-          } else {
-            throw new Error('PingOne client is not initialized');
-          }
-        } catch (error) {
-          this.logger.fileLogger.error('Error getting token', {
-            error: error.message
-          });
-          this.uiManager.showNotification('Failed to get token: ' + error.message, 'error');
-        } finally {
-          // Restore button styling and text
-          getTokenBtn.disabled = false;
-          getTokenBtn.className = originalClass;
-          getTokenBtn.innerHTML = originalHTML;
+    // File upload event listeners
+    const csvFileInput = document.getElementById('csv-file');
+    if (csvFileInput) {
+      csvFileInput.addEventListener('change', event => {
+        const file = event.target.files[0];
+        if (file) {
+          this.handleFileSelect(file);
         }
       });
     }
 
-    // Refresh token button
-    const refreshTokenBtn = document.getElementById('refresh-token-btn');
-    if (refreshTokenBtn) {
-      refreshTokenBtn.addEventListener('click', async () => {
-        try {
-          await this.refreshToken();
-        } catch (error) {
-          this.logger.fileLogger.error('Error refreshing token', {
-            error: error.message
-          });
-          this.uiManager.showNotification('Failed to refresh token: ' + error.message, 'error');
-        }
+    // Import event listeners
+    const startImportBtn = document.getElementById('start-import-btn');
+    if (startImportBtn) {
+      startImportBtn.addEventListener('click', async e => {
+        e.preventDefault();
+        await this.startImport();
+      });
+    }
+    const startImportBtnBottom = document.getElementById('start-import-btn-bottom');
+    if (startImportBtnBottom) {
+      startImportBtnBottom.addEventListener('click', async e => {
+        e.preventDefault();
+        await this.startImport();
+      });
+    }
+    const cancelImportBtn = document.getElementById('cancel-import-btn');
+    if (cancelImportBtn) {
+      cancelImportBtn.addEventListener('click', e => {
+        e.preventDefault();
+        this.cancelImport();
+      });
+    }
+    const cancelImportBtnBottom = document.getElementById('cancel-import-btn-bottom');
+    if (cancelImportBtnBottom) {
+      cancelImportBtnBottom.addEventListener('click', e => {
+        e.preventDefault();
+        this.cancelImport();
       });
     }
 
-    // Export button
-    const exportBtn = document.getElementById('start-export-btn');
-    if (exportBtn) {
-      exportBtn.addEventListener('click', async e => {
+    // Export event listeners
+    const startExportBtn = document.getElementById('start-export-btn');
+    if (startExportBtn) {
+      startExportBtn.addEventListener('click', async e => {
         e.preventDefault();
         await this.startExport();
       });
     }
-
-    // Cancel export button
     const cancelExportBtn = document.getElementById('cancel-export-btn');
     if (cancelExportBtn) {
       cancelExportBtn.addEventListener('click', e => {
@@ -378,151 +416,37 @@ class App {
       });
     }
 
-    // Delete CSV button (top)
-    const deleteCsvBtn = document.getElementById('start-delete-csv-btn');
-    if (deleteCsvBtn) {
-      deleteCsvBtn.addEventListener('click', async e => {
+    // Delete event listeners
+    const startDeleteBtn = document.getElementById('start-delete-btn');
+    if (startDeleteBtn) {
+      startDeleteBtn.addEventListener('click', async e => {
         e.preventDefault();
-        await this.startDeleteCsv();
+        await this.startDelete();
       });
     }
-
-    // Delete CSV button (bottom)
-    const deleteCsvBtnBottom = document.getElementById('start-delete-csv-btn-bottom');
-    if (deleteCsvBtnBottom) {
-      deleteCsvBtnBottom.addEventListener('click', async e => {
+    const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
+    if (cancelDeleteBtn) {
+      cancelDeleteBtn.addEventListener('click', e => {
         e.preventDefault();
-        await this.startDeleteCsv();
+        this.cancelDelete();
       });
     }
 
-    // Cancel delete CSV button (top)
-    const cancelDeleteCsvBtn = document.getElementById('cancel-delete-csv-btn');
-    if (cancelDeleteCsvBtn) {
-      cancelDeleteCsvBtn.addEventListener('click', e => {
+    // Modify event listeners
+    const startModifyBtn = document.getElementById('start-modify-btn');
+    if (startModifyBtn) {
+      startModifyBtn.addEventListener('click', async e => {
         e.preventDefault();
-        this.cancelDeleteCsv();
+        await this.startModify();
       });
     }
-
-    // Cancel delete CSV button (bottom)
-    const cancelDeleteCsvBtnBottom = document.getElementById('cancel-delete-csv-btn-bottom');
-    if (cancelDeleteCsvBtnBottom) {
-      cancelDeleteCsvBtnBottom.addEventListener('click', e => {
+    const cancelModifyBtn = document.getElementById('cancel-modify-btn');
+    if (cancelModifyBtn) {
+      cancelModifyBtn.addEventListener('click', e => {
         e.preventDefault();
-        this.cancelDeleteCsv();
+        this.cancelModify();
       });
     }
-
-    // Modify CSV button (top - removed from HTML)
-    const modifyCsvBtn = document.getElementById('start-modify-csv-btn');
-    if (modifyCsvBtn) {
-      modifyCsvBtn.addEventListener('click', async e => {
-        e.preventDefault();
-        await this.startModifyCsv();
-      });
-    }
-
-    // Modify CSV button (bottom)
-    const modifyCsvBtnBottom = document.getElementById('start-modify-btn-bottom');
-    if (modifyCsvBtnBottom) {
-      modifyCsvBtnBottom.addEventListener('click', async e => {
-        e.preventDefault();
-        await this.startModifyCsv();
-      });
-    }
-
-    // Cancel modify CSV button (top - removed from HTML)
-    const cancelModifyCsvBtn = document.getElementById('cancel-modify-csv-btn');
-    if (cancelModifyCsvBtn) {
-      cancelModifyCsvBtn.addEventListener('click', e => {
-        e.preventDefault();
-        this.cancelModifyCsv();
-      });
-    }
-
-    // Cancel modify CSV button (bottom)
-    const cancelModifyCsvBtnBottom = document.getElementById('cancel-modify-btn-bottom');
-    if (cancelModifyCsvBtnBottom) {
-      cancelModifyCsvBtnBottom.addEventListener('click', e => {
-        e.preventDefault();
-        this.cancelModifyCsv();
-      });
-    }
-
-    // Eye icon toggle for API secret visibility
-    const apiSecretInput = document.getElementById('api-secret');
-    const toggleApiSecretBtn = document.getElementById('toggle-api-secret-visibility');
-    console.log('API Secret toggle setup:', {
-      apiSecretInput: !!apiSecretInput,
-      toggleApiSecretBtn: !!toggleApiSecretBtn
-    });
-    if (apiSecretInput && toggleApiSecretBtn) {
-      toggleApiSecretBtn.addEventListener('click', function () {
-        console.log('API Secret toggle clicked');
-        const icon = document.getElementById('api-secret-eye');
-        console.log('Icon element:', icon);
-        if (apiSecretInput.type === 'password') {
-          console.log('Changing to text type');
-          apiSecretInput.type = 'text';
-          if (icon) {
-            icon.classList.remove('fa-eye');
-            icon.classList.add('fa-eye-slash');
-            console.log('Changed icon to eye-slash');
-          }
-        } else {
-          console.log('Changing to password type');
-          apiSecretInput.type = 'password';
-          if (icon) {
-            icon.classList.remove('fa-eye-slash');
-            icon.classList.add('fa-eye');
-            console.log('Changed icon to eye');
-          }
-        }
-      });
-      console.log('API Secret toggle event listener attached');
-    } else {
-      console.error('API Secret toggle elements not found:', {
-        apiSecretInput: !!apiSecretInput,
-        toggleApiSecretBtn: !!toggleApiSecretBtn
-      });
-    }
-
-    // Progress page event listeners
-    const refreshProgressBtn = document.getElementById('refresh-progress-btn');
-    if (refreshProgressBtn) {
-      refreshProgressBtn.addEventListener('click', () => {
-        this.refreshProgressPage();
-      });
-    }
-    const clearProgressHistoryBtn = document.getElementById('clear-progress-history-btn');
-    if (clearProgressHistoryBtn) {
-      clearProgressHistoryBtn.addEventListener('click', () => {
-        this.clearProgressHistory();
-      });
-    }
-
-    // File upload event listeners
-    const csvFileInput = document.getElementById('csv-file');
-    console.log('CSV file input element:', csvFileInput);
-    if (csvFileInput) {
-      csvFileInput.addEventListener('change', event => {
-        console.log('CSV file input change event triggered');
-        const file = event.target.files[0];
-        console.log('Selected file:', file);
-        if (file) {
-          console.log('Calling handleFileSelect with file:', file.name);
-          this.handleFileSelect(file);
-        } else {
-          console.log('No file selected');
-        }
-      });
-      console.log('CSV file input event listener attached');
-    } else {
-      console.error('CSV file input element not found');
-    }
-    document.getElementById('delete-csv-file').addEventListener('change', this.handleDeleteCsvFileSelect);
-    document.getElementById('modify-csv-file').addEventListener('change', this.handleModifyCsvFileSelect);
 
     // Population delete event listeners
     const startPopulationDeleteBtn = document.getElementById('start-population-delete-btn');
@@ -539,570 +463,139 @@ class App {
         this.cancelPopulationDelete();
       });
     }
-    const populationDeleteSelect = document.getElementById('population-delete-select');
-    if (populationDeleteSelect) {
-      populationDeleteSelect.addEventListener('change', () => {
-        this.updatePopulationDeleteButtonState();
-      });
-    }
-    const cancelPopulationDeleteProgressBtn = document.getElementById('cancel-population-delete-progress');
-    if (cancelPopulationDeleteProgressBtn) {
-      cancelPopulationDeleteProgressBtn.addEventListener('click', e => {
+
+    // Settings form event listeners
+    const settingsForm = document.getElementById('settings-form');
+    if (settingsForm) {
+      settingsForm.addEventListener('submit', async e => {
         e.preventDefault();
-        this.cancelPopulationDelete();
+        const formData = new FormData(settingsForm);
+
+        // Get API secret from SecretFieldManager
+        const apiSecret = this.secretFieldToggle.getValue();
+        const settings = {
+          environmentId: formData.get('environment-id'),
+          apiClientId: formData.get('api-client-id'),
+          apiSecret: apiSecret,
+          populationId: formData.get('population-id'),
+          region: formData.get('region'),
+          rateLimit: parseInt(formData.get('rate-limit')) || 90
+        };
+        await this.handleSaveSettings(settings);
       });
     }
 
-    // Cancel delete CSV progress button
-    const cancelDeleteCsvProgressBtn = document.getElementById('cancel-delete-csv-progress');
-    if (cancelDeleteCsvProgressBtn) {
-      cancelDeleteCsvProgressBtn.addEventListener('click', e => {
+    // Test connection button
+    const testConnectionBtn = document.getElementById('test-connection-btn');
+    if (testConnectionBtn) {
+      testConnectionBtn.addEventListener('click', async e => {
         e.preventDefault();
-        this.cancelDeleteCsv();
+        await this.testConnection();
       });
     }
 
-    // Cancel import progress button
-    const cancelImportProgressBtn = document.getElementById('cancel-import-progress');
-    if (cancelImportProgressBtn) {
-      cancelImportProgressBtn.addEventListener('click', e => {
-        e.preventDefault();
-        this.cancelImport();
-      });
-    }
+    // Population dropdown event listener
+    const populationSelect = document.getElementById('import-population-select');
+    if (populationSelect) {
+      console.log('Setting up population select event listener...');
+      populationSelect.addEventListener('change', e => {
+        const selectedPopulationId = e.target.value;
+        const selectedPopulationName = e.target.selectedOptions[0]?.text || '';
+        console.log('=== Population Selection Changed ===');
+        console.log('Selected Population ID:', selectedPopulationId);
+        console.log('Selected Population Name:', selectedPopulationName);
+        console.log('Event target:', e.target);
+        console.log('All options:', Array.from(e.target.options).map(opt => ({
+          value: opt.value,
+          text: opt.text,
+          selected: opt.selected
+        })));
+        console.log('====================================');
 
-    // Cancel export progress button
-    const cancelExportProgressBtn = document.getElementById('cancel-export-progress');
-    if (cancelExportProgressBtn) {
-      cancelExportProgressBtn.addEventListener('click', e => {
-        e.preventDefault();
-        this.cancelExport();
+        // Update the import button state based on population selection
+        this.updateImportButtonState();
       });
-    }
-
-    // Cancel modify progress button
-    const cancelModifyProgressBtn = document.getElementById('cancel-modify-progress');
-    if (cancelModifyProgressBtn) {
-      cancelModifyProgressBtn.addEventListener('click', e => {
-        e.preventDefault();
-        this.cancelModifyCsv();
-      });
-    }
-    const closePopulationDeleteStatusBtn = document.getElementById('close-population-delete-status');
-    if (closePopulationDeleteStatusBtn) {
-      closePopulationDeleteStatusBtn.addEventListener('click', e => {
-        e.preventDefault();
-        this.uiManager.hidePopulationDeleteStatus();
-      });
-    }
-
-    // Import button event listener (bottom only)
-    const importButtonBottom = document.getElementById('start-import-btn-bottom');
-    if (importButtonBottom) {
-      importButtonBottom.addEventListener('click', e => {
-        console.log('Import button clicked');
-        console.log('this object:', this);
-        console.log('this.startImport:', this.startImport);
-        e.preventDefault();
-        if (typeof this.startImport === 'function') {
-          console.log('Calling startImport...');
-          this.startImport();
-        } else {
-          console.error('startImport is not a function:', typeof this.startImport);
-        }
-      });
-      console.log('Import button event listener attached');
     } else {
-      console.error('Import button not found');
+      console.warn('Population select element not found in DOM');
     }
 
-    // Cancel import button event listener (bottom only)
-    const cancelImportButtonBottom = document.getElementById('cancel-import-btn-bottom');
-    if (cancelImportButtonBottom) {
-      cancelImportButtonBottom.addEventListener('click', e => {
-        console.log('Cancel import button clicked');
+    // Get token button
+    const getTokenBtn = document.getElementById('get-token-btn');
+    if (getTokenBtn) {
+      console.log('Setting up Get Token button event listener...');
+      getTokenBtn.addEventListener('click', async e => {
+        console.log('Get Token button clicked!');
         e.preventDefault();
-        this.cancelImport();
+        e.stopPropagation();
+        await this.getToken();
       });
-      console.log('Cancel import button event listener attached');
     } else {
-      console.error('Cancel import button not found');
+      console.warn('Get Token button not found in DOM');
     }
 
-    // Refresh populations button
-    document.getElementById('refresh-export-populations').addEventListener('click', async () => {
-      try {
-        const button = document.getElementById('refresh-export-populations');
-        const icon = button.querySelector('i');
-
-        // Show loading state
-        icon.classList.add('fa-spin');
-        button.disabled = true;
-
-        // Reload populations
-        await this.loadPopulationsForExport();
-
-        // Show success message
-        this.uiManager.showNotification('Populations refreshed successfully', 'success');
-      } catch (error) {
-        this.logger.fileLogger.error('Failed to refresh populations', {
-          error: error.message
-        });
-        this.uiManager.showNotification('Failed to refresh populations: ' + error.message, 'error');
-      } finally {
-        // Reset button state
-        const button = document.getElementById('refresh-export-populations');
-        const icon = button.querySelector('i');
-        icon.classList.remove('fa-spin');
-        button.disabled = false;
-      }
+    // Navigation event listeners
+    const navItems = document.querySelectorAll('[data-view]');
+    navItems.forEach(item => {
+      item.addEventListener('click', e => {
+        e.preventDefault();
+        const view = item.getAttribute('data-view');
+        this.showView(view);
+      });
     });
 
-    // Population selection change listeners for import
-    const importPopulationSelect = document.getElementById('import-population-select');
-    const useCsvPopulationIdCheckbox = document.getElementById('use-csv-population-id');
-    const useDefaultPopulationCheckbox = document.getElementById('use-default-population');
-    if (importPopulationSelect) {
-      importPopulationSelect.addEventListener('change', () => {
-        this.updateImportButtonState();
-      });
-    }
-    if (useCsvPopulationIdCheckbox) {
-      useCsvPopulationIdCheckbox.addEventListener('change', () => {
-        this.updateImportButtonState();
-      });
-    }
-    if (useDefaultPopulationCheckbox) {
-      useDefaultPopulationCheckbox.addEventListener('change', () => {
-        this.updateImportButtonState();
+    // Feature flags panel toggle
+    const featureFlagsToggle = document.getElementById('feature-flags-toggle');
+    if (featureFlagsToggle) {
+      featureFlagsToggle.addEventListener('click', () => {
+        const panel = document.getElementById('feature-flags-panel');
+        if (panel) {
+          panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        }
       });
     }
 
-    // Setup delete page functionality
-    this.setupDeletePage();
-
-    // Setup delete warning modal
-    this.setupDeleteWarningModal();
-
-    // Setup Feature Flags functionality
-    this.setupFeatureFlags();
-    console.log('Event listeners setup complete');
+    // Feature flag toggles
+    const featureFlagToggles = document.querySelectorAll('[data-feature-flag]');
+    featureFlagToggles.forEach(toggle => {
+      toggle.addEventListener('change', async e => {
+        const flag = e.target.getAttribute('data-feature-flag');
+        const enabled = e.target.checked;
+        await this.toggleFeatureFlag(flag, enabled);
+      });
+    });
   }
-  async showView(view) {
-    try {
-      // --- NEW: Check for cached token and update UI on every view switch ---
-      if (this.pingOneClient) {
-        const cachedToken = this.pingOneClient.getCachedToken();
-        if (cachedToken) {
-          let timeLeftMsg = '';
-          if (typeof localStorage !== 'undefined') {
-            const expiry = localStorage.getItem('pingone_token_expiry');
-            if (expiry) {
-              const expiryTime = parseInt(expiry, 10);
-              const now = Date.now();
-              const msLeft = expiryTime - now;
-              if (msLeft > 0) {
-                const min = Math.floor(msLeft / 60000);
-                const sec = Math.floor(msLeft % 60000 / 1000);
-                timeLeftMsg = ` (expires in ${min}m ${sec}s)`;
-              }
-            }
-          }
-          const msg = `✅ Using cached PingOne Worker token${timeLeftMsg}`;
-          if (this.uiManager && this.uiManager.updateConnectionStatus) {
-            this.uiManager.updateConnectionStatus('connected', msg);
-          }
-          if (this.uiManager && this.uiManager.showNotification) {
-            this.uiManager.showNotification(msg, 'success');
-          }
-          if (this.updateImportButtonState) {
-            this.updateImportButtonState();
-          }
-        } else {
-          if (this.uiManager && this.uiManager.updateConnectionStatus) {
-            this.uiManager.updateConnectionStatus('disconnected', 'No PingOne token found. Please get a token.');
-          }
-        }
-      }
-      // --- END NEW ---
-
-      // Hide all views
-      Object.values(this.uiManager.views).forEach(viewElement => {
-        if (viewElement) {
-          viewElement.style.display = 'none';
-        }
-      });
-
-      // Show the selected view
-      const selectedView = this.uiManager.views[view];
-      if (selectedView) {
-        selectedView.style.display = 'block';
-        this.uiManager.currentView = view;
-
-        // Load populations for export when export view is shown
-        if (view === 'export') {
-          await this.loadPopulationsForExport();
-        }
-
-        // Load populations for import when import view is shown
-        if (view === 'import') {
-          await this.loadPopulationsForImport();
-          // Update file label to show last folder path for import operation
-          if (this.fileHandler) {
-            this.fileHandler.updateFileLabel('import');
-          }
-          // Check token status and update import button state
-          this.updateImportButtonState();
-        }
-
-        // Load populations for modify when modify view is shown
-        if (view === 'modify') {
-          await this.loadModifyPopulations();
-          // Update file label to show last folder path for modify operation
-          if (this.fileHandler) {
-            this.fileHandler.updateFileLabel('modify');
-          }
-        }
-
-        // Load populations for delete when delete view is shown
-        if (view === 'delete') {
-          await this.loadPopulationsForDeletion();
-          // Update file label to show last folder path for delete operation
-          if (this.fileHandler) {
-            this.fileHandler.updateFileLabel('delete');
-          }
-        }
-
-        // Load logs when logs view is shown
-        if (view === 'logs') {
-          await this.uiManager.loadAndDisplayLogs();
-        }
-
-        // Refresh progress page when progress view is shown
-        if (view === 'progress') {
-          this.refreshProgressPage();
-        }
-
-        // Update navigation
-        this.uiManager.navItems.forEach(item => {
-          item.classList.remove('active');
-          if (item.getAttribute('data-view') === view) {
-            item.classList.add('active');
-          }
-        });
-
-        // Update last view in localStorage
-        if (typeof localStorage !== 'undefined') {
-          localStorage.setItem('lastView', view);
-        }
-        console.log(`Switched to view: ${view}`);
-      } else {
-        console.error(`View not found: ${view}`);
-      }
-    } catch (error) {
-      console.error('Error showing view:', error);
-      this.logger.fileLogger.error('Error showing view', {
-        view,
-        error: error.message
-      });
-    }
-  }
-  async handleSaveSettings(settings) {
-    try {
-      console.log('handleSaveSettings called with:', settings);
-      this.logger.fileLogger.info('Saving settings', settings);
-      this.uiManager.updateConnectionStatus('connecting', 'Saving settings...', false);
-
-      // Just save settings without testing connections
-      const response = await this.localClient.post('/api/settings', settings);
-      console.log('Settings saved successfully:', response);
-
-      // Update settings manager
-      this.settingsManager.updateSettings(settings);
-
-      // Update API clients with new settings
-      this.pingOneClient = _apiFactory.apiFactory.getPingOneClient(this.logger, this.settingsManager);
-
-      // Update UI status
-      this.uiManager.updateConnectionStatus('connected', '✅ Settings saved successfully', false);
-
-      // Show success notification
-      if (this.uiManager.showNotification) {
-        this.uiManager.showNotification('✅ Settings saved successfully', 'success');
-      }
-
-      // Fetch and repopulate latest settings
-      const latest = await this.localClient.get('/api/settings');
-      if (latest && latest.environmentId) {
-        this.populateSettingsForm(latest);
-      }
-      this.logger.fileLogger.info('Settings saved successfully');
-      return {
-        success: true
-      };
-    } catch (error) {
-      const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
-      this.logger.fileLogger.error('Error saving settings', {
-        error: errorMessage
-      });
-      this.uiManager.updateConnectionStatus('error', `❌ Error: ${errorMessage}`, false);
-      if (this.uiManager.showNotification) {
-        this.uiManager.showNotification(`Error: ${errorMessage}`, 'error');
-      }
-      this.uiManager.updateSettingsSaveStatus(`❌ Error saving settings: ${errorMessage}`, 'error');
-      return {
-        success: false,
-        error: errorMessage
-      };
-    }
-  }
-
-  /**
-   * Get or refresh token with current settings
-   * @returns {Promise<Object>} Result of the token request
-   */
-  async getToken() {
-    try {
-      this.logger.fileLogger.info('=== TOKEN RETRIEVAL STARTED ===');
-      this.logger.fileLogger.debug('Getting token with current settings');
-
-      // Get current settings from the form
-      const settingsForm = document.getElementById('settings-form');
-      if (!settingsForm) {
-        this.logger.fileLogger.error('Settings form not found in DOM');
-        throw new Error('Settings form not found');
-      }
-      this.logger.fileLogger.debug('Extracting form data...');
-      const formData = new FormData(settingsForm);
-      const currentSettings = {
-        environmentId: formData.get('environment-id'),
-        apiClientId: formData.get('api-client-id'),
-        apiSecret: formData.get('api-secret'),
-        populationId: formData.get('population-id'),
-        region: formData.get('region')
-      };
-
-      // Log settings (without sensitive data)
-      this.logger.fileLogger.debug('Current settings extracted:', {
-        environmentId: currentSettings.environmentId ? 'SET' : 'NOT_SET',
-        apiClientId: currentSettings.apiClientId ? 'SET' : 'NOT_SET',
-        apiSecret: currentSettings.apiSecret ? 'SET' : 'NOT_SET',
-        populationId: currentSettings.populationId || 'NOT_SET',
-        region: currentSettings.region || 'NOT_SET'
-      });
-
-      // Validate required settings
-      if (!currentSettings.environmentId || !currentSettings.apiClientId || !currentSettings.apiSecret) {
-        const missingFields = [];
-        if (!currentSettings.environmentId) missingFields.push('Environment ID');
-        if (!currentSettings.apiClientId) missingFields.push('API Client ID');
-        if (!currentSettings.apiSecret) missingFields.push('API Secret');
-        this.logger.fileLogger.error('Missing required settings for token retrieval', {
-          missingFields
-        });
-        throw new Error(`Missing required settings: ${missingFields.join(', ')}`);
-      }
-      this.logger.fileLogger.info('All required settings present, proceeding with token retrieval');
-      this.uiManager.updateConnectionStatus('connecting', 'Getting token...', false);
-
-      // Check if settings have changed and clear token if needed
-      this.logger.fileLogger.debug('Checking if settings have changed...');
-      await this.checkSettingsAndRefreshToken(currentSettings);
-
-      // Test the connection with current settings
-      this.logger.fileLogger.debug('Testing PingOne connection with current settings...');
-      const result = await this.testPingOneConnection(currentSettings);
-      if (result.success) {
-        this.logger.fileLogger.info('=== TOKEN RETRIEVAL SUCCESSFUL ===');
-        this.logger.fileLogger.debug('Token obtained successfully', {
-          tokenObtained: result.tokenObtained,
-          hasWarning: !!result.warning,
-          hasPopulationError: !!result.populationError
-        });
-
-        // Show simple success indicator
-        this.uiManager.updateConnectionStatus('connected', '✅', false);
-
-        // Show notification with more details if there's a warning
-        if (result.warning) {
-          this.logger.fileLogger.warn('Token obtained with warning', {
-            warning: result.warning
-          });
-          this.uiManager.showNotification(`✅ Token obtained successfully - ${result.warning}`, 'warning');
-        } else {
-          this.logger.fileLogger.info('Token obtained without warnings');
-          this.uiManager.showNotification('✅', 'success');
-        }
-
-        // Update button to show success state
-        const getTokenBtn = document.getElementById('get-token-btn');
-        if (getTokenBtn) {
-          this.logger.fileLogger.debug('Updating Get Token button to success state');
-          getTokenBtn.innerHTML = '<i class="fas fa-check"></i> ✅';
-          getTokenBtn.classList.add('btn-success');
-          getTokenBtn.classList.remove('btn-warning');
-
-          // Reset button after 3 seconds
-          setTimeout(() => {
-            this.logger.fileLogger.debug('Resetting Get Token button to default state');
-            getTokenBtn.innerHTML = '<i class="fas fa-key"></i> Get Token';
-            getTokenBtn.classList.remove('btn-success');
-          }, 3000);
-        } else {
-          this.logger.fileLogger.warn('Get Token button not found in DOM');
-        }
-      } else {
-        this.logger.fileLogger.error('Token retrieval failed', {
-          error: result.error
-        });
-        throw new Error(result.error || 'Failed to get token');
-      }
-      return result;
-    } catch (error) {
-      const errorMessage = error.message || 'Failed to get token';
-      this.logger.fileLogger.error('=== TOKEN RETRIEVAL FAILED ===', {
-        error: errorMessage,
-        stack: error.stack,
-        timestamp: new Date().toISOString()
-      });
-      this.uiManager.updateConnectionStatus('error', `❌ Error: ${errorMessage}`, false);
-      if (this.uiManager.showNotification) {
-        this.uiManager.showNotification(`Error getting token: ${errorMessage}`, 'error');
-      }
-      return {
-        success: false,
-        error: errorMessage
-      };
-    }
-  }
-
-  /**
-   * Check if UI settings match stored settings and refresh token if they don't match
-   * @param {Object} newSettings - The new settings from the UI
-   * @returns {Promise<void>}
-   */
-  async checkSettingsAndRefreshToken(newSettings) {
-    try {
-      this.logger.fileLogger.debug('=== SETTINGS CHANGE CHECK STARTED ===');
-      this.logger.fileLogger.debug('Checking if settings have changed and need token refresh');
-
-      // Get current stored settings
-      const storedSettings = this.settingsManager.getSettings();
-      this.logger.fileLogger.debug('Settings comparison:', {
-        hasStoredSettings: !!storedSettings,
-        hasNewSettings: !!newSettings,
-        newSettingsKeys: newSettings ? Object.keys(newSettings) : []
-      });
-      if (!storedSettings) {
-        // No stored settings, will get new token with new settings
-        this.logger.fileLogger.info('No stored settings found, will get new token with new settings');
-        return;
-      }
-
-      // Check if any critical settings have changed
-      const settingsChanged = storedSettings.environmentId !== newSettings.environmentId || storedSettings.apiClientId !== newSettings.apiClientId || storedSettings.apiSecret !== newSettings.apiSecret || storedSettings.populationId !== newSettings.populationId || storedSettings.region !== newSettings.region;
-      this.logger.fileLogger.debug('Settings change detection:', {
-        environmentIdChanged: storedSettings.environmentId !== newSettings.environmentId,
-        apiClientIdChanged: storedSettings.apiClientId !== newSettings.apiClientId,
-        apiSecretChanged: storedSettings.apiSecret !== newSettings.apiSecret,
-        populationIdChanged: storedSettings.populationId !== newSettings.populationId,
-        regionChanged: storedSettings.region !== newSettings.region,
-        settingsChanged: settingsChanged
-      });
-      if (settingsChanged) {
-        this.logger.fileLogger.info('=== SETTINGS CHANGED - REFRESHING TOKEN ===');
-        this.logger.fileLogger.info('Settings have changed, clearing cached token and getting new one');
-
-        // Clear the cached token
-        if (typeof localStorage !== 'undefined') {
-          this.logger.fileLogger.debug('Clearing cached token due to settings change');
-          localStorage.removeItem('pingone_worker_token');
-          localStorage.removeItem('pingone_token_expiry');
-          this.logger.fileLogger.info('Cleared cached token due to settings change');
-        } else {
-          this.logger.fileLogger.warn('localStorage not available, cannot clear cached token');
-        }
-
-        // Update UI to show that we're getting a new token
-        this.uiManager.updateConnectionStatus('connecting', 'Settings changed - Getting new token...', false);
-        this.uiManager.updateSettingsSaveStatus('Settings changed - Getting new token...', 'info');
-
-        // Get a new token with the new settings
-        this.logger.fileLogger.debug('Calling testPingOneConnection with new settings');
-        const result = await this.testPingOneConnection(newSettings);
-        this.logger.fileLogger.debug('Token refresh result:', {
-          success: result.success,
-          hasWarning: !!result.warning,
-          hasError: !!result.error
-        });
-        let combinedMsg = '';
-        let type = 'success';
-        if (result.success) {
-          this.logger.fileLogger.info('=== SETTINGS CHANGE TOKEN REFRESH SUCCESSFUL ===');
-          this.logger.fileLogger.info('Successfully obtained new token with updated settings');
-          combinedMsg = '✅ Settings saved successfully. New token obtained with updated settings.';
-          if (result.warning) {
-            this.logger.fileLogger.warn('Token obtained with warning during settings change', {
-              warning: result.warning
-            });
-            combinedMsg += '<br>' + result.warning;
-            type = 'warning';
-          }
-        } else {
-          this.logger.fileLogger.error('=== SETTINGS CHANGE TOKEN REFRESH FAILED ===');
-          this.logger.fileLogger.warn('Failed to get new token with updated settings', {
-            error: result.error
-          });
-          combinedMsg = `⚠️ Settings saved but new token request failed: ${result.error}`;
-          if (result.warning) {
-            combinedMsg += '<br>' + result.warning;
-          }
-          type = 'warning';
-        }
-        this.uiManager.updateSettingsSaveStatus(combinedMsg, type);
-      } else {
-        this.logger.fileLogger.info('Settings unchanged, using existing token');
-        this.uiManager.updateSettingsSaveStatus('✅ Settings saved successfully. Using existing token.', 'success');
-      }
-    } catch (error) {
-      this.logger.fileLogger.error('=== SETTINGS CHANGE CHECK FAILED ===', {
-        error: error.message,
-        stack: error.stack,
-        timestamp: new Date().toISOString()
-      });
-      // Don't throw here - we still want to save the settings even if token refresh fails
-    }
-  }
-
-  /**
-   * Check the server's connection status to PingOne
-   * @returns {Promise<boolean>} Whether the server is connected to PingOne
-   */
   async checkServerConnectionStatus() {
     try {
-      this.logger.fileLogger.debug('Checking server connection status...');
-
-      // Show connecting status in UI
-      this.uiManager.updateConnectionStatus('connecting', 'Checking connection status...');
       const response = await this.localClient.get('/api/health');
-      if (!response) {
-        throw new Error('Invalid response from server');
-      }
-
-      // Handle both old format (with server object) and new format (direct properties)
-      const serverData = response.server || response;
-      if (!serverData) {
-        throw new Error('Server status not available');
-      }
       const {
         pingOneInitialized,
         lastError
-      } = serverData;
+      } = response;
       if (pingOneInitialized) {
         this.logger.fileLogger.info('Server is connected to PingOne');
         this.uiManager.updateConnectionStatus('connected', 'Connected to PingOne');
-        // Hide token status on home page when connected
-        this.uiManager.updateHomeTokenStatus(false);
+
+        // Check if we have a valid cached token before hiding home token status
+        let hasValidToken = false;
+        if (this.pingOneClient) {
+          const cachedToken = this.pingOneClient.getCachedToken();
+          if (cachedToken) {
+            if (typeof localStorage !== 'undefined') {
+              const expiry = localStorage.getItem('pingone_token_expiry');
+              if (expiry) {
+                const expiryTime = parseInt(expiry);
+                if (Date.now() < expiryTime) {
+                  hasValidToken = true;
+                }
+              }
+            }
+          }
+        }
+        if (hasValidToken) {
+          this.uiManager.updateHomeTokenStatus(false);
+        } else {
+          this.uiManager.updateHomeTokenStatus(true, 'You need to configure your PingOne API credentials and get a token before using this tool.');
+        }
         return true;
       } else {
         const errorMessage = lastError || 'Not connected to PingOne';
@@ -1110,3348 +603,934 @@ class App {
           error: errorMessage
         });
         this.uiManager.updateConnectionStatus('disconnected', errorMessage);
-        // Show token status on home page when not connected
-        this.uiManager.updateHomeTokenStatus(true, 'You need to configure your PingOne API credentials and get a token before using this tool.');
+
+        // Check if we have a valid cached token before showing home token status
+        let hasValidToken = false;
+        if (this.pingOneClient) {
+          const cachedToken = this.pingOneClient.getCachedToken();
+          if (cachedToken) {
+            if (typeof localStorage !== 'undefined') {
+              const expiry = localStorage.getItem('pingone_token_expiry');
+              if (expiry) {
+                const expiryTime = parseInt(expiry);
+                if (Date.now() < expiryTime) {
+                  hasValidToken = true;
+                }
+              }
+            }
+          }
+        }
+        if (hasValidToken) {
+          this.uiManager.updateHomeTokenStatus(false);
+        } else {
+          this.uiManager.updateHomeTokenStatus(true, 'You need to configure your PingOne API credentials and get a token before using this tool.');
+        }
         return false;
       }
     } catch (error) {
-      const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
-      this.logger.fileLogger.error('Error checking server connection status', {
-        error: errorMessage
+      const statusMessage = `Failed to check server status: ${error.message}`;
+      this.logger.fileLogger.error('Server connection check failed', {
+        error: error.message
       });
-
-      // More specific error handling
-      let statusMessage = 'Error checking connection status';
-      if (error.response) {
-        // Server responded with error status
-        statusMessage = `Server error: ${error.response.status} ${errorMessage}`;
-      } else if (error.request) {
-        // Request was made but no response received
-        statusMessage = 'No response from server. Please check your connection.';
-      }
       this.uiManager.updateConnectionStatus('error', statusMessage);
-      // Show token status on home page when there's an error
-      this.uiManager.updateHomeTokenStatus(true, 'You need to configure your PingOne API credentials and get a token before using this tool.');
+
+      // Check if we have a valid cached token before showing home token status
+      let hasValidToken = false;
+      if (this.pingOneClient) {
+        const cachedToken = this.pingOneClient.getCachedToken();
+        if (cachedToken) {
+          if (typeof localStorage !== 'undefined') {
+            const expiry = localStorage.getItem('pingone_token_expiry');
+            if (expiry) {
+              const expiryTime = parseInt(expiry);
+              if (Date.now() < expiryTime) {
+                hasValidToken = true;
+              }
+            }
+          }
+        }
+      }
+      if (hasValidToken) {
+        this.uiManager.updateHomeTokenStatus(false);
+      } else {
+        this.uiManager.updateHomeTokenStatus(true, 'You need to configure your PingOne API credentials and get a token before using this tool.');
+      }
       return false;
     }
   }
+  showView(view) {
+    if (!view) return;
 
-  /**
-   * Test the PingOne connection by getting an access token
-   * @param {Object} customSettings - Optional custom settings to use for the test
-   * @returns {Promise<Object>} Result of the connection test
-   */
-  async testPingOneConnection() {
-    let customSettings = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : null;
-    try {
-      this.logger.fileLogger.info('=== PINGONE CONNECTION TEST STARTED ===');
-      this.logger.fileLogger.debug('Testing PingOne connection');
+    // Hide all views
+    const views = document.querySelectorAll('.view');
+    views.forEach(v => v.style.display = 'none');
 
-      // Show connecting status in UI
-      this.uiManager.updateConnectionStatus('connecting', 'Connecting to PingOne...');
+    // Show selected view
+    const selectedView = document.getElementById(`${view}-view`);
+    if (selectedView) {
+      selectedView.style.display = 'block';
+      this.currentView = view;
 
-      // Use custom settings if provided, otherwise get current settings
-      const settings = customSettings || this.settingsManager.getSettings();
-      this.logger.fileLogger.debug('Settings validation:', {
-        hasSettings: !!settings,
-        hasApiClientId: !!(settings && settings.apiClientId),
-        hasApiSecret: !!(settings && settings.apiSecret),
-        hasEnvironmentId: !!(settings && settings.environmentId),
-        hasPopulationId: !!(settings && settings.populationId),
-        region: settings?.region || 'NorthAmerica'
-      });
-      if (!settings || !settings.apiClientId || !settings.apiSecret || !settings.environmentId) {
-        const missingFields = [];
-        if (!settings) missingFields.push('Settings object');
-        if (!settings?.apiClientId) missingFields.push('API Client ID');
-        if (!settings?.apiSecret) missingFields.push('API Secret');
-        if (!settings?.environmentId) missingFields.push('Environment ID');
-        this.logger.fileLogger.error('Missing required settings for PingOne connection', {
-          missingFields
-        });
-        throw new Error(`Missing required settings: ${missingFields.join(', ')}`);
+      // Refresh progress page when progress view is shown
+      if (view === 'progress') {
+        this.refreshProgressPage();
       }
-      this.logger.fileLogger.info('All required settings present, making API request');
-      this.logger.fileLogger.debug('Making POST request to /api/pingone/test-connection');
 
-      // Use the local client from the factory
-      const requestPayload = {
-        apiClientId: settings.apiClientId,
-        apiSecret: settings.apiSecret,
-        environmentId: settings.environmentId,
-        region: settings.region || 'NorthAmerica',
-        populationId: settings.populationId
-      };
-      this.logger.fileLogger.debug('Request payload (sanitized):', {
-        apiClientId: '***HIDDEN***',
-        apiSecret: '***HIDDEN***',
-        environmentId: settings.environmentId,
-        region: settings.region || 'NorthAmerica',
-        populationId: settings.populationId || 'NOT_SET'
-      });
-      const response = await this.localClient.post('/api/pingone/test-connection', requestPayload);
-      this.logger.fileLogger.debug('Received response from server:', {
-        success: response.success,
-        hasMessage: !!response.message,
-        hasPopulationValidation: !!response.populationValidation,
-        tokenObtained: response.tokenObtained
-      });
-      if (response.success) {
-        this.logger.fileLogger.info('=== PINGONE CONNECTION TEST SUCCESSFUL ===');
-        this.logger.fileLogger.info('Successfully connected to PingOne API');
+      // Load settings when navigating to settings view
+      if (view === 'settings') {
+        this.loadSettings();
+        this.uiManager.updateSettingsSaveStatus('Please configure your API credentials and test the connection.', 'info');
+      }
 
-        // Update connection status in settings
-        settings.connectionStatus = 'connected';
-        settings.connectionMessage = 'Connected';
-        settings.lastConnectionTest = new Date().toISOString();
-        this.logger.fileLogger.debug('Updated settings with connection status');
+      // Load populations when navigating to import view
+      if (view === 'import') {
+        this.loadPopulations();
+      }
 
-        // Save updated settings
-        await this.settingsManager.saveSettings(settings);
-        this.logger.fileLogger.debug('Settings saved successfully');
-
-        // Update UI status - always show success for token retrieval
-        this.uiManager.updateConnectionStatus('connected', '✅ Successfully connected to PingOne API and obtained token');
-
-        // Handle population validation result
-        let populationWarning = '';
-        let populationError = null;
-        if (response.populationValidation) {
-          const validation = response.populationValidation;
-          this.logger.fileLogger.debug('Population validation result:', {
-            isValid: validation.isValid,
-            message: validation.message,
-            error: validation.error
-          });
-          if (!validation.isValid) {
-            // Show population ID error in settings status field
-            this.uiManager.updateSettingsSaveStatus(`⚠️ Population ID Error: ${validation.message}`, 'error');
-            populationWarning = validation.message;
-            populationError = validation.error;
-
-            // Log the population validation error
-            this.logger.fileLogger.warn('Population ID validation failed', {
-              error: validation.error,
-              message: validation.message,
-              populationId: settings.populationId
-            });
-          } else {
-            // Show success message in settings status field
-            this.uiManager.updateSettingsSaveStatus(`✅ ${validation.message}`, 'success');
-            this.logger.fileLogger.info('Population validation successful', {
-              message: validation.message
-            });
-          }
-        } else {
-          this.logger.fileLogger.debug('No population validation in response');
+      // Update navigation
+      this.uiManager.navItems.forEach(item => {
+        item.classList.remove('active');
+        if (item.getAttribute('data-view') === view) {
+          item.classList.add('active');
         }
-        const result = {
-          success: true,
-          warning: populationWarning,
-          populationError: populationError,
-          tokenObtained: response.tokenObtained || true
-        };
-        this.logger.fileLogger.info('Connection test completed successfully', {
-          tokenObtained: result.tokenObtained,
-          hasWarning: !!result.warning,
-          hasPopulationError: !!result.populationError
-        });
-        return result;
-      } else {
-        this.logger.fileLogger.error('Connection test failed', {
-          message: response.message,
-          response: response
-        });
-        throw new Error(response.message || 'Failed to connect to PingOne API');
+      });
+    }
+  }
+  async handleSaveSettings(settings) {
+    try {
+      this.logger.fileLogger.info('Saving settings', settings);
+
+      // Update settings save status to show saving
+      this.uiManager.updateSettingsSaveStatus('Saving settings...', 'info');
+
+      // Just save settings without testing connections
+      const response = await this.localClient.post('/api/settings', settings);
+
+      // Update settings manager
+      this.settingsManager.updateSettings(settings);
+
+      // Update API clients with new settings
+      this.pingOneClient = _apiFactory.apiFactory.getPingOneClient(this.logger, this.settingsManager);
+
+      // Update settings save status to show success
+      this.uiManager.updateSettingsSaveStatus('✅ Settings saved successfully', 'success');
+      // Show green notification
+      this.uiManager.showSuccess('Settings saved for PingOne');
+
+      // Repopulate the form (if needed)
+      this.populateSettingsForm(settings);
+
+      // Now update connection status area with check mark and message
+      const connStatus = document.getElementById('settings-connection-status');
+      if (connStatus) {
+        connStatus.textContent = '✅ Settings saved! Please test the connection.';
+        connStatus.classList.remove('status-disconnected', 'status-error');
+        connStatus.classList.add('status-success');
+        console.log('Updated #settings-connection-status after save (post-populate)');
       }
     } catch (error) {
-      const errorMessage = error.message || 'Connection failed';
-      this.logger.fileLogger.error('=== PINGONE CONNECTION TEST FAILED ===', {
-        error: errorMessage,
-        stack: error.stack,
-        timestamp: new Date().toISOString()
-      });
-
-      // Log additional error details if available
-      if (error.response) {
-        this.logger.fileLogger.error('Server response error details:', {
-          status: error.response.status,
-          statusText: error.response.statusText,
-          data: error.response.data
-        });
-      } else if (error.request) {
-        this.logger.fileLogger.error('Network error - no response received');
-      } else {
-        this.logger.fileLogger.error('Client-side error during connection test');
-      }
-
-      // Update connection status in settings
-      const settings = this.settingsManager.getSettings() || {};
-      settings.connectionStatus = 'disconnected';
-      settings.connectionMessage = errorMessage;
-      settings.lastConnectionTest = new Date().toISOString();
-      this.logger.fileLogger.debug('Updated settings with connection failure status');
-
-      // Save updated settings
-      await this.settingsManager.saveSettings(settings);
-      this.logger.fileLogger.debug('Settings saved with failure status');
-
-      // Update UI status
-      this.uiManager.updateConnectionStatus('error', errorMessage);
-      return {
-        success: false,
-        error: errorMessage
-      };
-    }
-  }
-
-  /**
-   * Refresh the PingOne worker token by clearing the cache and getting a new one
-   * @returns {Promise<Object>} Result of the token refresh
-   */
-  async refreshToken() {
-    try {
-      this.logger.fileLogger.info('=== TOKEN REFRESH STARTED ===');
-      this.logger.fileLogger.debug('Refreshing PingOne worker token');
-
-      // Show refreshing status in UI
-      this.uiManager.updateConnectionStatus('connecting', 'Refreshing token...');
-
-      // Clear the cached token
-      if (typeof localStorage !== 'undefined') {
-        this.logger.fileLogger.debug('Clearing cached token from localStorage');
-        localStorage.removeItem('pingone_worker_token');
-        localStorage.removeItem('pingone_token_expiry');
-        this.logger.fileLogger.info('Cleared cached token from localStorage');
-      } else {
-        this.logger.fileLogger.warn('localStorage not available, cannot clear cached token');
-      }
-
-      // Get current settings
-      this.logger.fileLogger.debug('Retrieving current settings for token refresh');
-      const settings = this.settingsManager.getSettings();
-      this.logger.fileLogger.debug('Settings validation for token refresh:', {
-        hasSettings: !!settings,
-        hasApiClientId: !!(settings && settings.apiClientId),
-        hasApiSecret: !!(settings && settings.apiSecret),
-        hasEnvironmentId: !!(settings && settings.environmentId)
-      });
-      if (!settings || !settings.apiClientId || !settings.apiSecret || !settings.environmentId) {
-        const missingFields = [];
-        if (!settings) missingFields.push('Settings object');
-        if (!settings?.apiClientId) missingFields.push('API Client ID');
-        if (!settings?.apiSecret) missingFields.push('API Secret');
-        if (!settings?.environmentId) missingFields.push('Environment ID');
-        this.logger.fileLogger.error('Missing required settings for token refresh', {
-          missingFields
-        });
-        throw new Error(`Missing required settings: ${missingFields.join(', ')}`);
-      }
-      this.logger.fileLogger.info('All required settings present, making refresh request');
-      this.logger.fileLogger.debug('Making POST request to /api/pingone/refresh-token');
-
-      // Use the dedicated refresh token endpoint that bypasses population validation
-      const response = await fetch('/api/pingone/refresh-token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
-      });
-      this.logger.fileLogger.debug('Refresh token response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok
-      });
-      if (!response.ok) {
-        this.logger.fileLogger.error('Token refresh request failed', {
-          status: response.status,
-          statusText: response.statusText
-        });
-        const errorData = await response.json().catch(() => ({
-          message: 'Unknown error'
-        }));
-        this.logger.fileLogger.error('Token refresh error details:', errorData);
-        throw new Error(errorData.message || `Token refresh failed: ${response.status}`);
-      }
-      const result = await response.json();
-      this.logger.fileLogger.debug('Token refresh response parsed:', {
-        success: result.success,
-        hasMessage: !!result.message
-      });
-      if (result.success) {
-        this.logger.fileLogger.info('=== TOKEN REFRESH SUCCESSFUL ===');
-        this.logger.fileLogger.info('Successfully refreshed PingOne worker token');
-        this.uiManager.updateConnectionStatus('connected', result.message || '✅ Token refreshed successfully');
-        this.uiManager.showNotification('✅ Token refreshed successfully', 'success');
-        return {
-          success: true
-        };
-      } else {
-        this.logger.fileLogger.error('Token refresh failed in response', {
-          result
-        });
-        throw new Error(result.message || 'Failed to refresh token');
-      }
-    } catch (error) {
-      const errorMessage = error.message || 'Token refresh failed';
-      this.logger.fileLogger.error('=== TOKEN REFRESH FAILED ===', {
-        error: errorMessage,
-        stack: error.stack,
-        timestamp: new Date().toISOString()
-      });
-
-      // Update UI status
-      this.uiManager.updateConnectionStatus('error', errorMessage);
-      this.uiManager.showNotification(`❌ Token refresh failed: ${errorMessage}`, 'error');
-      return {
-        success: false,
-        error: errorMessage
-      };
-    }
-  }
-  async startImport() {
-    console.log('startImport called');
-    if (this.isImporting) return;
-    this.isImporting = true;
-    this.uiManager.setImporting(true);
-    // Create AbortController for cancellation
-    this.currentImportAbortController = new AbortController();
-
-    // FIX: Declare importOptions and users at the top
-    let importOptions = {};
-    let users = null;
-    try {
-      // Check if PingOne token is available before starting import
-      console.log('Checking PingOne token availability...');
-      try {
-        // Test the connection to verify token is valid
-        const connectionTest = await this.pingOneClient.testConnection();
-        if (!connectionTest) {
-          throw new Error('PingOne connection test failed');
-        }
-        console.log('✅ PingOne token is valid and connection is working');
-      } catch (tokenError) {
-        console.error('❌ PingOne token validation failed:', tokenError);
-        this.isImporting = false;
-        this.uiManager.setImporting(false);
-
-        // Show error in import status area
-        this.uiManager.showImportStatus(0, '');
-        this.uiManager.updateImportProgress(0, 0, '❌ No valid PingOne token available', {
-          success: 0,
-          failed: 0,
-          skipped: 0
-        });
-
-        // Show detailed error message
-        const errorMessage = 'No valid PingOne token available. Please go to Settings and click "Get Token" to obtain a valid token before importing users.';
-        this.uiManager.showNotification(errorMessage, 'error');
-
-        // Update import status to show error
-        const importStatus = document.getElementById('import-status');
-        if (importStatus) {
-          const progressText = document.getElementById('import-progress-text');
-          if (progressText) {
-            progressText.textContent = '❌ Token Error';
-            progressText.className = 'stat-value error';
-          }
-        }
-        return;
-      }
-
-      // Get the parsed users from the file handler
-      console.log('Getting parsed users from file handler...');
-      users = this.fileHandler.getParsedUsers();
-      console.log('Users from file handler:', users);
-      console.log('Users length:', users ? users.length : 'null/undefined');
-      if (!users || users.length === 0) {
-        console.error('No users found in CSV file');
-        throw new Error('No CSV file loaded or no users found in CSV file. Please select a CSV file first and ensure it contains valid user data.');
-      }
-
-      // Get import options
-      importOptions = this.getImportOptions();
-      this.logger.fileLogger.info('Import options', importOptions);
-
-      // Validate population selection
-      const hasSelectedPopulation = importOptions.selectedPopulationId && importOptions.selectedPopulationId.trim() !== '';
-      const useDefaultPopulation = importOptions.useDefaultPopulation;
-      const useCsvPopulationId = importOptions.useCsvPopulationId;
-
-      // Check if user has made a population choice
-      if (!hasSelectedPopulation && !useDefaultPopulation && !useCsvPopulationId) {
-        throw new Error('Please select a population or choose "Use default population from settings" before importing users.');
-      }
-
-      // Show import progress with population name
-      this.uiManager.showImportStatus(users.length, importOptions.selectedPopulationName);
-      this.uiManager.updateImportProgress(0, 0, 'Starting import...', {
-        success: 0,
-        failed: 0,
-        skipped: 0
-      }, importOptions.selectedPopulationName);
-
-      // Check if CSV population ID is enabled but not available
-      if (importOptions.useCsvPopulationId) {
-        const hasCsvPopulationId = await this.checkCsvPopulationIdAvailability(users);
-        if (!hasCsvPopulationId) {
-          // Show modal to ask user what to do
-          const modalResult = await this.handlePopulationIdMissing();
-          if (modalResult.action === 'back') {
-            this.isImporting = false;
-            this.currentImportAbortController = null;
-            return; // User chose to go back
-          }
-          // User chose to continue with fallback
-          this.logger.fileLogger.info('User chose to continue with fallback population');
-        }
-      }
-
-      // Check if CSV has populationId data but checkbox is not checked
-      if (!importOptions.useCsvPopulationId && importOptions.hasCsvPopulationId) {
-        // Show modal to ask user what to do
-        const modalResult = await this.handleCsvPopulationIdFound();
-        if (modalResult.action === 'back') {
-          this.isImporting = false;
-          this.currentImportAbortController = null;
-          return; // User chose to go back
-        } else if (modalResult.action === 'use_csv') {
-          // User chose to use CSV population IDs, update the options
-          importOptions.useCsvPopulationId = true;
-          this.logger.fileLogger.info('User chose to use CSV population IDs');
-        } else {
-          // User chose to continue with selected population
-          this.logger.fileLogger.info('User chose to continue with selected population');
-        }
-      }
-      this.logger.fileLogger.info('Starting import process', {
-        totalUsers: users.length,
-        hasUsers: !!users,
-        userSample: users.slice(0, 3).map(u => ({
-          email: u.email,
-          username: u.username
-        })),
-        importOptions
-      });
-
-      // Validate users before starting import
-      const validationResults = this.validateUsersForImport(users);
-      if (validationResults.invalidUsers.length > 0) {
-        this.logger.fileLogger.warn('Some users failed validation', {
-          totalUsers: users.length,
-          validUsers: validationResults.validUsers.length,
-          invalidUsers: validationResults.invalidUsers.length,
-          validationErrors: validationResults.errors
-        });
-
-        // Show warning but continue with valid users
-        this.uiManager.showNotification(`${validationResults.invalidUsers.length} users failed validation and will be skipped. ${validationResults.validUsers.length} users will be imported.`, 'warning');
-      }
-
-      // Use only valid users for import
-      const validUsers = validationResults.validUsers;
-      if (validUsers.length === 0) {
-        throw new Error('No valid users found in CSV file. Please check your data and try again.');
-      }
-
-      // Start the import process with improved options and AbortController
-      const pingOneImportOptions = {
-        onProgress: (current, total, user, counts) => {
-          // Check if import was cancelled
-          if (this.currentImportAbortController.signal.aborted) {
-            throw new Error('Import cancelled by user');
-          }
-          this.uiManager.updateImportProgress(current, total, `Importing user ${current}/${total}...`, counts, importOptions.selectedPopulationName);
-
-          // Log progress for debugging
-          if (current % 10 === 0 || current === total) {
-            this.logger.fileLogger.info('Import progress', {
-              current,
-              total,
-              success: counts.success,
-              failed: counts.failed,
-              skipped: counts.skipped,
-              retries: counts.retries || 0
-            });
-          }
-        },
-        retryAttempts: 3,
-        delayBetweenRetries: 1000,
-        continueOnError: true,
-        importOptions,
-        // Pass population selection options
-        abortController: this.currentImportAbortController // Pass AbortController for cancellation
-      };
-      this.logger.fileLogger.info('Starting PingOne import', {
-        totalUsers: validUsers.length,
-        pingOneImportOptions
-      });
-      console.log('About to call pingOneClient.importUsers...');
-      const results = await this.pingOneClient.importUsers(validUsers, pingOneImportOptions);
-      console.log('pingOneClient.importUsers completed with results:', results);
-
-      // Log final results
-      this.logger.fileLogger.info('Import completed', {
-        total: results.total,
-        success: results.success,
-        failed: results.failed,
-        skipped: results.skipped,
-        retries: results.retries || 0
-      });
-
-      // Show final progress
-      this.uiManager.updateImportProgress(results.total, results.total, 'Import completed!', {
-        success: results.success,
-        failed: results.failed,
-        skipped: results.skipped
-      }, importOptions.selectedPopulationName);
-
-      // Show completion message
-      let message = `Import completed! Successfully imported ${results.success} users.`;
-      if (results.failed > 0) {
-        message += ` ${results.failed} users failed.`;
-      }
-      if (results.skipped > 0) {
-        message += ` ${results.skipped} users were skipped.`;
-      }
-      if (results.retries > 0) {
-        message += ` ${results.retries} retries were performed.`;
-      }
-      this.uiManager.showNotification(message, results.failed > 0 ? 'warning' : 'success');
-
-      // Log detailed results for debugging
-      if (results.results && results.results.length > 0) {
-        const failedResults = results.results.filter(r => !r.success && !r.skipped);
-        if (failedResults.length > 0) {
-          this.logger.fileLogger.warn('Failed imports', {
-            failedCount: failedResults.length,
-            failures: failedResults.map(r => ({
-              user: r.user.email || r.user.username,
-              error: r.error
-            }))
-          });
-        }
-      }
-    } catch (error) {
-      // Check if this was a cancellation
-      if (error.message === 'Import cancelled by user' || error.name === 'AbortError') {
-        this.logger.fileLogger.info('Import cancelled by user');
-        this.uiManager.updateImportProgress(0, 0, 'Import cancelled', {
-          success: 0,
-          failed: 0,
-          skipped: 0
-        }, importOptions.selectedPopulationName);
-        this.uiManager.showNotification('Import cancelled by user', 'warning');
-        return;
-      }
-      this.logger.fileLogger.error('Import failed', {
-        error: error.message,
-        stack: error.stack,
-        name: error.name,
-        code: error.code,
-        details: {
-          importOptions: importOptions,
-          usersLength: users ? users.length : 'undefined',
-          isImporting: this.isImporting,
-          hasAbortController: !!this.currentImportAbortController
-        }
-      });
-      let errorMessage = 'Import failed. ';
-      if (error.message.includes('No users found')) {
-        errorMessage += 'Please check your CSV file and ensure it contains valid user data.';
-      } else if (error.message.includes('Environment ID not configured')) {
-        errorMessage += 'Please configure your PingOne settings first.';
-      } else if (error.message.includes('No populations found')) {
-        errorMessage += 'No populations found in PingOne. Please create a population first.';
-      } else if (error.message.includes('rate limit')) {
-        errorMessage += 'Rate limit exceeded. Please wait a moment and try again.';
-      } else {
-        errorMessage += error.message;
-      }
-      this.uiManager.showNotification(errorMessage, 'error');
-      this.uiManager.updateImportProgress(0, 0, 'Import failed', {
-        success: 0,
-        failed: 0,
-        skipped: 0
-      }, importOptions.selectedPopulationName);
-    } finally {
-      this.isImporting = false;
-      this.currentImportAbortController = null;
-
-      // Import status will persist until user manually closes it
-      this.uiManager.setImporting(false);
-      this.uiManager.showLoading(false); // Hide spinner
-    }
-  }
-
-  /**
-   * Validate users for import
-   * @param {Array<Object>} users - Users to validate
-   * @returns {Object} Validation results
-   * @private
-   */
-  validateUsersForImport(users) {
-    const validUsers = [];
-    const invalidUsers = [];
-    const errors = [];
-    for (let i = 0; i < users.length; i++) {
-      const user = users[i];
-      const validationError = this.validateUser(user, i + 1);
-      if (validationError) {
-        invalidUsers.push(user);
-        errors.push({
-          row: i + 1,
-          user: user.email || user.username || `Row ${i + 1}`,
-          error: validationError
-        });
-      } else {
-        validUsers.push(user);
-      }
-    }
-    return {
-      validUsers,
-      invalidUsers,
-      errors
-    };
-  }
-
-  /**
-   * Validate a single user
-   * @param {Object} user - User to validate
-   * @param {number} rowNumber - Row number for error reporting
-   * @returns {string|null} Error message or null if valid
-   * @private
-   */
-  validateUser(user, rowNumber) {
-    // Check required fields
-    if (!user.username) {
-      return `Row ${rowNumber}: User must have a username`;
-    }
-
-    // Validate email format if provided
-    if (user.email && !this.isValidEmail(user.email)) {
-      return `Row ${rowNumber}: Invalid email format '${user.email}'`;
-    }
-
-    // Validate username format if provided
-    if (user.username && !this.isValidUsername(user.username)) {
-      return `Row ${rowNumber}: Invalid username format '${user.username}' (no spaces or special characters)`;
-    }
-
-    // Validate enabled field if provided
-    if (user.enabled !== undefined && user.enabled !== null) {
-      const enabledValue = String(user.enabled).toLowerCase();
-      if (enabledValue !== 'true' && enabledValue !== 'false' && enabledValue !== '1' && enabledValue !== '0') {
-        return `Row ${rowNumber}: Enabled field must be true/false or 1/0, got '${user.enabled}'`;
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Check if email is valid
-   * @param {string} email - Email to validate
-   * @returns {boolean} True if valid
-   * @private
-   */
-  isValidEmail(email) {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  }
-
-  /**
-   * Check if username is valid
-   * @param {string} username - Username to validate
-   * @returns {boolean} True if valid
-   * @private
-   */
-  isValidUsername(username) {
-    // Username should not contain spaces or special characters
-    const usernameRegex = /^[a-zA-Z0-9._-]+$/;
-    return usernameRegex.test(username);
-  }
-  cancelImport() {
-    if (this.currentImportAbortController) {
-      this.currentImportAbortController.abort();
-      this.logger.fileLogger.info('Canceling import');
-    }
-
-    // Update UI to show "Stopped" state
-    this.uiManager.setImportButtonText('Stopped');
-    this.uiManager.showNotification('Import cancelled by user', 'warning');
-
-    // Update progress screen cancel button text
-    const cancelProgressBtn = document.getElementById('cancel-import-progress');
-    if (cancelProgressBtn) {
-      cancelProgressBtn.innerHTML = '<i class="fas fa-stop"></i> Stopped';
-      cancelProgressBtn.disabled = true;
-    }
-
-    // Force reset import state
-    this.resetImportState();
-  }
-  resetImportState() {
-    console.log('Force resetting import state');
-    this.isImporting = false;
-    this.currentImportAbortController = null;
-    this.uiManager.setImporting(false);
-    this.uiManager.resetImportState();
-  }
-  async startDeleteCsv() {
-    if (this.isDeletingCsv) return;
-    const confirmed = await this.confirmDeleteAction('<strong>⚠️ WARNING:</strong> This will permanently delete the selected users from PingOne. This action cannot be undone.<br><br>Are you absolutely sure you want to continue?');
-    if (!confirmed) return;
-    this.isDeletingCsv = true;
-    this.uiManager.setDeletingCsv(true);
-    this.uiManager.showDeleteCsvStatus(this.deleteCsvUsers.length);
-
-    // Show a simple notification that delete is starting
-    this.uiManager.showNotification(`Starting delete operation for ${this.deleteCsvUsers.length} users...`, 'info');
-    try {
-      const results = await this.pingOneClient.deleteUsersFromCsv(this.deleteCsvUsers, {
-        onProgress: progress => {
-          // Update progress without showing the progress screen
-          this.uiManager.updateDeleteCsvProgress(progress.current, progress.total, `Deleting user ${progress.current} of ${progress.total}...`, progress);
-        }
-      });
-
-      // Show completion notification
-      const message = `Delete completed. Deleted: ${results.success}, Failed: ${results.failed}, Skipped: ${results.skipped}`;
-      this.uiManager.showNotification(message, results.failed > 0 ? 'warning' : 'success');
-
-      // Update final status
-      this.uiManager.updateDeleteCsvProgress(results.total, results.total, message, results);
-    } catch (error) {
-      const errorMessage = `Delete failed: ${error.message}`;
-      this.uiManager.showNotification(errorMessage, 'error');
-      this.uiManager.updateDeleteCsvProgress(0, 0, errorMessage);
-    } finally {
-      this.isDeletingCsv = false;
-      this.uiManager.setDeletingCsv(false);
-      this.uiManager.showLoading(false); // Hide spinner
-    }
-  }
-  cancelDeleteCsv() {
-    this.isDeletingCsv = false;
-    this.uiManager.setDeletingCsv(false);
-    this.uiManager.updateDeleteCsvProgress(0, 0, 'Delete cancelled');
-    this.uiManager.showNotification('Delete operation cancelled', 'warning');
-  }
-  showDeleteCsvFileInfo(file) {
-    // Use the enhanced file info display from file handler
-    this.fileHandler.updateFileInfoForElement(file, 'delete-csv-file-info');
-  }
-  showModifyCsvFileInfo(file) {
-    console.log('[DEBUG] showModifyCsvFileInfo called with file:', file);
-    console.log('[DEBUG] File details:', {
-      name: file.name,
-      size: file.size,
-      type: file.type
-    });
-
-    // Use the enhanced file info display from file handler
-    this.fileHandler.updateFileInfoForElement(file, 'modify-file-info');
-
-    // Additional debugging
-    const fileInfoElement = document.getElementById('modify-file-info');
-    console.log('[DEBUG] modify-file-info element:', fileInfoElement);
-    if (fileInfoElement) {
-      console.log('[DEBUG] Element innerHTML length:', fileInfoElement.innerHTML.length);
-      console.log('[DEBUG] Element display style:', window.getComputedStyle(fileInfoElement).display);
-      console.log('[DEBUG] Element visibility:', window.getComputedStyle(fileInfoElement).visibility);
-    }
-  }
-  async parseCsvFile(file, previewContainerId) {
-    const text = await file.text();
-    const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
-    if (lines.length < 2) {
-      throw new Error('CSV must contain at least a header row and one data row');
-    }
-
-    // Parse headers using proper CSV parsing
-    const headers = this.parseCSVLine(lines[0]);
-    const users = [];
-    const previewDiv = document.getElementById(previewContainerId);
-    previewDiv.innerHTML = '';
-    const table = document.createElement('table');
-    table.className = 'table table-sm table-bordered';
-    const thead = document.createElement('thead');
-    const tr = document.createElement('tr');
-    headers.forEach(h => {
-      const th = document.createElement('th');
-      th.textContent = h;
-      tr.appendChild(th);
-    });
-    thead.appendChild(tr);
-    table.appendChild(thead);
-    const tbody = document.createElement('tbody');
-    for (let i = 1; i < lines.length; i++) {
-      const values = this.parseCSVLine(lines[i]);
-      if (values.length !== headers.length) {
-        console.warn(`Row ${i + 1} has ${values.length} values but expected ${headers.length}, skipping`);
-        continue;
-      }
-      const user = {};
-      const row = document.createElement('tr');
-      headers.forEach((h, idx) => {
-        user[h] = values[idx] || '';
-        const td = document.createElement('td');
-        td.textContent = values[idx] || '';
-        row.appendChild(td);
-      });
-      users.push(user);
-      tbody.appendChild(row);
-    }
-    table.appendChild(tbody);
-    previewDiv.appendChild(table);
-    return users;
-  }
-  parseCSVLine(line) {
-    let delimiter = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : ',';
-    const result = [];
-    let current = '';
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-      const nextChar = line[i + 1];
-      if (char === '"') {
-        if (nextChar === '"') {
-          current += '"';
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (char === delimiter && !inQuotes) {
-        result.push(current);
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-    result.push(current);
-    return result.map(field => field.trim());
-  }
-
-  // updateDeleteCsvProgress method removed - now handled by UI manager without progress screen
-
-  async handleFileSelect(file) {
-    try {
-      this.logger.fileLogger.debug('File selected', {
-        fileName: file.name,
-        fileSize: file.size
-      });
-
-      // Use the file handler's handleFileObject method
-      await this.fileHandler.handleFileObject(file);
-
-      // Update import button state after file processing
-      this.updateImportButtonState();
-    } catch (error) {
-      const errorMsg = error.message || 'An unknown error occurred while processing the file';
-      this.logger.fileLogger.error('Error processing file', {
-        error: errorMsg
-      });
-      this.uiManager.showNotification(errorMsg, 'error');
-      console.error('File processing error:', error);
-      throw error; // Re-throw to allow caller to handle if needed
-    }
-  }
-
-  /**
-   * Checks if the current settings are valid and updates the UI accordingly
-   * @returns {Promise<boolean>} True if settings are valid, false otherwise
-   */
-  /**
-   * Checks if the current settings are valid and updates the UI accordingly
-   * @returns {Promise<boolean>} True if settings are valid, false otherwise
-   */
-  async checkSettings() {
-    try {
-      const settings = this.settingsManager.getSettings();
-      const hasRequiredSettings = settings.environmentId && settings.region;
-      const users = this.fileHandler.getUsers ? this.fileHandler.getUsers() : [];
-      const hasUsers = Array.isArray(users) && users.length > 0;
-
-      // Check server connection status if we have required settings
-      if (hasRequiredSettings) {
-        await this.checkServerConnectionStatus();
-      }
-
-      // Enable Import button only if both users and settings are valid
-      const enableImport = hasRequiredSettings && hasUsers;
-      this.uiManager.setImportButtonState(enableImport);
-
-      // Update UI for settings status
-      this.uiManager.updateSettingsStatus(hasRequiredSettings);
-      return hasRequiredSettings;
-    } catch (error) {
-      this.logger.fileLogger.error('Error checking settings', {
+      this.logger.fileLogger.error('Failed to save settings', {
         error: error.message
       });
-      this.uiManager.setImportButtonState(false);
-      return false;
+      this.uiManager.updateSettingsSaveStatus('❌ Failed to save settings: ' + error.message, 'error');
     }
   }
-
-  /**
-   * Updates the delete CSV button state based on settings and users
-   */
-  updateDeleteCsvButtonState() {
-    try {
-      const settings = this.settingsManager.getSettings();
-      const hasRequiredSettings = settings.environmentId && settings.region;
-      const hasDeleteUsers = Array.isArray(this.deleteCsvUsers) && this.deleteCsvUsers.length > 0;
-
-      // Enable Delete button only if both settings and delete users are valid
-      const enableDelete = hasRequiredSettings && hasDeleteUsers;
-      this.uiManager.setDeleteCsvButtonState(enableDelete);
-      return enableDelete;
-    } catch (error) {
-      this.logger.fileLogger.error('Error updating delete button state', {
-        error: error.message
-      });
-      this.uiManager.setDeleteCsvButtonState(false);
-      return false;
-    }
-  }
-
-  /**
-   * Updates the modify CSV button state based on settings and users
-   */
-  updateModifyCsvButtonState() {
-    try {
-      const settings = this.settingsManager.getSettings();
-      const hasRequiredSettings = settings.environmentId && settings.region;
-      const hasModifyUsers = Array.isArray(this.modifyCsvUsers) && this.modifyCsvUsers.length > 0;
-
-      // Add debugging
-      console.log('updateModifyCsvButtonState called:', {
-        settings: settings,
-        hasRequiredSettings: hasRequiredSettings,
-        modifyCsvUsers: this.modifyCsvUsers,
-        hasModifyUsers: hasModifyUsers
-      });
-
-      // Enable Modify button only if both settings and modify users are valid
-      const enableModify = hasRequiredSettings && hasModifyUsers;
-      this.uiManager.setModifyCsvButtonState(enableModify);
-      console.log('Modify button state set to:', enableModify);
-      return enableModify;
-    } catch (error) {
-      this.logger.fileLogger.error('Error updating modify button state', {
-        error: error.message
-      });
-      this.uiManager.setModifyCsvButtonState(false);
-      return false;
-    }
-  }
-
-  /**
-   * Populates the settings form with the provided settings
-   * @param {Object} settings - The settings to populate the form with
-   */
   populateSettingsForm(settings) {
     if (!settings) {
       this.logger.warn('No settings provided to populate form');
       return;
     }
-    this.logger.debug('Populating settings form with:', {
-      ...settings,
-      apiSecret: settings.apiSecret ? '***' : '[empty]'
-    });
+    const fields = {
+      'environment-id': settings.environmentId || '',
+      'api-client-id': settings.apiClientId || '',
+      'api-secret': settings.apiSecret || '',
+      'population-id': settings.populationId || '',
+      'region': settings.region || 'NorthAmerica',
+      'rate-limit': settings.rateLimit || 90
+    };
+    const missingFields = [];
+    for (const [id, value] of Object.entries(fields)) {
+      try {
+        const element = document.getElementById(id);
+        if (!element) {
+          missingFields.push(id);
+          continue;
+        }
+
+        // Handle API secret using SecretFieldManager
+        if (id === 'api-secret') {
+          this.secretFieldToggle.setValue(value);
+        } else {
+          element.value = value;
+        }
+      } catch (error) {
+        this.logger.error(`Error setting field ${id}`, {
+          error: error.message
+        });
+        missingFields.push(id);
+      }
+    }
+    if (missingFields.length > 0) {
+      this.logger.warn('Missing form fields', {
+        missingFields
+      });
+    }
+  }
+  async startImport() {
+    if (this.isImporting) {
+      this.logger.warn('Import already in progress');
+      return;
+    }
     try {
-      // Define form fields and their corresponding settings keys
-      const fields = {
-        // API Settings
-        'environment-id': settings.environmentId || '',
-        'api-client-id': settings.apiClientId || '',
-        'api-secret': settings.apiSecret || '',
-        'population-id': settings.populationId || '',
-        'region': settings.region || 'NorthAmerica',
-        'rate-limit': settings.rateLimit || 50
+      this.isImporting = true;
+      this.importAbortController = new AbortController();
+
+      // Force refresh population selection to ensure it's current
+      const currentPopulation = this.forceRefreshPopulationSelection();
+      console.log('=== startImport - Current Population ===');
+      console.log('Current population selection:', currentPopulation);
+      if (!currentPopulation) {
+        this.uiManager.showError('No population selected', 'Please select a population before starting the import.');
+        return;
+      }
+
+      // Create import options with the current population selection
+      const totalUsers = this.fileHandler.getTotalUsers();
+      if (!totalUsers || totalUsers === 0) {
+        this.uiManager.showError('No users to import', 'Please select a CSV file with users to import.');
+        return;
+      }
+      const importOptions = {
+        selectedPopulationId: currentPopulation.id,
+        selectedPopulationName: currentPopulation.name,
+        totalUsers,
+        file: this.fileHandler.getCurrentFile()
       };
 
-      // Track which fields were actually set
-      const setFields = [];
-      const missingFields = [];
+      // Debug: Log the population being used for import
+      console.log('=== startImport Debug ===');
+      console.log('Import options:', importOptions);
+      console.log('Population ID for this import:', importOptions.selectedPopulationId);
+      console.log('Population name for this import:', importOptions.selectedPopulationName);
+      console.log('========================');
 
-      // Set each field
-      for (const [id, value] of Object.entries(fields)) {
-        try {
-          const element = document.getElementById(id);
-          if (!element) {
-            missingFields.push(id);
-            continue;
-          }
+      // Capture the selected population name and ID at the start of the import
+      const {
+        selectedPopulationName,
+        selectedPopulationId
+      } = importOptions;
+      const populationNameForThisRun = selectedPopulationName;
+      const populationIdForThisRun = selectedPopulationId;
 
-          // Handle different input types
-          if (element.type === 'checkbox') {
-            element.checked = Boolean(value);
-          } else if (element.tagName === 'SELECT' && element.multiple) {
-            // Handle multi-select
-            const values = Array.isArray(value) ? value : [value];
-            Array.from(element.options).forEach(option => {
-              option.selected = values.includes(option.value);
-            });
-          } else {
-            // For API secret, only set if it's not empty
-            if (id === 'api-secret' && !value) {
-              continue;
-            }
+      // Show import status
+      this.uiManager.showImportStatus(importOptions.totalUsers, populationNameForThisRun, populationIdForThisRun);
 
-            // For password fields, use placeholder
-            if ((id.includes('password') || id.includes('secret')) && value) {
-              element.value = '********'; // Placeholder for passwords
-            } else {
-              element.value = value !== null && value !== undefined ? value : '';
-            }
-          }
-          setFields.push(id);
-        } catch (fieldError) {
-          this.logger.error(`Error setting field ${id}:`, fieldError);
+      // Start import process
+      const response = await this.localClient.post('/api/import', importOptions, {
+        signal: this.importAbortController.signal,
+        onProgress: (current, total, message, counts) => {
+          this.uiManager.updateImportProgress(current, total, message, counts, populationNameForThisRun, populationIdForThisRun);
         }
-      }
-
-      // Log results
-      if (setFields.length > 0) {
-        this.logger.debug(`Successfully set ${setFields.length} form fields`);
-      }
-      if (missingFields.length > 0) {
-        this.logger.debug(`Could not find ${missingFields.length} form fields:`, missingFields);
-      }
-
-      // Update connection status display if status element exists
-      const statusElement = document.getElementById('settings-connection-status');
-      if (statusElement) {
-        const status = (settings.connectionStatus || 'disconnected').toLowerCase();
-        const message = settings.connectionMessage || 'Not connected';
-
-        // Update status class
-        statusElement.className = `connection-status status-${status}`;
-
-        // Update status icon and message
-        const iconMap = {
-          'connected': '✅',
-          'disconnected': '⚠️',
-          'error': '❌'
-        };
-        const statusIcon = statusElement.querySelector('.status-icon');
-        if (statusIcon) {
-          statusIcon.textContent = iconMap[status] || 'ℹ️';
-        }
-        const statusMessage = statusElement.querySelector('.status-message');
-        if (statusMessage) {
-          statusMessage.textContent = message;
-        }
-      }
-      this.logger.debug('Finished populating settings form');
-    } catch (error) {
-      const errorMsg = `Error populating settings form: ${error.message}`;
-      this.logger.error(errorMsg, error);
-      this.uiManager.showError('Form Error', 'Failed to populate settings form');
-      throw error;
-    } finally {
-      // Always hide loading state
-      this.uiManager.showLoading(false);
-    }
-  }
-
-  /**
-   * Asynchronously initializes the application
-   * @private
-   */
-  async initializeAsync() {
-    try {
-      // Load settings first before initializing API factory
-      this.logger.fileLogger.info('Loading settings...');
-      await this.settingsManager.loadSettings();
-
-      // Initialize API factory after settings are loaded
-      this.logger.fileLogger.info('Initializing API factory...');
-      this.factory = await (0, _apiFactory.initAPIFactory)(this.logger, this.settingsManager);
-
-      // Initialize API clients
-      this.pingOneClient = this.factory.getPingOneClient();
-      this.localClient = this.factory.getLocalClient('http://localhost:4000');
-      this.logger.fileLogger.info('API clients initialized successfully');
-
-      // Now that API clients are ready, restore settings to UI
-      await this.checkSettingsAndRestore();
-
-      // Initialize the rest of the UI
-      this.logger.fileLogger.info('Initializing UI components');
-      this.setupEventListeners();
-
-      // Check server connection status
-      await this.checkServerConnectionStatus();
-      this.logger.fileLogger.info('Application initialization complete');
-      console.log(`PingOne Import Tool ${this.versionManager.getFormattedVersion()} initialized`);
-    } catch (error) {
-      const errorMsg = `Failed to initialize application: ${error.message}`;
-      this.logger.fileLogger.error(errorMsg, {
-        error
       });
-      this.uiManager.showError('Initialization Error', errorMsg);
-    }
-  }
-  setupDisclaimerAgreement() {
-    const acceptButton = document.getElementById('accept-disclaimer');
-    const agreementCheckboxes = [document.getElementById('disclaimer-agreement'), document.getElementById('risk-acceptance')];
-    console.log('[DEBUG] Disclaimer setup: acceptButton', !!acceptButton, 'checkboxes', agreementCheckboxes.map(cb => !!cb));
-    if (!acceptButton) {
-      console.error('[ERROR] Disclaimer accept button not found');
-      return;
-    }
-    if (agreementCheckboxes.every(cb => !cb)) {
-      console.error('[ERROR] Disclaimer checkboxes not found');
-    }
 
-    // Function to check if both checkboxes are checked
-    const updateButtonState = () => {
-      const checkboxStates = agreementCheckboxes.map(checkbox => ({
-        id: checkbox ? checkbox.id : 'null',
-        checked: checkbox ? checkbox.checked : false,
-        exists: !!checkbox
-      }));
-      const bothChecked = agreementCheckboxes.every(checkbox => checkbox && checkbox.checked);
-      acceptButton.disabled = !bothChecked;
-      console.log('[DEBUG] Button state updated:', {
-        checkboxStates,
-        bothChecked,
-        disabled: !bothChecked
-      });
-    };
-
-    // Add event listeners to checkboxes
-    agreementCheckboxes.forEach(checkbox => {
-      if (checkbox) {
-        console.log('[DEBUG] Adding event listener to checkbox:', checkbox.id);
-        checkbox.addEventListener('change', () => {
-          console.log('[DEBUG] Checkbox changed:', checkbox.id, 'checked:', checkbox.checked);
-          updateButtonState();
-        });
-        // Also add click event as fallback
-        checkbox.addEventListener('click', () => {
-          console.log('[DEBUG] Checkbox clicked:', checkbox.id, 'checked:', checkbox.checked);
-          updateButtonState();
-        });
+      // Handle completion
+      if (response.success) {
+        this.uiManager.updateImportProgress(importOptions.totalUsers, importOptions.totalUsers, 'Import completed successfully', response.counts, populationNameForThisRun, populationIdForThisRun);
+        this.uiManager.showSuccess('Import completed successfully', response.message);
       } else {
-        console.error('[ERROR] Checkbox is null:', checkbox);
+        this.uiManager.updateImportProgress(0, importOptions.totalUsers, 'Import failed', response.counts, populationNameForThisRun, populationIdForThisRun);
+        this.uiManager.showError('Import failed', response.error);
       }
-    });
-
-    // Add event listener to accept button
-    acceptButton.addEventListener('click', () => {
-      console.log('[DEBUG] Disclaimer accept button clicked.');
-
-      // Immediately change button to green and update text
-      acceptButton.classList.add('btn-success');
-      acceptButton.classList.remove('btn-danger');
-      acceptButton.innerHTML = '<i class="fas fa-check-circle"></i> I UNDERSTAND AND ACCEPT ALL RISKS';
-      acceptButton.disabled = true; // Prevent multiple clicks
-
-      // Add green shadow effect
-      acceptButton.style.boxShadow = '0 0 20px rgba(40, 167, 69, 0.6), 0 4px 8px rgba(40, 167, 69, 0.3)';
-      acceptButton.style.transform = 'scale(1.02)';
-      acceptButton.style.transition = 'all 0.3s ease';
-
-      // Store agreement in localStorage
-      localStorage.setItem('disclaimer-agreed', 'true');
-      localStorage.setItem('disclaimer-agreed-date', new Date().toISOString());
-
-      // Wait 500ms before hiding disclaimer and showing feature cards
-      setTimeout(() => {
-        const disclaimer = document.getElementById('disclaimer');
-        const featureCards = document.querySelector('.feature-cards');
-        if (disclaimer) {
-          disclaimer.style.display = 'none';
-        }
-        if (featureCards) {
-          featureCards.style.display = 'grid';
-        }
-        // Enable navigation tabs after disclaimer is accepted
-        this.enableNavigationTabs();
-        this.uiManager.showNotification('Disclaimer accepted. You can now use the tool.', 'success');
-        this.logger.fileLogger.info('User accepted disclaimer agreement');
-      }, 500);
-    });
-
-    // Check if user has already agreed
-    const hasAgreed = localStorage.getItem('disclaimer-agreed');
-    const disclaimer = document.getElementById('disclaimer');
-    const featureCards = document.querySelector('.feature-cards');
-    if (hasAgreed === 'true') {
-      if (disclaimer) {
-        disclaimer.style.display = 'none';
-      }
-      if (featureCards) {
-        featureCards.style.display = 'grid';
-      }
-      // Make button green and keep it green
-      acceptButton.classList.add('btn-success');
-      acceptButton.classList.remove('btn-danger');
-      acceptButton.innerHTML = '<i class="fas fa-check-circle"></i> I UNDERSTAND AND ACCEPT ALL RISKS';
-
-      // Add green shadow effect for already agreed users
-      acceptButton.style.boxShadow = '0 0 20px rgba(40, 167, 69, 0.6), 0 4px 8px rgba(40, 167, 69, 0.3)';
-      acceptButton.style.transform = 'scale(1.02)';
-      acceptButton.style.transition = 'all 0.3s ease';
-      // Enable all navigation tabs
-      this.enableNavigationTabs();
-    } else {
-      if (disclaimer) {
-        disclaimer.style.display = 'block';
-      }
-      if (featureCards) {
-        featureCards.style.display = 'none';
-      }
-      // Initialize button state based on checkbox states
-      updateButtonState();
-      // Disable all navigation tabs
-      this.disableNavigationTabs();
-    }
-  }
-  async startModifyCsv() {
-    if (this.isModifying) return;
-    this.isModifying = true;
-    this.uiManager.setModifying(true);
-    try {
-      // Get modify options from UI
-      const modifyOptions = this.getModifyOptions();
-      this.logger.fileLogger.info('Starting modify operation with options', {
-        totalUsers: this.modifyCsvUsers.length,
-        createIfNotExists: modifyOptions.createIfNotExists,
-        updateUserStatus: modifyOptions.updateUserStatus,
-        defaultPopulationId: modifyOptions.defaultPopulationId,
-        defaultEnabled: modifyOptions.defaultEnabled,
-        generatePasswords: modifyOptions.generatePasswords
-      });
-      const results = await this.pingOneClient.modifyUsersFromCsv(this.modifyCsvUsers, {
-        onProgress: progress => {
-          this.uiManager.updateModifyProgress(progress.current, progress.total, `Modifying user ${progress.current} of ${progress.total}...`, progress);
-        },
-        createIfNotExists: modifyOptions.createIfNotExists,
-        updateUserStatus: modifyOptions.updateUserStatus,
-        defaultPopulationId: modifyOptions.defaultPopulationId,
-        defaultEnabled: modifyOptions.defaultEnabled,
-        generatePasswords: modifyOptions.generatePasswords
-      });
-      this.uiManager.updateModifyProgress(results.total, results.total, `Modify completed. Modified: ${results.modified}, Created: ${results.created || 0}, Failed: ${results.failed}, Skipped: ${results.skipped}, No Changes: ${results.noChanges}`, results);
     } catch (error) {
-      this.uiManager.updateModifyProgress(0, 0, `Modify failed: ${error.message}`);
-    } finally {
-      this.isModifying = false;
-      this.uiManager.setModifying(false);
-      this.uiManager.showLoading(false); // Hide spinner
-    }
-  }
-  cancelModifyCsv() {
-    if (this.currentModifyAbortController) {
-      this.currentModifyAbortController.abort();
-      this.logger.fileLogger.info('Canceling modify operation');
-    }
-    this.isModifying = false;
-    this.uiManager.resetModifyState();
-  }
-
-  /**
-   * Generate a sequential filename for exports
-   * @param {string} baseName - Base filename without extension
-   * @param {string} extension - File extension (e.g., 'csv', 'json')
-   * @returns {string} Filename with sequential number
-   */
-  generateSequentialFilename(baseName, extension) {
-    // Get the current counter from localStorage or start at 1
-    const counterKey = `export_counter_${baseName}`;
-    let counter = parseInt(localStorage.getItem(counterKey) || '0') + 1;
-
-    // Save the updated counter
-    localStorage.setItem(counterKey, counter.toString());
-
-    // Generate filename with sequential number
-    const date = new Date().toISOString().split('T')[0];
-    return `${baseName}-${date}-${counter.toString().padStart(3, '0')}.${extension}`;
-  }
-
-  // Export functionality
-  async startExport() {
-    if (this.isExporting) return;
-    this.isExporting = true;
-    this.currentExportAbortController = new AbortController(); // Always initialize
-    this.uiManager.setExporting(true);
-    try {
-      // Set export button to show "Exporting..." state
-      this.uiManager.showExportStatus();
-      this.uiManager.updateExportProgress(0, 0, 'Preparing export...');
-
-      // Get export options
-      const populationSelect = document.getElementById('export-population-select');
-      const populationIdInput = document.getElementById('export-population-id');
-      const fieldsSelect = document.getElementById('export-fields-select');
-      const formatSelect = document.getElementById('export-format-select');
-      const ignoreDisabledUsersCheckbox = document.getElementById('ignore-disabled-users');
-
-      // Check if manual population ID is provided, otherwise use dropdown selection
-      const populationId = populationIdInput.value.trim() || populationSelect.value;
-      const fields = fieldsSelect.value;
-      const format = formatSelect.value;
-      const ignoreDisabledUsers = ignoreDisabledUsersCheckbox.checked;
-      this.logger.fileLogger.info('Starting user export', {
-        populationId: populationId || 'all',
-        fields,
-        format,
-        ignoreDisabledUsers
-      });
-
-      // Make export request
-      const response = await fetch('/api/export-users', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          populationId: populationId || '',
-          fields,
-          format,
-          ignoreDisabledUsers
-        }),
-        signal: this.currentExportAbortController ? this.currentExportAbortController.signal : undefined
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `Export failed with status ${response.status}`);
-      }
-      if (format === 'json') {
-        // Handle JSON response
-        const data = await response.json();
-        this.uiManager.updateExportProgress(data.total, data.total, 'Export completed');
-        this.uiManager.updateExportStats({
-          exported: data.total,
-          failed: 0,
-          skipped: 0,
-          ignored: data.ignored || 0
-        });
-
-        // Log ignored users if any
-        if ((data.ignored || 0) > 0) {
-          const msg = `Ignored ${data.ignored} disabled user(s) during export.`;
-          this.logger.info(msg);
-          this.logger.fileLogger.info(msg);
-          this.uiManager.showInfo(msg);
-        }
-
-        // Create JSON file content
-        const jsonContent = JSON.stringify(data.users, null, 2);
-        const fileName = this.generateSequentialFilename('pingone-users-export', 'json');
-
-        // Try to use File System Access API for save dialog, fallback to download
-        await this.saveFileWithDialog(jsonContent, fileName, 'application/json');
-        this.logger.fileLogger.info('Export completed successfully', {
-          total: data.total,
-          format: 'json',
-          filename: fileName
-        });
-      } else {
-        // Handle CSV response
-        const csvContent = await response.text();
-        const userCount = csvContent.split('\n').length - 1; // Subtract header row
-        this.uiManager.updateExportProgress(userCount, userCount, 'Export completed');
-
-        // For CSV, we need to get the ignored count from response headers or make a separate call
-        const ignoredCount = parseInt(response.headers.get('X-Ignored-Count') || '0');
-        this.uiManager.updateExportStats({
-          exported: userCount,
-          failed: 0,
-          skipped: 0,
-          ignored: ignoredCount
-        });
-
-        // Log ignored users if any
-        if (ignoredCount > 0) {
-          const msg = `Ignored ${ignoredCount} disabled user(s) during export.`;
-          this.logger.info(msg);
-          this.logger.fileLogger.info(msg);
-          this.uiManager.showInfo(msg);
-        }
-
-        // Create CSV file
-        const fileName = this.generateSequentialFilename('pingone-users-export', 'csv');
-
-        // Try to use File System Access API for save dialog, fallback to download
-        await this.saveFileWithDialog(csvContent, fileName, 'text/csv');
-        this.logger.fileLogger.info('Export completed successfully', {
-          total: userCount,
-          format: 'csv',
-          filename: fileName
-        });
-      }
-      this.uiManager.showSuccess('Export completed successfully');
-      this.isExporting = false;
-      this.currentExportAbortController = null;
-
-      // Reset export button back to "Export Users"
-      this.uiManager.setExporting(false);
-    } catch (error) {
+      // Get current population for error handling
+      const currentPopulation = this.forceRefreshPopulationSelection();
+      const populationNameForThisRun = currentPopulation ? currentPopulation.name : '';
+      const populationIdForThisRun = currentPopulation ? currentPopulation.id : '';
       if (error.name === 'AbortError') {
-        this.logger.fileLogger.info('Export cancelled by user');
-        this.uiManager.showInfo('Export cancelled');
+        this.uiManager.updateImportProgress(0, 0, 'Import cancelled', {}, populationNameForThisRun, populationIdForThisRun);
+        this.uiManager.showInfo('Import cancelled');
       } else {
-        const errorMsg = `Export failed: ${error.message}`;
-        this.logger.fileLogger.error(errorMsg, {
-          error
-        });
-        this.uiManager.showError('Export Error', errorMsg);
+        this.uiManager.updateImportProgress(0, 0, 'Import failed: ' + error.message, {}, populationNameForThisRun, populationIdForThisRun);
+        this.uiManager.showError('Import failed', error.message);
       }
-      this.isExporting = false;
-      this.currentExportAbortController = null;
-
-      // Reset export button back to "Export Users" even on error
-      this.uiManager.setExporting(false);
     } finally {
-      this.isExporting = false;
-      this.currentExportAbortController = null;
-      this.uiManager.setExporting(false);
-      this.uiManager.showLoading(false); // Hide spinner
-      this.uiManager.showExportButton(); // <-- Ensure export button is visible after export
+      this.isImporting = false;
+      this.importAbortController = null;
     }
-  }
-  cancelExport() {
-    if (this.currentExportAbortController) {
-      this.currentExportAbortController.abort();
-      this.currentExportAbortController = null;
-    }
-    this.isExporting = false;
-    this.uiManager.hideExportStatus();
-    this.uiManager.showExportButton();
-
-    // Reset export button back to "Export Users"
-    this.uiManager.setExporting(false);
-  }
-  async saveFileWithDialog(content, fileName, mimeType) {
-    let fileSaved = false;
-    try {
-      // Check if File System Access API is supported
-      if ('showSaveFilePicker' in window) {
-        try {
-          // Use File System Access API for save dialog
-          const options = {
-            suggestedName: fileName,
-            types: [{
-              description: mimeType === 'application/json' ? 'JSON File' : 'CSV File',
-              accept: {
-                [mimeType]: [`.${fileName.split('.').pop()}`]
-              }
-            }]
-          };
-          const fileHandle = await window.showSaveFilePicker(options);
-          const writable = await fileHandle.createWritable();
-          await writable.write(content);
-          await writable.close();
-          this.logger.fileLogger.info('File saved using File System Access API', {
-            fileName,
-            mimeType
-          });
-          fileSaved = true;
-
-          // Show success message to user
-          this.uiManager.showSuccess(`File saved successfully: ${fileName}`);
-        } catch (fsError) {
-          // If File System Access API fails, fall back to download
-          this.logger.fileLogger.warn('File System Access API failed, falling back to download', {
-            error: fsError.message,
-            fileName,
-            mimeType
-          });
-        }
-      }
-
-      // Fallback to traditional download if not already saved
-      if (!fileSaved) {
-        const blob = new Blob([content], {
-          type: mimeType
-        });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        this.logger.fileLogger.info('File downloaded using fallback method', {
-          fileName,
-          mimeType
-        });
-        fileSaved = true;
-
-        // Show success message to user
-        this.uiManager.showSuccess(`File downloaded successfully: ${fileName}`);
-      }
-
-      // After successful save, attempt to open the file with preferred application
-      if (fileSaved) {
-        await this.openFileAfterExport(content, fileName, mimeType);
-      }
-    } catch (error) {
-      this.logger.fileLogger.error('Error saving file', {
-        error,
-        fileName,
-        mimeType
-      });
-      throw new Error(`Failed to save file: ${error.message}`);
-    }
-  }
-  async loadPopulationsForExport() {
-    try {
-      console.log('Loading populations for export...');
-
-      // First check if PingOne is connected
-      const healthResponse = await fetch('/api/health');
-      if (healthResponse.ok) {
-        const healthData = await healthResponse.json();
-        if (healthData.server && !healthData.server.pingOne) {
-          // PingOne is not connected, show warning but allow export
-          this.uiManager.showWarning('Export Warning', 'PingOne is not connected. You can still export users, but you may need to configure your settings first.');
-
-          // Set default option for all populations
-          const populationSelect = document.getElementById('export-population-select');
-          populationSelect.innerHTML = '<option value="">All Populations (PingOne not connected)</option>';
-
-          // Enable export button even when PingOne is not connected (users can manually enter population ID)
-          const exportBtn = document.getElementById('start-export-btn');
-          if (exportBtn) {
-            exportBtn.disabled = false;
-          }
-          return;
-        }
-      }
-
-      // Get populations from PingOne
-      const response = await fetch('/api/pingone/populations');
-      if (!response.ok) {
-        throw new Error(`Failed to fetch populations: ${response.status}`);
-      }
-      const populations = await response.json();
-      console.log('Populations loaded:', populations);
-
-      // Update export population select
-      const exportPopulationSelect = document.getElementById('export-population-select');
-      if (exportPopulationSelect) {
-        exportPopulationSelect.innerHTML = '<option value="">All Populations</option>';
-        populations.forEach(population => {
-          const option = document.createElement('option');
-          option.value = population.id;
-          option.textContent = population.name;
-          exportPopulationSelect.appendChild(option);
-        });
-      }
-
-      // Update import population select
-      const importPopulationSelect = document.getElementById('import-population-select');
-      if (importPopulationSelect) {
-        importPopulationSelect.innerHTML = '<option value="">Select a population...</option>';
-        populations.forEach(population => {
-          const option = document.createElement('option');
-          option.value = population.id;
-          option.textContent = population.name;
-          importPopulationSelect.appendChild(option);
-        });
-      }
-
-      // Enable export button
-      const exportBtn = document.getElementById('start-export-btn');
-      if (exportBtn) {
-        exportBtn.disabled = false;
-      }
-    } catch (error) {
-      console.error('Error loading populations:', error);
-      this.logger.fileLogger.error('Failed to load populations', {
-        error: error.message
-      });
-
-      // Show error but don't block the UI
-      this.uiManager.showWarning('Population Loading Warning', 'Failed to load populations from PingOne. You can still use manual population ID entry.');
-
-      // Set default options
-      const exportPopulationSelect = document.getElementById('export-population-select');
-      const importPopulationSelect = document.getElementById('import-population-select');
-      if (exportPopulationSelect) {
-        exportPopulationSelect.innerHTML = '<option value="">All Populations (Error loading)</option>';
-      }
-      if (importPopulationSelect) {
-        importPopulationSelect.innerHTML = '<option value="">Select a population... (Error loading)</option>';
-      }
-    }
-  }
-  async loadPopulationsForImport() {
-    try {
-      console.log('Loading populations for import...');
-
-      // Check if the select element exists
-      const importPopulationSelect = document.getElementById('import-population-select');
-      if (!importPopulationSelect) {
-        console.error('import-population-select element not found');
-        return;
-      }
-
-      // First check if PingOne is connected
-      console.log('Checking PingOne connection...');
-      const healthResponse = await fetch('/api/health');
-      if (healthResponse.ok) {
-        const healthData = await healthResponse.json();
-        console.log('Health check response:', healthData);
-        if (healthData.server && !healthData.server.pingOne) {
-          this.uiManager.showWarning('Import Warning', 'PingOne is not connected. Please configure your settings first.');
-          importPopulationSelect.innerHTML = '<option value="">PingOne not connected</option>';
-          return;
-        }
-      }
-
-      // Get populations from PingOne
-      console.log('Fetching populations from /api/pingone/populations...');
-      const response = await fetch('/api/pingone/populations');
-      console.log('Population response status:', response.status);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch populations: ${response.status}`);
-      }
-      let populations = await response.json();
-      console.log('Raw populations response:', populations);
-
-      // Robust: handle {data: string} or array
-      if (Array.isArray(populations)) {
-        console.log('Populations is already an array');
-      } else if (populations && typeof populations.data === 'string') {
-        console.log('Populations.data is a string, parsing...');
-        try {
-          populations = JSON.parse(populations.data);
-          console.log('Parsed populations:', populations);
-        } catch (e) {
-          console.error('Failed to parse populations.data as JSON:', e);
-          this.logger.fileLogger.error('Failed to parse populations.data as JSON', {
-            error: e.message,
-            data: populations.data
-          });
-          populations = [];
-        }
-      } else if (populations && Array.isArray(populations.data)) {
-        console.log('Populations.data is an array');
-        populations = populations.data;
-      } else {
-        console.warn('Unexpected populations API response format:', populations);
-        this.logger.fileLogger.warn('Unexpected populations API response format', {
-          populations
-        });
-        populations = [];
-      }
-      console.log('Final populations array:', populations);
-
-      // Update import population select
-      if (importPopulationSelect) {
-        importPopulationSelect.innerHTML = '<option value="">Select a population...</option>';
-        populations.forEach(population => {
-          const option = document.createElement('option');
-          option.value = population.id;
-          option.textContent = population.name;
-          importPopulationSelect.appendChild(option);
-          console.log('Added population option:', population.name, population.id);
-        });
-        console.log('Population dropdown updated with', populations.length, 'options');
-      }
-    } catch (error) {
-      console.error('Error loading populations for import:', error);
-      this.logger.fileLogger.error('Failed to load populations for import', {
-        error: error.message
-      });
-      this.uiManager.showWarning('Population Loading Warning', 'Failed to load populations from PingOne. You can still use default population or manual entry.');
-      const importPopulationSelect = document.getElementById('import-population-select');
-      if (importPopulationSelect) {
-        importPopulationSelect.innerHTML = '<option value="">Error loading populations</option>';
-      }
-    }
-  }
-
-  /**
-   * Save export preferences to localStorage
-   */
-  saveExportPreferences() {
-    const openAfterExport = document.getElementById('open-after-export')?.checked || false;
-    const preferredCsvApp = document.getElementById('preferred-csv-app')?.value || '';
-    const customAppPath = document.getElementById('custom-app-path')?.value || '';
-    const preferences = {
-      openAfterExport,
-      preferredCsvApp,
-      customAppPath
-    };
-    localStorage.setItem('exportPreferences', JSON.stringify(preferences));
-    this.logger.fileLogger.info('Export preferences saved', preferences);
-  }
-
-  /**
-   * Load export preferences from localStorage
-   */
-  loadExportPreferences() {
-    try {
-      const savedPreferences = localStorage.getItem('exportPreferences');
-      if (savedPreferences) {
-        const preferences = JSON.parse(savedPreferences);
-        const openAfterExport = document.getElementById('open-after-export');
-        const preferredCsvApp = document.getElementById('preferred-csv-app');
-        const customAppPath = document.getElementById('custom-app-path');
-        const customAppPathGroup = document.getElementById('custom-app-path-group');
-        if (openAfterExport) {
-          openAfterExport.checked = false; // Always unchecked on load
-        }
-        if (preferredCsvApp) {
-          preferredCsvApp.value = preferences.preferredCsvApp || '';
-        }
-        if (customAppPath) {
-          customAppPath.value = preferences.customAppPath || '';
-        }
-
-        // Show/hide custom app path group based on selection
-        if (customAppPathGroup) {
-          customAppPathGroup.style.display = preferences.preferredCsvApp === 'custom' ? 'block' : 'none';
-        }
-        this.logger.fileLogger.info('Export preferences loaded', preferences);
-      }
-    } catch (error) {
-      this.logger.fileLogger.error('Failed to load export preferences', {
-        error
-      });
-    }
-  }
-
-  /**
-   * Open file with preferred application after export
-   */
-  async openFileAfterExport(content, fileName, mimeType) {
-    try {
-      const preferences = JSON.parse(localStorage.getItem('exportPreferences') || '{}');
-      if (!preferences.openAfterExport) {
-        return; // User doesn't want to open file after export
-      }
-
-      // Create a blob URL for the file
-      const blob = new Blob([content], {
-        type: mimeType
-      });
-      const url = URL.createObjectURL(blob);
-      const preferredApp = preferences.preferredCsvApp || '';
-
-      // Handle different preferred applications
-      switch (preferredApp) {
-        case 'excel':
-          await this.openWithExcel(url, fileName);
-          break;
-        case 'sheets':
-          await this.openWithGoogleSheets(content, fileName);
-          break;
-        case 'calc':
-          await this.openWithLibreOffice(url, fileName);
-          break;
-        case 'numbers':
-          await this.openWithNumbers(url, fileName);
-          break;
-        case 'notepad':
-          await this.openWithTextEditor(url, fileName);
-          break;
-        case 'custom':
-          await this.openWithCustomApp(url, fileName, preferences.customAppPath);
-          break;
-        default:
-          // Open with system default
-          await this.openWithSystemDefault(url, fileName);
-          break;
-      }
-
-      // Clean up blob URL after a delay
-      setTimeout(() => {
-        URL.revokeObjectURL(url);
-      }, 10000);
-      this.logger.fileLogger.info('File opened with preferred application', {
-        fileName,
-        preferredApp: preferredApp || 'system default'
-      });
-    } catch (error) {
-      this.logger.fileLogger.error('Failed to open file with preferred application', {
-        error,
-        fileName
-      });
-      this.uiManager.showWarning('File Open Warning', `Could not open file with preferred application: ${error.message}. File was saved successfully.`);
-    }
-  }
-
-  /**
-   * Open file with system default application
-   */
-  async openWithSystemDefault(url, fileName) {
-    // Detect macOS
-    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-    if (isMac) {
-      // On macOS, browsers can't directly launch applications due to security restrictions
-      // Show macOS-specific instructions
-      this.uiManager.showInfo('File Download Complete (macOS)', `File ${fileName} has been downloaded successfully.\n\n` + `To open the file on macOS:\n` + `1. Check your Downloads folder\n` + `2. Double-click the file to open with your default application\n` + `3. Or right-click and select "Open with" to choose a specific application\n` + `4. If the file doesn't open, right-click and select "Open" (this bypasses Gatekeeper)\n\n` + `💡 Tip: You can also drag the file to your preferred application's icon in the Dock.`);
-      return;
-    }
-
-    // For non-macOS systems, try using window.open first
-    try {
-      const newWindow = window.open(url, '_blank');
-      if (newWindow) {
-        this.uiManager.showSuccess(`File opened in new tab: ${fileName}`);
-        return;
-      }
-    } catch (error) {
-      this.logger.fileLogger.warn('Failed to open with window.open', {
-        error
-      });
-    }
-
-    // Fallback: Show instructions
-    this.showFileOpenInstructions(fileName);
-  }
-
-  /**
-   * Open file with Microsoft Excel
-   */
-  async openWithExcel(url, fileName) {
-    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-    if (isMac) {
-      // On macOS, provide specific instructions for Excel
-      this.uiManager.showInfo('Microsoft Excel (macOS)', `File ${fileName} has been downloaded successfully.\n\n` + `To open with Microsoft Excel on macOS:\n` + `1. Open Microsoft Excel\n` + `2. Click "File" > "Open"\n` + `3. Navigate to your Downloads folder\n` + `4. Select the file and click "Open"\n\n` + `💡 Alternative: Right-click the file and select "Open with" > "Microsoft Excel"`);
-      return;
-    }
-
-    // For non-macOS systems, try to use the ms-excel protocol
-    try {
-      const excelUrl = `ms-excel:ofe|u|${url}`;
-      window.location.href = excelUrl;
-      this.uiManager.showSuccess(`Opening ${fileName} with Microsoft Excel`);
-    } catch (error) {
-      this.logger.fileLogger.warn('Failed to open with Excel protocol', {
-        error
-      });
-      await this.openWithSystemDefault(url, fileName);
-    }
-  }
-
-  /**
-   * Open file with Google Sheets
-   */
-  async openWithGoogleSheets(content, fileName) {
-    try {
-      // For Google Sheets, we need to upload the file or provide instructions
-      this.uiManager.showInfo('Google Sheets Integration', `File ${fileName} has been downloaded. To open in Google Sheets:\n\n` + `1. Go to sheets.google.com\n` + `2. Click "File" > "Import"\n` + `3. Select the downloaded file\n` + `4. Choose your import settings and click "Import data"`);
-    } catch (error) {
-      this.logger.fileLogger.warn('Failed to provide Google Sheets instructions', {
-        error
-      });
-      this.showFileOpenInstructions(fileName);
-    }
-  }
-
-  /**
-   * Open file with LibreOffice Calc
-   */
-  async openWithLibreOffice(url, fileName) {
-    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-    if (isMac) {
-      // On macOS, provide specific instructions for LibreOffice
-      this.uiManager.showInfo('LibreOffice Calc (macOS)', `File ${fileName} has been downloaded successfully.\n\n` + `To open with LibreOffice Calc on macOS:\n` + `1. Open LibreOffice Calc (from Applications folder)\n` + `2. Click "File" > "Open"\n` + `3. Navigate to your Downloads folder\n` + `4. Select the file and click "Open"\n\n` + `💡 Alternative: Right-click the file and select "Open with" > "LibreOffice Calc"\n` + `💡 Note: If LibreOffice isn't installed, you can download it from libreoffice.org`);
-      return;
-    }
-
-    // For non-macOS systems, try to open with system default first
-    try {
-      await this.openWithSystemDefault(url, fileName);
-
-      // Show additional instructions for LibreOffice
-      this.uiManager.showInfo('LibreOffice Calc', `File ${fileName} has been downloaded. If LibreOffice Calc doesn't open automatically:\n\n` + `1. Open LibreOffice Calc\n` + `2. Click "File" > "Open"\n` + `3. Select the downloaded file\n` + `4. Choose your import settings if prompted`);
-    } catch (error) {
-      this.logger.fileLogger.warn('Failed to open with LibreOffice', {
-        error
-      });
-      this.showFileOpenInstructions(fileName);
-    }
-  }
-
-  /**
-   * Open file with Apple Numbers
-   */
-  async openWithNumbers(url, fileName) {
-    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-    if (isMac) {
-      // On macOS, provide specific instructions for Numbers
-      this.uiManager.showInfo('Apple Numbers (macOS)', `File ${fileName} has been downloaded successfully.\n\n` + `To open with Apple Numbers on macOS:\n` + `1. Open Numbers (from Applications folder or Spotlight)\n` + `2. Click "File" > "Open"\n` + `3. Navigate to your Downloads folder\n` + `4. Select the file and click "Open"\n\n` + `💡 Alternative: Right-click the file and select "Open with" > "Numbers"\n` + `💡 Tip: You can also drag the file to the Numbers icon in your Dock`);
-      return;
-    }
-
-    // For non-macOS systems, try to open with system default first
-    try {
-      await this.openWithSystemDefault(url, fileName);
-
-      // Show additional instructions for Numbers
-      this.uiManager.showInfo('Apple Numbers', `File ${fileName} has been downloaded. If Numbers doesn't open automatically:\n\n` + `1. Open Numbers\n` + `2. Click "File" > "Open"\n` + `3. Select the downloaded file\n` + `4. Choose your import settings if prompted`);
-    } catch (error) {
-      this.logger.fileLogger.warn('Failed to open with Numbers', {
-        error
-      });
-      this.showFileOpenInstructions(fileName);
-    }
-  }
-
-  /**
-   * Open file with text editor
-   */
-  async openWithTextEditor(url, fileName) {
-    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-    if (isMac) {
-      // On macOS, provide specific instructions for text editors
-      this.uiManager.showInfo('Text Editor (macOS)', `File ${fileName} has been downloaded successfully.\n\n` + `To open with a text editor on macOS:\n` + `1. Right-click the file in Finder\n` + `2. Select "Open with" > "TextEdit" (or your preferred editor)\n` + `3. Or drag the file to TextEdit in your Applications folder\n\n` + `💡 Popular text editors on macOS:\n` + `• TextEdit (built-in)\n` + `• Visual Studio Code\n` + `• Sublime Text\n` + `• BBEdit`);
-      return;
-    }
-
-    // For non-macOS systems, try to open in a new tab/window as text
-    try {
-      const newWindow = window.open(url, '_blank');
-      if (newWindow) {
-        this.uiManager.showSuccess(`File opened in text editor: ${fileName}`);
-        return;
-      }
-    } catch (error) {
-      this.logger.fileLogger.warn('Failed to open with text editor', {
-        error
-      });
-    }
-
-    // Show instructions
-    this.uiManager.showInfo('Text Editor', `File ${fileName} has been downloaded. To open in your preferred text editor:\n\n` + `1. Right-click the downloaded file\n` + `2. Select "Open with" > "Text Editor" (or your preferred editor)\n` + `3. The CSV data will be displayed as plain text`);
-  }
-
-  /**
-   * Open file with custom application
-   */
-  async openWithCustomApp(url, fileName, customPath) {
-    try {
-      if (!customPath) {
-        throw new Error('Custom application path not specified');
-      }
-      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-      if (isMac) {
-        // On macOS, provide specific instructions for custom applications
-        this.uiManager.showInfo('Custom Application (macOS)', `File ${fileName} has been downloaded successfully.\n\n` + `To open with your custom application on macOS:\n` + `1. Right-click the file in Finder\n` + `2. Select "Open with" > "Choose another app"\n` + `3. Navigate to: ${customPath}\n` + `4. Select your application and click "Open"\n\n` + `💡 Alternative: Drag the file to your application's icon in the Dock\n` + `�� Note: You may need to hold Option (⌥) when selecting "Open with" to see all applications`);
-        return;
-      }
-
-      // For non-macOS systems, show instructions
-      this.uiManager.showInfo('Custom Application', `File ${fileName} has been downloaded. To open with your custom application:\n\n` + `1. Locate the downloaded file\n` + `2. Right-click and select "Open with" > "Choose another app"\n` + `3. Navigate to: ${customPath}\n` + `4. Select your application and click "Open"`);
-    } catch (error) {
-      this.logger.fileLogger.warn('Failed to open with custom app', {
-        error
-      });
-      this.showFileOpenInstructions(fileName);
-    }
-  }
-
-  /**
-   * Show general file open instructions
-   */
-  showFileOpenInstructions(fileName) {
-    this.uiManager.showInfo('File Download Complete', `File ${fileName} has been downloaded successfully.\n\n` + `To open the file:\n` + `1. Check your Downloads folder\n` + `2. Double-click the file to open with your default application\n` + `3. Or right-click and select "Open with" to choose a specific application`);
-  }
-
-  /**
-   * Handle the "create if not exists" checkbox change
-   */
-  handleCreateIfNotExistsChange() {
-    const createIfNotExistsCheckbox = document.getElementById('create-if-not-exists');
-    const createOptions = document.getElementById('create-options');
-    if (createIfNotExistsCheckbox && createOptions) {
-      if (createIfNotExistsCheckbox.checked) {
-        createOptions.style.display = 'block';
-        this.uiManager.showNotification('Users that don\'t exist will be created with the specified options.', 'info');
-      } else {
-        createOptions.style.display = 'none';
-        this.uiManager.showNotification('Users that don\'t exist will be skipped.', 'info');
-      }
-    }
-  }
-
-  /**
-   * Load populations for modify options
-   */
-  async loadModifyPopulations() {
-    try {
-      const populationSelect = document.getElementById('default-population-select');
-      if (!populationSelect) {
-        console.warn('Default population select not found');
-        return;
-      }
-
-      // Clear existing options
-      populationSelect.innerHTML = '<option value="">Loading populations...</option>';
-
-      // Use the same flattened API endpoint that other pages use
-      const response = await fetch('/api/pingone/populations');
-      if (!response.ok) {
-        throw new Error(`Failed to fetch populations: ${response.status}`);
-      }
-      const populations = await response.json();
-      console.log('Populations loaded for modify:', populations);
-      if (populations && Array.isArray(populations) && populations.length > 0) {
-        // Clear loading option
-        populationSelect.innerHTML = '';
-
-        // Add populations to select
-        populations.forEach(population => {
-          const option = document.createElement('option');
-          option.value = population.id;
-          option.textContent = population.name || population.id;
-          populationSelect.appendChild(option);
-        });
-
-        // Set default to first population if available
-        if (populations.length > 0) {
-          populationSelect.value = populations[0].id;
-        }
-        console.log('Loaded populations for modify options:', populations.length);
-      } else {
-        populationSelect.innerHTML = '<option value="">No populations found</option>';
-        console.warn('No populations found for modify options');
-      }
-    } catch (error) {
-      console.error('Failed to load populations for modify options:', error);
-      const populationSelect = document.getElementById('default-population-select');
-      if (populationSelect) {
-        populationSelect.innerHTML = '<option value="">Error loading populations</option>';
-      }
-    }
-  }
-
-  /**
-   * Get modify options from UI
-   */
-  getModifyOptions() {
-    const createIfNotExists = document.getElementById('create-if-not-exists')?.checked || false;
-    const updateUserStatus = document.getElementById('update-user-status')?.checked || false;
-    const defaultPopulationId = document.getElementById('default-population-select')?.value || '';
-    const defaultEnabled = document.getElementById('default-enabled-status')?.value || 'true';
-    const generatePasswords = document.getElementById('generate-passwords')?.checked || true;
-    return {
-      createIfNotExists,
-      updateUserStatus,
-      defaultPopulationId,
-      defaultEnabled,
-      generatePasswords
-    };
   }
   getImportOptions() {
-    const selectedPopulationId = document.getElementById('import-population-select')?.value || '';
-    const useCsvPopulationId = document.getElementById('use-csv-population-id')?.checked || false;
-    const useDefaultPopulation = document.getElementById('use-default-population')?.checked || true;
+    const populationSelect = document.getElementById('import-population-select');
+    const selectedPopulationId = populationSelect?.value;
+    const selectedPopulationName = populationSelect?.selectedOptions[0]?.text || '';
 
-    // Get the population name from the selected option
-    let selectedPopulationName = '';
-    if (selectedPopulationId) {
-      const selectedOption = document.getElementById('import-population-select')?.querySelector(`option[value="${selectedPopulationId}"]`);
-      selectedPopulationName = selectedOption?.textContent || '';
+    // Debug: Log the current population selection
+    console.log('=== getImportOptions Debug ===');
+    console.log('Population select element:', populationSelect);
+    console.log('Selected population ID:', selectedPopulationId);
+    console.log('Selected population name:', selectedPopulationName);
+    console.log('All options:', populationSelect ? Array.from(populationSelect.options).map(opt => ({
+      value: opt.value,
+      text: opt.text
+    })) : 'No select element');
+    console.log('===========================');
+    if (!selectedPopulationId) {
+      this.uiManager.showError('No population selected', 'Please select a population before starting the import.');
+      return null;
     }
-
-    // Auto-detect if CSV has populationId data
-    const users = this.fileHandler.getParsedUsers();
-    const hasCsvPopulationId = users && users.some(user => user.populationId && user.populationId.trim() !== '');
-
-    // If CSV has populationId data but checkbox is not checked, we'll handle this in startImport
-    const effectiveUseCsvPopulationId = useCsvPopulationId;
+    const totalUsers = this.fileHandler.getTotalUsers();
+    if (!totalUsers || totalUsers === 0) {
+      this.uiManager.showError('No users to import', 'Please select a CSV file with users to import.');
+      return null;
+    }
     return {
       selectedPopulationId,
       selectedPopulationName,
-      useCsvPopulationId: effectiveUseCsvPopulationId,
-      useDefaultPopulation,
-      hasCsvPopulationId
+      totalUsers,
+      file: this.fileHandler.getCurrentFile()
     };
   }
-  async checkCsvPopulationIdAvailability(users) {
-    // Check if any user has a populationId field
-    const hasPopulationId = users.some(user => user.populationId !== undefined && user.populationId !== '');
-    return hasPopulationId;
-  }
-  async handlePopulationIdMissing() {
-    return new Promise(resolve => {
-      const modal = document.getElementById('population-id-modal');
-      const backBtn = document.getElementById('population-modal-back');
-      const continueBtn = document.getElementById('population-modal-continue');
 
-      // Show modal
-      modal.style.display = 'block';
-      modal.classList.add('show');
-
-      // Handle back button
-      backBtn.onclick = () => {
-        modal.style.display = 'none';
-        modal.classList.remove('show');
-        resolve({
-          action: 'back'
-        });
-      };
-
-      // Handle continue button
-      continueBtn.onclick = () => {
-        modal.style.display = 'none';
-        modal.classList.remove('show');
-        resolve({
-          action: 'continue'
-        });
-      };
-
-      // Handle close button
-      const closeBtn = modal.querySelector('.close');
-      if (closeBtn) {
-        closeBtn.onclick = () => {
-          modal.style.display = 'none';
-          modal.classList.remove('show');
-          resolve({
-            action: 'back'
-          });
-        };
-      }
-    });
-  }
-  async handleCsvPopulationIdFound() {
-    return new Promise(resolve => {
-      const modal = document.getElementById('csv-population-id-modal');
-      const backBtn = document.getElementById('csv-population-modal-back');
-      const useCsvBtn = document.getElementById('csv-population-modal-use-csv');
-      const continueBtn = document.getElementById('csv-population-modal-continue');
-
-      // Show modal
-      modal.style.display = 'block';
-      modal.classList.add('show');
-
-      // Handle back button
-      backBtn.onclick = () => {
-        modal.style.display = 'none';
-        modal.classList.remove('show');
-        resolve({
-          action: 'back'
-        });
-      };
-
-      // Handle use CSV button
-      useCsvBtn.onclick = () => {
-        // Enable the checkbox
-        const checkbox = document.getElementById('use-csv-population-id');
-        if (checkbox) {
-          checkbox.checked = true;
-        }
-        modal.style.display = 'none';
-        modal.classList.remove('show');
-        resolve({
-          action: 'use_csv'
-        });
-      };
-
-      // Handle continue button
-      continueBtn.onclick = () => {
-        modal.style.display = 'none';
-        modal.classList.remove('show');
-        resolve({
-          action: 'continue'
-        });
-      };
-
-      // Handle close button
-      const closeBtn = modal.querySelector('.close');
-      if (closeBtn) {
-        closeBtn.onclick = () => {
-          modal.style.display = 'none';
-          modal.classList.remove('show');
-          resolve({
-            action: 'back'
-          });
-        };
-      }
-    });
-  }
-  async handleDeleteCsvFileSelect(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    try {
-      this.logger.fileLogger.info('Processing delete CSV file', {
-        fileName: file.name,
-        fileSize: file.size
-      });
-
-      // Save the folder path for next time
-      if (this.fileHandler) {
-        this.fileHandler.saveLastFolderPath(file, 'delete');
-      }
-
-      // Show loading state
-      this.uiManager.showLoading(true, 'Processing delete file...');
-
-      // Parse the CSV file
-      const users = await this.parseCsvFile(file, 'delete-csv-preview-container');
-
-      // Store the users for deletion
-      this.deleteCsvUsers = users;
-
-      // Show file info
-      this.showDeleteCsvFileInfo(file);
-
-      // Update button state
-      this.updateDeleteCsvButtonState();
-
-      // Update file label to show last folder path
-      if (this.fileHandler) {
-        this.fileHandler.updateFileLabel('delete');
-      }
-
-      // Show success message
-      this.uiManager.showNotification(`✅ Successfully processed ${users.length} users for deletion`, 'success');
-    } catch (error) {
-      this.logger.fileLogger.error('Error processing delete CSV file', {
-        error: error.message
-      });
-      this.uiManager.showNotification(`Error processing file: ${error.message}`, 'error');
-    } finally {
-      this.uiManager.showLoading(false);
+  // Enhanced method to get current population selection with validation
+  getCurrentPopulationSelection() {
+    const populationSelect = document.getElementById('import-population-select');
+    if (!populationSelect) {
+      console.error('Population select element not found');
+      return null;
     }
-  }
-  async handleModifyCsvFileSelect(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    try {
-      this.logger.fileLogger.info('Processing modify CSV file', {
-        fileName: file.name,
-        fileSize: file.size
-      });
-
-      // Save the folder path for next time
-      if (this.fileHandler) {
-        this.fileHandler.saveLastFolderPath(file, 'modify');
-      }
-
-      // Show loading state
-      this.uiManager.showLoading(true, 'Processing modify file...');
-
-      // Parse the CSV file
-      const users = await this.parseCsvFile(file, 'modify-preview-container');
-
-      // Store the users for modification
-      this.modifyCsvUsers = users;
-
-      // Show file info
-      this.showModifyCsvFileInfo(file);
-
-      // Update button state
-      this.updateModifyCsvButtonState();
-
-      // Update file label to show last folder path
-      if (this.fileHandler) {
-        this.fileHandler.updateFileLabel('modify');
-      }
-
-      // Show success message
-      this.uiManager.showNotification(`✅ Successfully processed ${users.length} users for modification`, 'success');
-    } catch (error) {
-      this.logger.fileLogger.error('Error processing modify CSV file', {
-        error: error.message
-      });
-      this.uiManager.showNotification(`Error processing file: ${error.message}`, 'error');
-    } finally {
-      this.uiManager.showLoading(false);
+    const selectedPopulationId = populationSelect.value;
+    const selectedPopulationName = populationSelect.selectedOptions[0]?.text || '';
+    console.log('=== getCurrentPopulationSelection ===');
+    console.log('Population ID:', selectedPopulationId);
+    console.log('Population Name:', selectedPopulationName);
+    console.log('Select element exists:', !!populationSelect);
+    console.log('Select element value:', populationSelect.value);
+    console.log('Selected option:', populationSelect.selectedOptions[0]);
+    console.log('====================================');
+    if (!selectedPopulationId) {
+      return null;
     }
-  }
-  updateImportButtonState() {
-    // Check if we have users to import
-    const users = this.fileHandler.getParsedUsers();
-    const hasUsers = users && users.length > 0;
-
-    // Check if population choice has been made
-    const selectedPopulationId = document.getElementById('import-population-select')?.value || '';
-    const useDefaultPopulation = document.getElementById('use-default-population')?.checked || false;
-    const useCsvPopulationId = document.getElementById('use-csv-population-id')?.checked || false;
-
-    // Auto-detect if CSV has populationId data
-    const hasCsvPopulationId = users && users.some(user => user.populationId && user.populationId.trim() !== '');
-    const hasSelectedPopulation = selectedPopulationId && selectedPopulationId.trim() !== '';
-    const hasPopulationChoice = hasSelectedPopulation || useDefaultPopulation || useCsvPopulationId || hasCsvPopulationId;
-
-    // Check if PingOne token is available
-    const hasValidToken = this.pingOneClient && this.pingOneClient.getCachedToken();
-
-    // Enable buttons only if we have users, population choice, AND valid token
-    const shouldEnable = hasUsers && hasPopulationChoice && hasValidToken;
-
-    // Update import button
-    const importBtnBottom = document.getElementById('start-import-btn-bottom');
-    if (importBtnBottom) {
-      importBtnBottom.disabled = !shouldEnable;
-
-      // Update button text to indicate token status
-      if (!hasValidToken) {
-        importBtnBottom.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Get Token First';
-        importBtnBottom.title = 'Please go to Settings and get a valid PingOne token before importing';
-      } else {
-        importBtnBottom.innerHTML = '<i class="fas fa-upload"></i> Import Users (v4.5)';
-        importBtnBottom.title = 'Import users to PingOne';
-      }
-    }
-    this.logger.fileLogger.info('Import button state updated', {
-      hasUsers,
-      hasPopulationChoice,
-      hasValidToken,
-      shouldEnable,
-      selectedPopulationId: hasSelectedPopulation ? 'selected' : 'none',
-      useDefaultPopulation,
-      useCsvPopulationId,
-      hasCsvPopulationId
-    });
+    return {
+      id: selectedPopulationId,
+      name: selectedPopulationName
+    };
   }
 
-  /**
-   * Update delete CSV button state
-   */
-  updateDeleteCsvButtonState() {
-    const startDeleteBtn = document.getElementById('start-delete-csv-btn');
-    const startDeleteBtnBottom = document.getElementById('start-delete-csv-btn-bottom');
-    const cancelDeleteBtn = document.getElementById('cancel-delete-csv-btn');
-    const cancelDeleteBtnBottom = document.getElementById('cancel-delete-csv-btn-bottom');
-    if (startDeleteBtn) {
-      startDeleteBtn.disabled = !this.deleteCsvUsers || this.deleteCsvUsers.length === 0;
+  // Force refresh population selection to ensure it's current
+  forceRefreshPopulationSelection() {
+    const populationSelect = document.getElementById('import-population-select');
+    if (!populationSelect) {
+      console.error('Population select element not found for refresh');
+      return null;
     }
-    if (startDeleteBtnBottom) {
-      startDeleteBtnBottom.disabled = !this.deleteCsvUsers || this.deleteCsvUsers.length === 0;
-    }
-    if (cancelDeleteBtn) {
-      cancelDeleteBtn.style.display = this.isDeletingCsv ? 'inline-block' : 'none';
-    }
-    if (cancelDeleteBtnBottom) {
-      cancelDeleteBtnBottom.style.display = this.isDeletingCsv ? 'inline-block' : 'none';
+
+    // Force a re-read of the current selection
+    const currentValue = populationSelect.value;
+    const currentText = populationSelect.selectedOptions[0]?.text || '';
+    console.log('=== forceRefreshPopulationSelection ===');
+    console.log('Forced refresh - Population ID:', currentValue);
+    console.log('Forced refresh - Population Name:', currentText);
+    console.log('==========================================');
+    return {
+      id: currentValue,
+      name: currentText
+    };
+  }
+  cancelImport() {
+    if (this.importAbortController) {
+      this.importAbortController.abort();
     }
   }
-
-  /**
-   * Load populations for deletion dropdown
-   */
-  async loadPopulationsForDeletion() {
-    console.log('[DEBUG] loadPopulationsForDeletion called');
-    try {
-      const populationSelect = document.getElementById('population-delete-select');
-      console.log('[DEBUG] Population select element:', populationSelect);
-      if (!populationSelect) {
-        console.warn('[DEBUG] Population delete select not found');
-        return;
-      }
-      console.log('[DEBUG] Clearing existing options and setting loading state');
-      // Clear existing options
-      populationSelect.innerHTML = '<option value="">Loading populations...</option>';
-      console.log('[DEBUG] Fetching populations from API...');
-      // Use the same flattened API endpoint that other pages use
-      const response = await fetch('/api/pingone/populations');
-      console.log('[DEBUG] API response status:', response.status, response.ok);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch populations: ${response.status}`);
-      }
-      const populations = await response.json();
-      console.log('[DEBUG] Populations loaded for deletion:', populations);
-      if (populations && Array.isArray(populations) && populations.length > 0) {
-        console.log('[DEBUG] Found populations, adding to select dropdown');
-        // Clear loading option
-        populationSelect.innerHTML = '<option value="">Select a population...</option>';
-
-        // Add populations to select
-        populations.forEach((population, index) => {
-          console.log(`[DEBUG] Adding population ${index}:`, population);
-          const option = document.createElement('option');
-          option.value = population.id;
-          option.textContent = population.name || population.id;
-          populationSelect.appendChild(option);
-        });
-        console.log('[DEBUG] Loaded populations for deletion:', populations.length);
-        console.log('[DEBUG] Population details for deletion:');
-        populations.forEach((pop, index) => {
-          console.log(`  ${index}: id="${pop.id}", name="${pop.name}"`);
-        });
-      } else {
-        console.log('[DEBUG] No populations found or invalid response');
-        populationSelect.innerHTML = '<option value="">No populations found</option>';
-        console.warn('[DEBUG] No populations found for deletion');
-      }
-    } catch (error) {
-      console.error('[DEBUG] Failed to load populations for deletion:', error);
-      const populationSelect = document.getElementById('population-delete-select');
-      if (populationSelect) {
-        populationSelect.innerHTML = '<option value="">Error loading populations</option>';
-      }
-    }
-  }
-
-  /**
-   * Update population delete button state
-   */
-  updatePopulationDeleteButtonState() {
-    console.log('[DEBUG] updatePopulationDeleteButtonState called');
-    const startDeleteBtn = document.getElementById('start-population-delete-btn');
-    const cancelDeleteBtn = document.getElementById('cancel-population-delete-btn');
-    const populationSelect = document.getElementById('population-delete-select');
-    console.log('[DEBUG] Button state elements:', {
-      startDeleteBtn: !!startDeleteBtn,
-      cancelDeleteBtn: !!cancelDeleteBtn,
-      populationSelect: !!populationSelect,
-      populationSelectValue: populationSelect?.value,
-      isDeletingPopulation: this.isDeletingPopulation
-    });
-    if (startDeleteBtn && populationSelect) {
-      const shouldDisable = !populationSelect.value || this.isDeletingPopulation;
-      startDeleteBtn.disabled = shouldDisable;
-      console.log('[DEBUG] Start delete button disabled:', shouldDisable);
-    }
-    if (cancelDeleteBtn) {
-      cancelDeleteBtn.style.display = this.isDeletingPopulation ? 'inline-block' : 'none';
-      console.log('[DEBUG] Cancel delete button display:', this.isDeletingPopulation ? 'inline-block' : 'none');
-    }
-  }
-
-  /**
-   * Start population deletion process
-   */
-  async startPopulationDelete() {
-    const populationSelect = document.getElementById('population-delete-select');
-    if (!populationSelect || !populationSelect.value) {
-      this.uiManager.showNotification('Please select a population to delete users from.', 'warning');
+  async startExport() {
+    if (this.isExporting) {
+      this.logger.warn('Export already in progress');
       return;
     }
-    const populationId = populationSelect.value;
-    const populationName = populationSelect.options[populationSelect.selectedIndex].text;
-
-    // Debug logging to help identify the issue
-    console.log('Population delete debug:', {
-      selectedValue: populationId,
-      selectedText: populationName,
-      selectedIndex: populationSelect.selectedIndex,
-      totalOptions: populationSelect.options.length
-    });
-
-    // Log all available options for debugging
-    console.log('Available population options:');
-    for (let i = 0; i < populationSelect.options.length; i++) {
-      const option = populationSelect.options[i];
-      console.log(`  ${i}: value="${option.value}", text="${option.text}"`);
-    }
-
-    // Use modal instead of confirm
-    const confirmed = await this.confirmDeleteAction(`<strong>⚠️ WARNING:</strong> This will permanently delete <b>ALL</b> users in the population <b>"${populationName}"</b>. This action cannot be undone.<br><br>Are you absolutely sure you want to continue?`);
-    if (!confirmed) return;
-    this.isDeletingPopulation = true;
-    this.updatePopulationDeleteButtonState();
-
-    // Create AbortController for this delete process
-    this.populationDeleteAbortController = new AbortController();
     try {
-      // Show progress UI
-      this.uiManager.showPopulationDeleteStatus();
+      this.isExporting = true;
+      this.exportAbortController = new AbortController();
+      const exportOptions = this.getExportOptions();
+      if (!exportOptions) return;
 
-      // Use batch deletion approach instead of getting all users first
-      this.logger.fileLogger.info('Starting batch population deletion', {
-        populationId,
-        populationName
+      // Show export status
+      this.uiManager.showExportStatus();
+
+      // Start export process
+      const response = await this.localClient.post('/api/export-users', exportOptions, {
+        signal: this.exportAbortController.signal,
+        onProgress: (current, total, message, counts) => {
+          this.uiManager.updateExportProgress(current, total, message, counts);
+        }
       });
-      console.log('[UNIQUE-BATCH-DELETE] Batch deletion logic is running!');
-      this.uiManager.showNotification('🟢 [UNIQUE] Batch deletion logic is running!', 'info');
-      const settings = this.pingOneClient.getSettings();
-      let totalDeleted = 0;
-      let totalErrors = 0;
-      let batchCount = 0;
-      const maxBatches = 50; // Safety limit
-      const errors = [];
-      while (batchCount < maxBatches) {
-        batchCount++;
 
-        // Always fetch from page 1 (users shift after deletion)
-        const resp = await this.pingOneClient.request('GET', `/environments/${settings.environmentId}/users?limit=100&page=1&filter=population.id eq "${populationId}"`);
-        if (!resp || !resp._embedded || !resp._embedded.users || resp._embedded.users.length === 0) {
-          if (batchCount === 1) {
-            this.uiManager.showNotification('✅ Population is already empty - no users found to delete.', 'info');
-            this.resetPopulationDeleteState();
-            return;
-          } else {
-            this.uiManager.showNotification(`✅ Successfully deleted ${totalDeleted} users from population.`, 'success');
-            this.resetPopulationDeleteState();
-            return;
-          }
-        }
-        const batchUsers = resp._embedded.users;
-        this.uiManager.showLoading(true, `Deleting batch ${batchCount} (${batchUsers.length} users)...`);
-
-        // Delete users in this batch
-        for (let i = 0; i < batchUsers.length; i++) {
-          try {
-            await this.pingOneClient.deleteUser(batchUsers[i].id);
-            totalDeleted++;
-            this.uiManager.showLoading(true, `Deleted ${totalDeleted} users so far...`);
-          } catch (error) {
-            totalErrors++;
-            errors.push(`Failed to delete ${batchUsers[i].username}: ${error.message}`);
-          }
-        }
-
-        // Small delay between batches
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      this.uiManager.showLoading(false);
-      if (totalErrors === 0) {
-        this.uiManager.showNotification(`✅ Successfully deleted ${totalDeleted} users from population.`, 'success');
+      // Handle completion
+      if (response.success) {
+        this.uiManager.updateExportProgress(exportOptions.totalUsers, exportOptions.totalUsers, 'Export completed successfully', response.counts);
+        this.uiManager.showSuccess('Export completed successfully', response.message);
       } else {
-        this.uiManager.showNotification(`⚠️ Deleted ${totalDeleted} users. ${totalErrors} errors occurred.`, 'warning');
-        console.error('Delete errors:', errors);
+        this.uiManager.updateExportProgress(0, exportOptions.totalUsers, 'Export failed', response.counts);
+        this.uiManager.showError('Export failed', response.error);
       }
-      this.resetPopulationDeleteState();
     } catch (error) {
       if (error.name === 'AbortError') {
-        this.logger.fileLogger.info('Population deletion aborted by user');
-        this.uiManager.showNotification('Population deletion cancelled', 'info');
+        this.uiManager.updateExportProgress(0, 0, 'Export cancelled');
+        this.uiManager.showInfo('Export cancelled');
       } else {
-        console.error('Population deletion failed:', error);
-        this.logger.fileLogger.error('Population deletion failed', {
-          populationId,
-          populationName,
-          error: error.message
-        });
-        this.uiManager.showNotification(`Failed to delete users from population: ${error.message}`, 'error');
+        this.uiManager.updateExportProgress(0, 0, 'Export failed: ' + error.message);
+        this.uiManager.showError('Export failed', error.message);
       }
-      this.resetPopulationDeleteState();
+    } finally {
+      this.isExporting = false;
+      this.exportAbortController = null;
     }
   }
-  async deleteUsersFromPopulation(users, populationName, signal) {
-    const totalUsers = users.length;
-    let deletedCount = 0;
-    let failedCount = 0;
-    let skippedCount = 0;
-    this.logger.fileLogger.info('Starting user deletion from population', {
-      populationName,
-      totalUsers
-    });
-    for (let i = 0; i < users.length; i++) {
-      const user = users[i];
-      try {
-        // Check if we should cancel
-        if (signal && signal.aborted) {
-          this.logger.fileLogger.info('Population deletion cancelled by user (abort signal)');
-          throw new DOMException('Population deletion cancelled', 'AbortError');
-        }
-        if (this.isPopulationDeleteCancelled) {
-          this.logger.fileLogger.info('Population deletion cancelled by user (legacy flag)');
-          break;
-        }
-
-        // Update progress
-        const progress = (i + 1) / totalUsers * 100;
-        this.uiManager.updatePopulationDeleteProgress(i + 1, totalUsers, `Deleting user ${i + 1} of ${totalUsers}...`, {
-          success: deletedCount,
-          failed: failedCount,
-          skipped: skippedCount
-        });
-
-        // Delete the user
-        await this.pingOneClient.deleteUser(user.id, {
-          signal
-        });
-        deletedCount++;
-        this.logger.fileLogger.info('User deleted successfully', {
-          userId: user.id,
-          username: user.username,
-          populationName
-        });
-
-        // Rate limiting
-        const rateLimit = this.settings?.rateLimit || 50; // Default to 50 if not set
-        await this.delay(1000 / rateLimit);
-      } catch (error) {
-        if (error.name === 'AbortError') {
-          this.logger.fileLogger.info('Population deletion aborted during user delete');
-          break;
-        }
-        // If user not found (404), count as skipped
-        if (error.status === 404 || error.message && error.message.includes('404')) {
-          skippedCount++;
-          this.logger.fileLogger.warn('User not found, skipping', {
-            userId: user.id,
-            username: user.username,
-            populationName,
-            error: error.message
-          });
-        } else {
-          console.error(`Failed to delete user ${user.username}:`, error);
-          this.logger.fileLogger.error('Failed to delete user', {
-            userId: user.id,
-            username: user.username,
-            populationName,
-            error: error.message
-          });
-          failedCount++;
-        }
-      }
+  getExportOptions() {
+    const selectedPopulationId = document.getElementById('export-population-select')?.value;
+    const selectedPopulationName = document.getElementById('export-population-select')?.selectedOptions[0]?.text || '';
+    if (!selectedPopulationId) {
+      this.uiManager.showError('No population selected', 'Please select a population before starting the export.');
+      return null;
     }
+    return {
+      selectedPopulationId,
+      selectedPopulationName,
+      fields: document.getElementById('export-fields-select')?.value || 'all',
+      format: document.getElementById('export-format-select')?.value || 'csv',
+      ignoreDisabledUsers: document.getElementById('export-ignore-disabled')?.checked || false
+    };
+  }
+  cancelExport() {
+    if (this.exportAbortController) {
+      this.exportAbortController.abort();
+    }
+  }
+  async startDelete() {
+    if (this.isDeleting) {
+      this.logger.warn('Delete already in progress');
+      return;
+    }
+    try {
+      this.isDeleting = true;
+      this.deleteAbortController = new AbortController();
+      const deleteOptions = this.getDeleteOptions();
+      if (!deleteOptions) return;
 
-    // Final progress update
-    this.uiManager.updatePopulationDeleteProgress(totalUsers, totalUsers, 'Deletion completed', {
-      success: deletedCount,
-      failed: failedCount,
-      skipped: skippedCount
-    });
+      // Capture the selected population name and ID at the start of the delete
+      const {
+        selectedPopulationName,
+        selectedPopulationId
+      } = deleteOptions;
+      const populationNameForThisRun = selectedPopulationName;
+      const populationIdForThisRun = selectedPopulationId;
 
-    // Show completion message
-    const message = `Population deletion completed: ${deletedCount} deleted, ${failedCount} failed, ${skippedCount} skipped`;
-    this.uiManager.showNotification(message, deletedCount > 0 ? 'success' : 'warning');
-    this.logger.fileLogger.info('Population deletion completed', {
-      populationName,
-      deleted: deletedCount,
-      failed: failedCount,
-      skipped: skippedCount
-    });
+      // Show delete status
+      this.uiManager.showDeleteStatus(deleteOptions.totalUsers, populationNameForThisRun, populationIdForThisRun);
 
-    // Reset state but keep progress window open
-    this.isDeletingPopulation = false;
-    this.isPopulationDeleteCancelled = false;
-    this.updatePopulationDeleteButtonState();
-    // Don't hide the progress window - let user close it manually
+      // Start delete process
+      const response = await this.localClient.post('/api/delete-users', deleteOptions, {
+        signal: this.deleteAbortController.signal,
+        onProgress: (current, total, message, counts) => {
+          this.uiManager.updateDeleteProgress(current, total, message, counts, populationNameForThisRun, populationIdForThisRun);
+        }
+      });
+
+      // Handle completion
+      if (response.success) {
+        this.uiManager.updateDeleteProgress(deleteOptions.totalUsers, deleteOptions.totalUsers, 'Delete completed successfully', response.counts, populationNameForThisRun, populationIdForThisRun);
+        this.uiManager.showSuccess('Delete completed successfully', response.message);
+      } else {
+        this.uiManager.updateDeleteProgress(0, deleteOptions.totalUsers, 'Delete failed', response.counts, populationNameForThisRun, populationIdForThisRun);
+        this.uiManager.showError('Delete failed', response.error);
+      }
+    } catch (error) {
+      const deleteOptions = this.getDeleteOptions();
+      const populationNameForThisRun = deleteOptions ? deleteOptions.selectedPopulationName : '';
+      const populationIdForThisRun = deleteOptions ? deleteOptions.selectedPopulationId : '';
+      if (error.name === 'AbortError') {
+        this.uiManager.updateDeleteProgress(0, 0, 'Delete cancelled', {}, populationNameForThisRun, populationIdForThisRun);
+        this.uiManager.showInfo('Delete cancelled');
+      } else {
+        this.uiManager.updateDeleteProgress(0, 0, 'Delete failed: ' + error.message, {}, populationNameForThisRun, populationIdForThisRun);
+        this.uiManager.showError('Delete failed', error.message);
+      }
+    } finally {
+      this.isDeleting = false;
+      this.deleteAbortController = null;
+    }
+  }
+  getDeleteOptions() {
+    const selectedPopulationId = document.getElementById('delete-population-select')?.value;
+    const selectedPopulationName = document.getElementById('delete-population-select')?.selectedOptions[0]?.text || '';
+    if (!selectedPopulationId) {
+      this.uiManager.showError('No population selected', 'Please select a population before starting the delete.');
+      return null;
+    }
+    const totalUsers = this.fileHandler.getTotalUsers();
+    if (!totalUsers || totalUsers === 0) {
+      this.uiManager.showError('No users to delete', 'Please select a CSV file with users to delete.');
+      return null;
+    }
+    return {
+      selectedPopulationId,
+      selectedPopulationName,
+      totalUsers,
+      file: this.fileHandler.getCurrentFile()
+    };
+  }
+  cancelDelete() {
+    if (this.deleteAbortController) {
+      this.deleteAbortController.abort();
+    }
+  }
+  async startModify() {
+    if (this.isModifying) {
+      this.logger.warn('Modify already in progress');
+      return;
+    }
+    try {
+      this.isModifying = true;
+      this.modifyAbortController = new AbortController();
+      const modifyOptions = this.getModifyOptions();
+      if (!modifyOptions) return;
+
+      // Show modify status
+      this.uiManager.showModifyStatus(modifyOptions.totalUsers);
+
+      // Start modify process
+      const response = await this.localClient.post('/api/modify-users', modifyOptions, {
+        signal: this.modifyAbortController.signal,
+        onProgress: (current, total, message, counts) => {
+          this.uiManager.updateModifyProgress(current, total, message, counts);
+        }
+      });
+
+      // Handle completion
+      if (response.success) {
+        this.uiManager.updateModifyProgress(modifyOptions.totalUsers, modifyOptions.totalUsers, 'Modify completed successfully', response.counts);
+        this.uiManager.showSuccess('Modify completed successfully', response.message);
+      } else {
+        this.uiManager.updateModifyProgress(0, modifyOptions.totalUsers, 'Modify failed', response.counts);
+        this.uiManager.showError('Modify failed', response.error);
+      }
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        this.uiManager.updateModifyProgress(0, 0, 'Modify cancelled');
+        this.uiManager.showInfo('Modify cancelled');
+      } else {
+        this.uiManager.updateModifyProgress(0, 0, 'Modify failed: ' + error.message);
+        this.uiManager.showError('Modify failed', error.message);
+      }
+    } finally {
+      this.isModifying = false;
+      this.modifyAbortController = null;
+    }
+  }
+  getModifyOptions() {
+    const selectedPopulationId = document.getElementById('modify-population-select')?.value;
+    const selectedPopulationName = document.getElementById('modify-population-select')?.selectedOptions[0]?.text || '';
+    if (!selectedPopulationId) {
+      this.uiManager.showError('No population selected', 'Please select a population before starting the modify.');
+      return null;
+    }
+    const totalUsers = this.fileHandler.getTotalUsers();
+    if (!totalUsers || totalUsers === 0) {
+      this.uiManager.showError('No users to modify', 'Please select a CSV file with users to modify.');
+      return null;
+    }
+    return {
+      selectedPopulationId,
+      selectedPopulationName,
+      totalUsers,
+      file: this.fileHandler.getCurrentFile()
+    };
+  }
+  cancelModify() {
+    if (this.modifyAbortController) {
+      this.modifyAbortController.abort();
+    }
+  }
+  async startPopulationDelete() {
+    try {
+      const selectedPopulationId = document.getElementById('population-delete-select')?.value;
+      const selectedPopulationName = document.getElementById('population-delete-select')?.selectedOptions[0]?.text || '';
+      if (!selectedPopulationId) {
+        this.uiManager.showError('No population selected', 'Please select a population to delete.');
+        return;
+      }
+
+      // Show population delete status
+      this.uiManager.showPopulationDeleteStatus(selectedPopulationName);
+
+      // Start population delete process
+      const response = await this.localClient.post('/api/population-delete', {
+        populationId: selectedPopulationId,
+        populationName: selectedPopulationName
+      });
+
+      // Handle completion
+      if (response.success) {
+        this.uiManager.updatePopulationDeleteProgress(1, 1, 'Population delete completed successfully');
+        this.uiManager.showSuccess('Population delete completed successfully', response.message);
+      } else {
+        this.uiManager.updatePopulationDeleteProgress(0, 1, 'Population delete failed');
+        this.uiManager.showError('Population delete failed', response.error);
+      }
+    } catch (error) {
+      this.uiManager.updatePopulationDeleteProgress(0, 1, 'Population delete failed: ' + error.message);
+      this.uiManager.showError('Population delete failed', error.message);
+    }
   }
   cancelPopulationDelete() {
-    this.isPopulationDeleteCancelled = true;
-    if (this.populationDeleteAbortController) {
-      this.populationDeleteAbortController.abort();
-    }
-    this.uiManager.showNotification('Population deletion cancelled', 'info');
-    this.resetPopulationDeleteState();
+    this.uiManager.updatePopulationDeleteProgress(0, 0, 'Population delete cancelled');
+    this.uiManager.showInfo('Population delete cancelled');
   }
-
-  /**
-   * Reset population delete state
-   */
-  resetPopulationDeleteState() {
-    this.isDeletingPopulation = false;
-    this.isPopulationDeleteCancelled = false;
-    this.updatePopulationDeleteButtonState();
-    this.uiManager.hidePopulationDeleteStatus();
-  }
-
-  // Add after constructor/init
-  setupDeleteWarningModal() {
-    this.deleteWarningModal = document.getElementById('delete-warning-modal');
-    this.deleteWarningContinue = document.getElementById('delete-warning-continue');
-    this.deleteWarningCancel = document.getElementById('delete-warning-cancel');
-    this.deleteConfirmInput = document.getElementById('delete-confirm-input');
-    this.deleteWarningMessage = document.getElementById('delete-warning-message');
-    if (!this.deleteWarningModal) return;
-    // Hide modal utility
-    this.hideDeleteWarningModal = () => {
-      this.deleteWarningModal.style.display = 'none';
-      this.deleteConfirmInput.value = '';
-      this.deleteWarningContinue.disabled = true;
-    };
-    // Show modal utility
-    this.showDeleteWarningModal = message => {
-      this.deleteWarningMessage.innerHTML = message || '<strong>⚠️ WARNING:</strong> This action will permanently delete users from PingOne. This cannot be undone.<br><br>Are you absolutely sure you want to continue?';
-      this.deleteWarningModal.style.display = 'flex';
-      this.deleteConfirmInput.value = '';
-      this.deleteWarningContinue.disabled = true;
-      this.deleteConfirmInput.focus();
-    };
-    // Enable Continue only if DELETE is typed
-    this.deleteConfirmInput.addEventListener('input', () => {
-      this.deleteWarningContinue.disabled = this.deleteConfirmInput.value !== 'DELETE';
-    });
-    // Cancel button
-    this.deleteWarningCancel.addEventListener('click', () => {
-      this.hideDeleteWarningModal();
-      if (this._deleteActionReject) this._deleteActionReject(false);
-    });
-    // Continue button
-    this.deleteWarningContinue.addEventListener('click', () => {
-      this.hideDeleteWarningModal();
-      if (this._deleteActionResolve) this._deleteActionResolve(true);
-    });
-  }
-  // Utility to show modal and return a promise
-  confirmDeleteAction(message) {
-    return new Promise((resolve, reject) => {
-      this._deleteActionResolve = resolve;
-      this._deleteActionReject = reject;
-      this.showDeleteWarningModal(message);
-    });
-  }
-  async startDeleteAllUsersInEnvironment() {
-    // Fetch all users in the environment
-    this.uiManager.showLoading(true, 'Fetching all users in environment...');
-    let users;
+  async testConnection() {
     try {
-      users = await this.pingOneClient.getAllUsersInEnvironment();
-    } catch (err) {
-      this.uiManager.showLoading(false);
-      this.uiManager.showNotification('Failed to fetch users: ' + err.message, 'error');
-      return;
-    }
-    this.uiManager.showLoading(false);
-    if (!users || users.length === 0) {
-      this.uiManager.showNotification('No users found in environment.', 'info');
-      return;
-    }
-    // Confirm again before proceeding
-    const confirmed = await this.confirmDeleteAction(`<strong>⚠️ FINAL WARNING:</strong> This will permanently delete <b>ALL</b> users in your PingOne environment (${users.length} users). This action cannot be undone.<br><br>Are you absolutely sure you want to continue?`);
-    if (!confirmed) return;
-    // Show progress UI
-    this.uiManager.showLoading(true, 'Deleting all users in environment...');
-    let deleted = 0,
-      failed = 0;
-    for (let i = 0; i < users.length; i++) {
-      try {
-        await this.pingOneClient.deleteUser(users[i].id);
-        deleted++;
-      } catch (err) {
-        failed++;
-      }
-      this.uiManager.showLoading(true, `Deleting user ${i + 1} of ${users.length}... (${deleted} deleted, ${failed} failed)`);
-    }
-    this.uiManager.showLoading(false);
-    this.uiManager.showNotification(`Environment delete completed: ${deleted} deleted, ${failed} failed`, deleted > 0 ? 'success' : 'warning');
-  }
-  setupDeletePage() {
-    console.log('[DEBUG] setupDeletePage called');
-
-    // Population Delete Section
-    const deletePopulationCheckbox = document.getElementById('delete-all-users-population-checkbox');
-    const populationDeleteControls = document.getElementById('population-delete-controls');
-    const deletePopulationBtn = document.getElementById('delete-all-users-population-btn');
-    const populationSelect = document.getElementById('population-delete-select');
-    console.log('[DEBUG] Delete page elements found:', {
-      deletePopulationCheckbox: !!deletePopulationCheckbox,
-      populationDeleteControls: !!populationDeleteControls,
-      deletePopulationBtn: !!deletePopulationBtn,
-      populationSelect: !!populationSelect
-    });
-    if (deletePopulationCheckbox) {
-      console.log('[DEBUG] Setting up population checkbox event listener');
-      deletePopulationCheckbox.addEventListener('change', e => {
-        console.log('[DEBUG] Population checkbox changed:', e.target.checked);
-        populationDeleteControls.style.display = e.target.checked ? 'block' : 'none';
-        if (e.target.checked) {
-          console.log('[DEBUG] Loading populations for deletion...');
-          this.loadPopulationsForDeletion();
-        }
-      });
-
-      // Load populations immediately if checkbox is already checked
-      if (deletePopulationCheckbox.checked) {
-        console.log('[DEBUG] Population checkbox is already checked, loading populations immediately');
-        this.loadPopulationsForDeletion();
-      }
-    }
-    if (deletePopulationBtn) {
-      console.log('[DEBUG] Setting up population delete button click handler');
-      deletePopulationBtn.addEventListener('click', () => {
-        console.log('[DEBUG] Population delete button clicked');
-        console.log('[DEBUG] Population select value:', populationSelect?.value);
-        if (!populationSelect.value) {
-          console.log('[DEBUG] No population selected, showing error');
-          this.uiManager.showNotification('Please select a population first.', 'error');
-          return;
-        }
-        console.log('[DEBUG] Starting population delete process');
-        this.startPopulationDelete();
-      });
-    }
-
-    // Environment Delete Section
-    const deleteEnvironmentCheckbox = document.getElementById('delete-all-users-env-checkbox');
-    const environmentDeleteControls = document.getElementById('environment-delete-controls');
-    const deleteEnvironmentBtn = document.getElementById('delete-all-users-env-btn');
-    if (deleteEnvironmentCheckbox) {
-      deleteEnvironmentCheckbox.addEventListener('change', e => {
-        environmentDeleteControls.style.display = e.target.checked ? 'block' : 'none';
-      });
-    }
-    if (deleteEnvironmentBtn) {
-      deleteEnvironmentBtn.addEventListener('click', () => {
-        this.showDeleteWarning('Environment', () => {
-          this.startDeleteAllUsersInEnvironment();
-        });
-      });
-    }
-  }
-  showDeleteWarning(type, onConfirm) {
-    const modal = document.getElementById('delete-warning-modal');
-    const message = document.getElementById('delete-warning-message');
-    const confirmInput = document.getElementById('delete-confirm-input');
-    const continueBtn = document.getElementById('delete-warning-continue');
-    const cancelBtn = document.getElementById('delete-warning-cancel');
-    if (!modal || !message || !confirmInput || !continueBtn || !cancelBtn) return;
-
-    // Set warning message based on type
-    let warningText = '';
-    switch (type) {
-      case 'CSV':
-        warningText = 'Are you sure you want to delete users from the CSV file? This action cannot be undone.';
-        break;
-      case 'Population':
-        warningText = 'Are you sure you want to delete ALL users in the selected population? This action cannot be undone.';
-        break;
-      case 'Environment':
-        warningText = 'Are you sure you want to delete ALL users in the entire environment? This is a destructive action that cannot be undone.';
-        break;
-      default:
-        warningText = 'Are you sure you want to proceed with this deletion? This action cannot be undone.';
-    }
-    message.textContent = warningText;
-    confirmInput.value = '';
-    continueBtn.disabled = true;
-
-    // Show modal
-    modal.style.display = 'flex';
-
-    // Handle input validation
-    confirmInput.addEventListener('input', () => {
-      continueBtn.disabled = confirmInput.value !== 'DELETE';
-    });
-
-    // Handle continue button
-    continueBtn.onclick = () => {
-      if (confirmInput.value === 'DELETE') {
-        this.hideDeleteWarning();
-        onConfirm();
-      }
-    };
-
-    // Handle cancel button
-    cancelBtn.onclick = () => {
-      this.hideDeleteWarning();
-    };
-
-    // Handle escape key
-    modal.onclick = e => {
-      if (e.target === modal) {
-        this.hideDeleteWarning();
-      }
-    };
-
-    // Focus on input
-    confirmInput.focus();
-  }
-  hideDeleteWarning() {
-    const modal = document.getElementById('delete-warning-modal');
-    if (modal) {
-      modal.style.display = 'none';
-    }
-  }
-  showPopulationWarningModal() {
-    return new Promise(resolve => {
-      const modal = document.getElementById('population-warning-modal');
-      const settingsBtn = document.getElementById('population-warning-settings');
-      const okBtn = document.getElementById('population-warning-ok');
-      if (!modal || !settingsBtn || !okBtn) {
-        resolve('ok');
-        return;
-      }
-
-      // Show modal
-      modal.style.display = 'flex';
-
-      // Handle settings button
-      const handleSettings = () => {
-        modal.style.display = 'none';
-        this.showView('settings');
-        resolve('settings');
-      };
-
-      // Handle OK button
-      const handleOk = () => {
-        modal.style.display = 'none';
-        resolve('ok');
-      };
-
-      // Handle escape key and click outside modal
-      const handleClose = () => {
-        modal.style.display = 'none';
-        resolve('ok');
-      };
-
-      // Set up event listeners
-      settingsBtn.onclick = handleSettings;
-      okBtn.onclick = handleOk;
-
-      // Handle escape key
-      const handleEscape = e => {
-        if (e.key === 'Escape') {
-          handleClose();
-          document.removeEventListener('keydown', handleEscape);
-        }
-      };
-      document.addEventListener('keydown', handleEscape);
-
-      // Handle click outside modal
-      modal.onclick = e => {
-        if (e.target === modal) {
-          handleClose();
-        }
-      };
-
-      // Clean up event listeners when modal is closed
-      const cleanup = () => {
-        settingsBtn.onclick = null;
-        okBtn.onclick = null;
-        modal.onclick = null;
-        document.removeEventListener('keydown', handleEscape);
-      };
-
-      // Override the close handlers to include cleanup
-      const originalHandleSettings = handleSettings;
-      const originalHandleOk = handleOk;
-      const originalHandleClose = handleClose;
-      settingsBtn.onclick = () => {
-        cleanup();
-        originalHandleSettings();
-      };
-      okBtn.onclick = () => {
-        cleanup();
-        originalHandleOk();
-      };
-      modal.onclick = e => {
-        if (e.target === modal) {
-          cleanup();
-          originalHandleClose();
-        }
-      };
-    });
-  }
-  async startDeleteUsersFromCsv() {
-    const fileInput = document.getElementById('csvFile');
-    const file = fileInput.files[0];
-    if (!file) {
-      this.uiManager.showNotification('Please select a CSV file first.', 'error');
-      return;
-    }
-    try {
-      const csvData = await this.readCsvFile(file);
-      const users = this.parseCsvData(csvData);
-      if (users.length === 0) {
-        this.uiManager.showNotification('No valid users found in CSV file.', 'error');
-        return;
-      }
-      this.uiManager.showLoading(true, `Deleting ${users.length} users...`);
-      let deletedCount = 0;
-      let errorCount = 0;
-      const errors = [];
-      for (let i = 0; i < users.length; i++) {
-        const user = users[i];
-        try {
-          await this.pingOneClient.deleteUser(user.username);
-          deletedCount++;
-          this.uiManager.showLoading(true, `Deleted ${deletedCount}/${users.length} users...`);
-        } catch (error) {
-          errorCount++;
-          errors.push(`Failed to delete ${user.username}: ${error.message}`);
-        }
-      }
-      this.uiManager.showLoading(false);
-      if (errorCount === 0) {
-        this.uiManager.showNotification(`Successfully deleted ${deletedCount} users.`, 'success');
+      // Set button loading state
+      this.uiManager.setButtonLoading('test-connection-btn', true);
+      this.uiManager.updateConnectionStatus('connecting', 'Testing connection...');
+      const response = await this.localClient.post('/api/pingone/test-connection');
+      if (response.success) {
+        this.uiManager.updateConnectionStatus('connected', 'Connection test successful');
+        this.uiManager.showSuccess('Connection test successful', response.message);
       } else {
-        this.uiManager.showNotification(`Deleted ${deletedCount} users. ${errorCount} errors occurred.`, 'warning');
-        console.error('Delete errors:', errors);
+        this.uiManager.updateConnectionStatus('error', 'Connection test failed');
+        this.uiManager.showError('Connection test failed', response.error);
       }
     } catch (error) {
-      this.uiManager.showLoading(false);
-      this.uiManager.showNotification('Error processing CSV file: ' + error.message, 'error');
+      this.uiManager.updateConnectionStatus('error', 'Connection test failed: ' + error.message);
+      this.uiManager.showError('Connection test failed', error.message);
+    } finally {
+      // Always reset button loading state
+      this.uiManager.setButtonLoading('test-connection-btn', false);
     }
   }
-  async startDeleteAllUsersInPopulation() {
-    console.log('[UNIQUE-BATCH-DELETE] Batch deletion logic is running!');
-    this.uiManager.showNotification('🟢 [UNIQUE] Batch deletion logic is running!', 'info');
-    const populationSelect = document.getElementById('population-delete-select');
-    const populationId = populationSelect.value;
-    if (!populationId) {
-      this.uiManager.showNotification('Please select a population first.', 'error');
-      return;
-    }
-    this.uiManager.showLoading(true, 'Starting batch deletion...');
+  async getToken() {
     try {
-      const settings = this.pingOneClient.getSettings();
-      let totalDeleted = 0;
-      let totalErrors = 0;
-      let batchCount = 0;
-      const maxBatches = 50; // Safety limit
-      const errors = [];
-      while (batchCount < maxBatches) {
-        batchCount++;
+      console.log('Get Token button clicked - starting token retrieval...');
 
-        // Always fetch from page 1 (users shift after deletion)
-        const resp = await this.pingOneClient.request('GET', `/environments/${settings.environmentId}/users?limit=100&page=1&filter=population.id eq "${populationId}"`);
-        if (!resp || !resp._embedded || !resp._embedded.users || resp._embedded.users.length === 0) {
-          if (batchCount === 1) {
-            this.uiManager.showLoading(false);
-            this.uiManager.showNotification('✅ Population is already empty - no users found to delete.', 'info');
-            return;
-          } else {
-            this.uiManager.showLoading(false);
-            this.uiManager.showNotification(`✅ Successfully deleted ${totalDeleted} users from population.`, 'success');
-            return;
-          }
-        }
-        const batchUsers = resp._embedded.users;
-        this.uiManager.showLoading(true, `Deleting batch ${batchCount} (${batchUsers.length} users)...`);
+      // Set button loading state
+      this.uiManager.setButtonLoading('get-token-btn', true);
+      this.uiManager.updateConnectionStatus('connecting', 'Getting token...');
+      console.log('Using PingOneClient to get token (with localStorage storage)...');
 
-        // Delete users in this batch
-        for (let i = 0; i < batchUsers.length; i++) {
-          try {
-            await this.pingOneClient.deleteUser(batchUsers[i].id);
-            totalDeleted++;
-            this.uiManager.showLoading(true, `Deleted ${totalDeleted} users so far...`);
-          } catch (error) {
-            totalErrors++;
-            errors.push(`Failed to delete ${batchUsers[i].username}: ${error.message}`);
-          }
-        }
+      // Use PingOneClient which handles localStorage storage
+      if (!this.pingOneClient) {
+        throw new Error('PingOneClient not initialized');
+      }
+      const token = await this.pingOneClient.getAccessToken();
+      console.log('Token retrieved successfully via PingOneClient');
 
-        // Small delay between batches
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      this.uiManager.showLoading(false);
-      if (totalErrors === 0) {
-        this.uiManager.showNotification(`✅ Successfully deleted ${totalDeleted} users from population.`, 'success');
-      } else {
-        this.uiManager.showNotification(`⚠️ Deleted ${totalDeleted} users. ${totalErrors} errors occurred.`, 'warning');
-        console.error('Delete errors:', errors);
-      }
-    } catch (error) {
-      this.uiManager.showLoading(false);
-      this.uiManager.showNotification('❌ Error deleting users from population: ' + error.message, 'error');
-      console.error('Population deletion error:', error);
-    }
-  }
-  async loadPopulations() {
-    const populationSelect = document.getElementById('populationSelect');
-    if (!populationSelect) return;
-    try {
-      const response = await fetch('/api/pingone/populations');
-      if (!response.ok) {
-        throw new Error(`Failed to fetch populations: ${response.status}`);
-      }
-      const populations = await response.json();
-      const populationsArray = Array.isArray(populations) ? populations : [];
-      populationSelect.innerHTML = '<option value="">Select a population...</option>';
-      populationsArray.forEach(population => {
-        const option = document.createElement('option');
-        option.value = population.id;
-        option.textContent = population.name;
-        populationSelect.appendChild(option);
-      });
-    } catch (error) {
-      this.uiManager.showNotification('Error loading populations: ' + error.message, 'error');
-      populationSelect.innerHTML = '<option value="">Error loading populations</option>';
-    }
-  }
-  readCsvFile(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = e => resolve(e.target.result);
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsText(file);
-    });
-  }
-  parseCsvData(csvData) {
-    const lines = csvData.split('\n');
-    const headers = lines[0].split(',').map(h => h.trim());
-    const users = [];
-    for (let i = 1; i < lines.length; i++) {
-      if (lines[i].trim()) {
-        const values = lines[i].split(',').map(v => v.trim());
-        const user = {};
-        headers.forEach((header, index) => {
-          user[header] = values[index] || '';
+      // Verify localStorage storage
+      if (typeof localStorage !== 'undefined') {
+        const storedToken = localStorage.getItem('pingone_worker_token');
+        const storedExpiry = localStorage.getItem('pingone_token_expiry');
+        console.log('localStorage verification:', {
+          hasStoredToken: !!storedToken,
+          hasStoredExpiry: !!storedExpiry,
+          tokenLength: storedToken ? storedToken.length : 0,
+          expiryTime: storedExpiry ? new Date(parseInt(storedExpiry)).toISOString() : null
         });
-        users.push(user);
       }
+      if (token) {
+        this.uiManager.updateConnectionStatus('connected', 'Token retrieved and stored successfully');
+        this.uiManager.showSuccess('Token retrieved and stored successfully', 'Token has been saved to your browser for future use.');
+        this.uiManager.updateHomeTokenStatus(false);
+      } else {
+        this.uiManager.updateConnectionStatus('error', 'Failed to get token');
+        this.uiManager.showError('Failed to get token', 'No token received from server');
+      }
+    } catch (error) {
+      console.error('Error in getToken:', error);
+      this.uiManager.updateConnectionStatus('error', 'Failed to get token: ' + error.message);
+      this.uiManager.showError('Failed to get token', error.message);
+    } finally {
+      // Always reset button loading state
+      console.log('Resetting Get Token button loading state...');
+      this.uiManager.setButtonLoading('get-token-btn', false);
     }
-    return users;
   }
-
-  // updatePopulationDeleteProgress method removed - now handled by UI manager
-
-  /**
-   * Utility method to delay execution for rate limiting
-   * @param {number} ms - Milliseconds to delay
-   * @returns {Promise} Promise that resolves after the delay
-   */
-  delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+  async toggleFeatureFlag(flag, enabled) {
+    try {
+      const response = await this.localClient.post(`/api/feature-flags/${flag}`, {
+        enabled
+      });
+      if (response.success) {
+        this.uiManager.showSuccess(`Feature flag ${flag} ${enabled ? 'enabled' : 'disabled'}`);
+      } else {
+        this.uiManager.showError(`Failed to toggle feature flag ${flag}`, response.error);
+      }
+    } catch (error) {
+      this.uiManager.showError(`Failed to toggle feature flag ${flag}`, error.message);
+    }
   }
+  async handleFileSelect(file) {
+    try {
+      await this.fileHandler.setFile(file);
+      this.uiManager.showSuccess('File selected successfully', `Selected file: ${file.name}`);
 
-  /**
-   * Disable all navigation tabs when disclaimer is not accepted
-   */
-  disableNavigationTabs() {
-    const navItems = document.querySelectorAll('.nav-item');
-    navItems.forEach(navItem => {
-      navItem.classList.add('disabled');
-      navItem.style.opacity = '0.5';
-      navItem.style.cursor = 'not-allowed';
-      navItem.title = 'Please accept the disclaimer agreement first';
-    });
+      // Update import button state after file selection
+      this.updateImportButtonState();
+      // Show population prompt if needed
+      this.showPopulationChoicePrompt();
+    } catch (error) {
+      this.uiManager.showError('Failed to select file', error.message);
+    }
   }
-
-  /**
-   * Enable all navigation tabs after disclaimer is accepted
-   */
-  enableNavigationTabs() {
-    const navItems = document.querySelectorAll('.nav-item');
-    navItems.forEach(navItem => {
-      navItem.classList.remove('disabled');
-      navItem.style.opacity = '1';
-      navItem.style.cursor = 'pointer';
-      navItem.title = '';
-    });
-  }
-
-  /**
-   * Refresh the progress page with current status
-   */
   refreshProgressPage() {
-    console.log('Refreshing progress page...');
-
-    // Get the last run status from the UI manager
-    const lastRunStatus = this.uiManager.lastRunStatus || {};
-
-    // Update each operation section
-    this.updateProgressSection('import', lastRunStatus['import']);
-    this.updateProgressSection('export', lastRunStatus['export']);
-    this.updateProgressSection('delete-csv', lastRunStatus['delete-csv']);
-    this.updateProgressSection('modify', lastRunStatus['modify']);
-    this.updateProgressSection('settings', lastRunStatus['settings']);
-    this.uiManager.showNotification('Progress page refreshed', 'info');
+    // Refresh progress data if needed
+    this.uiManager.refreshProgressData();
   }
 
-  /**
-   * Update a specific progress section
-   */
-  updateProgressSection(operation, status) {
-    if (!status) {
-      this.setDefaultProgressStatus(operation);
+  // Test function to verify population selection
+  testPopulationSelection() {
+    console.log('=== Testing Population Selection ===');
+    const populationSelect = document.getElementById('import-population-select');
+    console.log('Population select element:', populationSelect);
+    console.log('Current value:', populationSelect?.value);
+    console.log('Selected option text:', populationSelect?.selectedOptions[0]?.text);
+    console.log('All options:', populationSelect ? Array.from(populationSelect.options).map(opt => ({
+      value: opt.value,
+      text: opt.text
+    })) : 'No select element');
+
+    // Test getImportOptions
+    const options = this.getImportOptions();
+    console.log('getImportOptions result:', options);
+
+    // Test getCurrentPopulationSelection
+    const currentSelection = this.getCurrentPopulationSelection();
+    console.log('getCurrentPopulationSelection result:', currentSelection);
+
+    // Test forceRefreshPopulationSelection
+    const forceRefresh = this.forceRefreshPopulationSelection();
+    console.log('forceRefreshPopulationSelection result:', forceRefresh);
+
+    // Validate consistency
+    if (options && currentSelection && forceRefresh) {
+      const isConsistent = options.selectedPopulationId === currentSelection.id && currentSelection.id === forceRefresh.id;
+      console.log('Population selection consistency:', isConsistent);
+      if (!isConsistent) {
+        console.warn('Population selection inconsistency detected!');
+      }
+    }
+    console.log('===============================');
+    return {
+      options,
+      currentSelection,
+      forceRefresh
+    };
+  }
+
+  // Robust disclaimer agreement setup
+  setupDisclaimerAgreement() {
+    console.log('=== Setting up Disclaimer Agreement ===');
+
+    // Ensure home view is visible
+    const homeView = document.getElementById('home-view');
+    if (homeView) {
+      homeView.style.display = 'block';
+      homeView.classList.add('active');
+      console.log('✅ Home view made visible');
+    } else {
+      console.error('❌ Home view not found');
+    }
+
+    // Get the required elements
+    const disclaimerCheckbox = document.getElementById('disclaimer-agreement');
+    const riskCheckbox = document.getElementById('risk-acceptance');
+    const acceptButton = document.getElementById('accept-disclaimer');
+
+    // Validate elements exist
+    if (!disclaimerCheckbox || !riskCheckbox || !acceptButton) {
+      console.error('Required disclaimer elements not found:', {
+        disclaimerCheckbox: !!disclaimerCheckbox,
+        riskCheckbox: !!riskCheckbox,
+        acceptButton: !!acceptButton
+      });
+
+      // Try to find elements with different selectors
+      console.log('Trying alternative selectors...');
+      const altDisclaimerCheckbox = document.querySelector('input[id="disclaimer-agreement"]');
+      const altRiskCheckbox = document.querySelector('input[id="risk-acceptance"]');
+      const altAcceptButton = document.querySelector('button[id="accept-disclaimer"]');
+      console.log('Alternative selector results:', {
+        altDisclaimerCheckbox: !!altDisclaimerCheckbox,
+        altRiskCheckbox: !!altRiskCheckbox,
+        altAcceptButton: !!altAcceptButton
+      });
       return;
     }
-    const statusElement = document.getElementById(`progress-${operation}-status`);
-    const operationElement = document.getElementById(`progress-${operation}-operation`);
-    const timestampElement = document.getElementById(`progress-${operation}-timestamp`);
-    const detailsElement = document.getElementById(`progress-${operation}-details`);
-    if (statusElement) {
-      statusElement.textContent = this.getStatusDisplayText(status.status);
-      statusElement.className = `status-value ${this.getStatusClass(status.status)}`;
-    }
-    if (operationElement) {
-      operationElement.textContent = status.operation || 'Unknown Operation';
-    }
-    if (timestampElement) {
-      timestampElement.textContent = status.timestamp ? new Date(status.timestamp).toLocaleString() : '-';
-    }
-    if (detailsElement) {
-      detailsElement.textContent = status.details || '-';
-    }
+    console.log('All disclaimer elements found successfully');
+    console.log('Disclaimer checkbox:', disclaimerCheckbox);
+    console.log('Risk checkbox:', riskCheckbox);
+    console.log('Accept button:', acceptButton);
 
-    // Update the progress status container styling
-    const statusContainer = statusElement?.closest('.progress-status');
-    if (statusContainer) {
-      statusContainer.className = `progress-status ${this.getStatusClass(status.status)}`;
-    }
-  }
-
-  /**
-   * Set default status for a progress section
-   */
-  setDefaultProgressStatus(operation) {
-    const statusElement = document.getElementById(`progress-${operation}-status`);
-    const operationElement = document.getElementById(`progress-${operation}-operation`);
-    const timestampElement = document.getElementById(`progress-${operation}-timestamp`);
-    const detailsElement = document.getElementById(`progress-${operation}-details`);
-    const defaultTexts = {
-      'import': 'No recent imports',
-      'export': 'No recent exports',
-      'delete-csv': 'No recent deletes',
-      'modify': 'No recent modifications',
-      'settings': 'No recent settings updates'
-    };
-    if (statusElement) {
-      statusElement.textContent = defaultTexts[operation] || 'No recent activity';
-      statusElement.className = 'status-value ready';
-    }
-    if (operationElement) operationElement.textContent = '-';
-    if (timestampElement) timestampElement.textContent = '-';
-    if (detailsElement) detailsElement.textContent = '-';
-
-    // Reset the progress status container styling
-    const statusContainer = statusElement?.closest('.progress-status');
-    if (statusContainer) {
-      statusContainer.className = 'progress-status ready';
-    }
-  }
-
-  /**
-   * Get display text for status
-   */
-  getStatusDisplayText(status) {
-    const statusMap = {
-      'Ready': 'Ready',
-      'In Progress': 'In Progress',
-      'Completed': 'Completed',
-      'Failed': 'Failed',
-      'Error': 'Error',
-      'Cancelled': 'Cancelled'
-    };
-    return statusMap[status] || status || 'Unknown';
-  }
-
-  /**
-   * Get CSS class for status
-   */
-  getStatusClass(status) {
-    const classMap = {
-      'Ready': 'ready',
-      'In Progress': 'in-progress',
-      'Completed': 'completed',
-      'Failed': 'failed',
-      'Error': 'failed',
-      'Cancelled': 'failed'
-    };
-    return classMap[status] || 'ready';
-  }
-
-  /**
-   * Clear progress history
-   */
-  clearProgressHistory() {
-    if (confirm('Are you sure you want to clear all progress history? This action cannot be undone.')) {
-      // Clear the UI manager's last run status
-      this.uiManager.lastRunStatus = {};
-      this.uiManager.savePersistedStatus();
-
-      // Reset all progress sections to default
-      this.setDefaultProgressStatus('import');
-      this.setDefaultProgressStatus('export');
-      this.setDefaultProgressStatus('delete-csv');
-      this.setDefaultProgressStatus('modify');
-      this.setDefaultProgressStatus('settings');
-      this.uiManager.showNotification('Progress history cleared', 'success');
-    }
-  }
-  setupFeatureFlags() {
-    console.log('Setting up feature flags...');
-
-    // Feature flags toggle button
-    const toggleBtn = document.getElementById('feature-flags-toggle');
-    const panel = document.getElementById('feature-flags-panel');
-    const closeBtn = document.getElementById('close-feature-flags');
-    const resetBtn = document.getElementById('reset-feature-flags');
-    if (toggleBtn && panel) {
-      toggleBtn.addEventListener('click', () => {
-        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-        this.loadFeatureFlagsState();
+    // Function to check if both checkboxes are checked
+    const checkAgreementStatus = () => {
+      const disclaimerChecked = disclaimerCheckbox.checked;
+      const riskChecked = riskCheckbox.checked;
+      const bothChecked = disclaimerChecked && riskChecked;
+      console.log('Agreement status check:', {
+        disclaimerChecked,
+        riskChecked,
+        bothChecked
       });
-    }
-    if (closeBtn && panel) {
-      closeBtn.addEventListener('click', () => {
-        panel.style.display = 'none';
-      });
-    }
-    if (resetBtn) {
-      resetBtn.addEventListener('click', async () => {
-        try {
-          (0, _featureFlags.resetFeatureFlags)();
-          this.loadFeatureFlagsState();
-          this.uiManager.showNotification('Feature flags reset to defaults', 'success');
-        } catch (error) {
-          console.error('Error resetting feature flags:', error);
-          this.uiManager.showNotification('Error resetting feature flags', 'error');
-        }
-      });
-    }
 
-    // Setup individual flag checkboxes
-    const flagCheckboxes = ['flagA', 'flagB', 'flagC'];
-    flagCheckboxes.forEach(flagId => {
-      const checkbox = document.getElementById(flagId);
-      if (checkbox) {
-        checkbox.addEventListener('change', async e => {
-          const flag = flagId.replace('flag', '');
-          const enabled = e.target.checked;
-          try {
-            (0, _featureFlags.setFeatureFlag)(flag, enabled);
+      // Enable/disable button based on checkbox status
+      acceptButton.disabled = !bothChecked;
 
-            // Also update backend if available
-            if (this.localClient) {
-              await this.localClient.post(`/api/feature-flags/${flag}`, {
-                enabled
-              });
-            }
-            this.uiManager.showNotification(`Feature Flag ${flag} ${enabled ? 'enabled' : 'disabled'}`, 'success');
-          } catch (error) {
-            console.error(`Error setting feature flag ${flag}:`, error);
-            this.uiManager.showNotification(`Error setting feature flag ${flag}`, 'error');
-          }
-        });
+      // Update button appearance
+      if (bothChecked) {
+        acceptButton.classList.remove('btn-secondary');
+        acceptButton.classList.add('btn-danger');
+        console.log('✅ Disclaimer button enabled');
+      } else {
+        acceptButton.classList.remove('btn-danger');
+        acceptButton.classList.add('btn-secondary');
+        console.log('❌ Disclaimer button disabled');
+      }
+    };
+
+    // Set up event listeners for both checkboxes
+    disclaimerCheckbox.addEventListener('change', e => {
+      console.log('Disclaimer checkbox changed:', e.target.checked);
+      checkAgreementStatus();
+    });
+    riskCheckbox.addEventListener('change', e => {
+      console.log('Risk checkbox changed:', e.target.checked);
+      checkAgreementStatus();
+    });
+
+    // Set up event listener for the accept button
+    acceptButton.addEventListener('click', e => {
+      e.preventDefault();
+      console.log('Disclaimer accept button clicked');
+
+      // Validate both checkboxes are still checked
+      if (disclaimerCheckbox.checked && riskCheckbox.checked) {
+        console.log('✅ Disclaimer accepted - enabling tool');
+        this.enableToolAfterDisclaimer();
+      } else {
+        console.warn('❌ Disclaimer button clicked but checkboxes not checked');
+        this.uiManager.showError('Disclaimer Error', 'Please check both agreement boxes before proceeding.');
       }
     });
 
-    // Load initial state
-    this.loadFeatureFlagsState();
-    console.log('Feature flags setup complete');
+    // Initial status check
+    checkAgreementStatus();
+    console.log('=== Disclaimer Agreement Setup Complete ===');
   }
-  loadFeatureFlagsState() {
-    try {
-      const flags = (0, _featureFlags.getAllFeatureFlags)();
 
-      // Update checkboxes
-      Object.entries(flags).forEach(_ref => {
-        let [flag, enabled] = _ref;
-        const checkbox = document.getElementById(`flag${flag}`);
-        if (checkbox) {
-          checkbox.checked = enabled;
-        }
+  // Enable the tool after disclaimer is accepted
+  enableToolAfterDisclaimer() {
+    console.log('=== Enabling Tool After Disclaimer ===');
+    try {
+      // Hide the disclaimer section
+      const disclaimerSection = document.getElementById('disclaimer');
+      if (disclaimerSection) {
+        disclaimerSection.style.display = 'none';
+        console.log('Disclaimer section hidden');
+      }
+
+      // Enable navigation tabs
+      const navItems = document.querySelectorAll('[data-view]');
+      navItems.forEach(item => {
+        item.style.pointerEvents = 'auto';
+        item.style.opacity = '1';
       });
-      console.log('Feature flags state loaded:', flags);
+
+      // Enable feature cards
+      const featureCards = document.querySelectorAll('.feature-card');
+      featureCards.forEach(card => {
+        card.style.pointerEvents = 'auto';
+        card.style.opacity = '1';
+      });
+
+      // Show success message
+      this.uiManager.showSuccess('Tool Enabled', 'You have accepted the disclaimer. The tool is now enabled.');
+
+      // Store disclaimer acceptance in localStorage
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('disclaimerAccepted', 'true');
+        localStorage.setItem('disclaimerAcceptedDate', new Date().toISOString());
+      }
+      console.log('✅ Tool enabled successfully after disclaimer acceptance');
     } catch (error) {
-      console.error('Error loading feature flags state:', error);
+      console.error('Error enabling tool after disclaimer:', error);
+      this.uiManager.showError('Error', 'Failed to enable tool after disclaimer acceptance.');
+    }
+  }
+
+  // Check if disclaimer was previously accepted
+  checkDisclaimerStatus() {
+    if (typeof localStorage !== 'undefined') {
+      const disclaimerAccepted = localStorage.getItem('disclaimerAccepted');
+      const disclaimerDate = localStorage.getItem('disclaimerAcceptedDate');
+      console.log('Disclaimer status check:', {
+        accepted: disclaimerAccepted,
+        date: disclaimerDate
+      });
+      if (disclaimerAccepted === 'true') {
+        console.log('Disclaimer previously accepted, enabling tool');
+        this.enableToolAfterDisclaimer();
+        return true;
+      }
+    }
+    return false;
+  }
+  showPopulationChoicePrompt() {
+    // Only show once per import session
+    if (this.populationPromptShown) return;
+    // Check if both file and population are selected
+    const file = this.fileHandler.getCurrentFile && this.fileHandler.getCurrentFile();
+    const populationSelect = document.getElementById('import-population-select');
+    const populationId = populationSelect && populationSelect.value;
+    if (!file || !populationId) return;
+    // Check if CSV has a populationId column
+    const users = this.fileHandler.getParsedUsers ? this.fileHandler.getParsedUsers() : [];
+    if (!users.length) return;
+    const hasPopulationColumn = Object.keys(users[0]).some(h => h.toLowerCase() === 'populationid' || h.toLowerCase() === 'population_id');
+    if (!hasPopulationColumn) return; // Don't prompt if no populationId in CSV
+    // Show the modal
+    const modal = document.getElementById('population-warning-modal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    this.populationPromptShown = true;
+    // Set up modal buttons
+    const okBtn = document.getElementById('population-warning-ok');
+    const settingsBtn = document.getElementById('population-warning-settings');
+    // Optionally, add override/ignore/use-csv buttons if you want more than just OK/Settings
+    // For now, just close on OK
+    if (okBtn) {
+      okBtn.onclick = () => {
+        modal.style.display = 'none';
+        this.populationChoice = 'use-csv'; // Default to use CSV if present
+      };
+    }
+    if (settingsBtn) {
+      settingsBtn.onclick = () => {
+        modal.style.display = 'none';
+        this.populationChoice = 'settings';
+        this.showView('settings');
+      };
     }
   }
 }
 
-// Initialize the application when the DOM is fully loaded
-document.addEventListener('DOMContentLoaded', () => {
+// Initialize app when DOM is loaded
+document.addEventListener('DOMContentLoaded', async () => {
   try {
-    // Create the app instance - this will start the async initialization
     const app = new App();
+    await app.init();
 
-    // Expose app to window for debugging and global access
+    // Make app globally available for debugging
     window.app = app;
-
-    // Log that the app is initializing
-    console.log('PingOne Import Tool initializing...');
   } catch (error) {
-    console.error('Failed to initialize application:', error);
-
-    // Show error in the UI if possible
-    const errorDiv = document.createElement('div');
-    errorDiv.style.color = 'red';
-    errorDiv.style.padding = '1rem';
-    errorDiv.style.margin = '1rem';
-    errorDiv.style.border = '1px solid #f5c6cb';
-    errorDiv.style.borderRadius = '4px';
-    errorDiv.style.backgroundColor = '#f8d7da';
-    errorDiv.textContent = `Failed to initialize application: ${error.message}`;
-    document.body.prepend(errorDiv);
+    console.error('Failed to initialize app:', error);
   }
 });
 
-},{"./modules/api-factory.js":2,"./modules/feature-flags.js":4,"./modules/file-handler.js":5,"./modules/logger.js":9,"./modules/settings-manager.js":11,"./modules/ui-manager.js":12,"./modules/version-manager.js":13}],2:[function(require,module,exports){
+},{"./modules/api-factory.js":3,"./modules/file-handler.js":5,"./modules/file-logger.js":6,"./modules/local-api-client.js":7,"./modules/logger.js":9,"./modules/pingone-client.js":10,"./modules/settings-manager.js":11,"./modules/token-manager.js":12,"./modules/ui-manager.js":13,"./modules/version-manager.js":14,"@babel/runtime/helpers/interopRequireDefault":1}],3:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -4599,7 +1678,7 @@ const apiFactory = exports.apiFactory = {
 const getAPIFactory = () => defaultAPIFactory;
 exports.getAPIFactory = getAPIFactory;
 
-},{"./local-api-client.js":7,"./pingone-client.js":10}],3:[function(require,module,exports){
+},{"./local-api-client.js":7,"./pingone-client.js":10}],4:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -4683,78 +1762,6 @@ class CryptoUtils {
 exports.CryptoUtils = CryptoUtils;
 const cryptoUtils = exports.cryptoUtils = new CryptoUtils();
 
-},{}],4:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.getAllFeatureFlags = getAllFeatureFlags;
-exports.isFeatureEnabled = isFeatureEnabled;
-exports.resetFeatureFlags = resetFeatureFlags;
-exports.setFeatureFlag = setFeatureFlag;
-// Feature Flags Manager
-// Manages Feature Flags A, B, C with localStorage persistence
-
-const FEATURE_FLAGS_KEY = 'pingone_feature_flags';
-
-// Default feature flags
-const DEFAULT_FLAGS = {
-  A: false,
-  B: false,
-  C: false
-};
-
-// Get flags from localStorage or use defaults
-function getStoredFlags() {
-  try {
-    const stored = localStorage.getItem(FEATURE_FLAGS_KEY);
-    return stored ? JSON.parse(stored) : DEFAULT_FLAGS;
-  } catch (error) {
-    console.warn('[FEATURE FLAGS] Error reading from localStorage:', error);
-    return DEFAULT_FLAGS;
-  }
-}
-
-// Save flags to localStorage
-function saveFlags(flags) {
-  try {
-    localStorage.setItem(FEATURE_FLAGS_KEY, JSON.stringify(flags));
-  } catch (error) {
-    console.warn('[FEATURE FLAGS] Error saving to localStorage:', error);
-  }
-}
-
-// Get current flags
-let currentFlags = getStoredFlags();
-function isFeatureEnabled(flag) {
-  return !!currentFlags[flag];
-}
-function setFeatureFlag(flag, value) {
-  if (currentFlags.hasOwnProperty(flag)) {
-    currentFlags[flag] = !!value;
-    saveFlags(currentFlags);
-    console.log(`[FEATURE FLAGS] Flag ${flag} set to ${value}`);
-  } else {
-    console.warn(`[FEATURE FLAGS] Unknown flag: ${flag}`);
-  }
-}
-function getAllFeatureFlags() {
-  return {
-    ...currentFlags
-  };
-}
-function resetFeatureFlags() {
-  currentFlags = {
-    ...DEFAULT_FLAGS
-  };
-  saveFlags(currentFlags);
-  console.log('[FEATURE FLAGS] All flags reset to defaults');
-}
-
-// Initialize flags on module load
-console.log('[FEATURE FLAGS] Initialized with flags:', currentFlags);
-
 },{}],5:[function(require,module,exports){
 "use strict";
 
@@ -4811,11 +1818,51 @@ class FileHandler {
   }
 
   /**
+   * Set a file and process it
+   * @param {File} file - The file to set and process
+   * @returns {Promise} Promise that resolves when file is processed
+   */
+  async setFile(file) {
+    try {
+      this.logger.info('Setting file', {
+        fileName: file.name,
+        fileSize: file.size
+      });
+
+      // Store the current file reference
+      this.currentFile = file;
+
+      // Process the file using the existing internal method
+      await this._handleFileInternal(file);
+      return {
+        success: true,
+        file
+      };
+    } catch (error) {
+      this.logger.error('Failed to set file', {
+        error: error.message,
+        fileName: file.name
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Get the list of parsed users
    * @returns {Array} Array of user objects
    */
   getUsers() {
     return this.lastParsedUsers || [];
+  }
+
+  /**
+   * Get the total number of users parsed from the CSV file
+   * @returns {number} Total number of users
+   */
+  getTotalUsers() {
+    const totalUsers = this.validationResults.total || 0;
+    console.log('[CSV] getTotalUsers() called, returning:', totalUsers, 'validationResults:', this.validationResults);
+    return totalUsers;
   }
 
   /**
@@ -5098,6 +2145,22 @@ class FileHandler {
       this.parsedUsers = parseResults.users;
       this.lastParsedUsers = [...parseResults.users];
 
+      // Update validation results for getTotalUsers() method
+      this.validationResults = {
+        total: parseResults.users.length,
+        valid: parseResults.validUsers || parseResults.users.length,
+        errors: parseResults.errors.length,
+        warnings: parseResults.warnings.length
+      };
+
+      // Add debug logging
+      console.log('[CSV] File parsed successfully:', {
+        totalUsers: this.validationResults.total,
+        validUsers: this.validationResults.valid,
+        errors: this.validationResults.errors,
+        warnings: this.validationResults.warnings
+      });
+
       // Update UI with results
       const message = `File processed: ${parseResults.validUsers} valid users, ${parseResults.invalidRows} invalid rows`;
       this.uiManager.showNotification(message, parseResults.invalidRows > 0 ? 'warning' : 'success');
@@ -5218,6 +2281,22 @@ class FileHandler {
 
           // Also store in parsedUsers for compatibility with getParsedUsers
           this.parsedUsers = this.lastParsedUsers;
+
+          // Update validation results for getTotalUsers() method
+          this.validationResults = {
+            total: this.lastParsedUsers.length,
+            valid: this.lastParsedUsers.length,
+            errors: 0,
+            warnings: 0
+          };
+
+          // Add debug logging
+          console.log('[CSV] File parsed successfully (processCSV):', {
+            totalUsers: this.validationResults.total,
+            validUsers: this.validationResults.valid,
+            errors: this.validationResults.errors,
+            warnings: this.validationResults.warnings
+          });
           resolve({
             success: true,
             headers,
@@ -9605,11 +6684,23 @@ class SettingsManager {
       try {
         const response = await fetch('/api/settings');
         if (response.ok) {
-          const serverSettings = await response.json();
+          let serverSettings = await response.json();
+          // Handle stringified JSON in data
+          if (typeof serverSettings === 'string') {
+            try {
+              serverSettings = JSON.parse(serverSettings);
+            } catch (e) {}
+          }
+          // Accept both {success, data} and {success, fileSettings}
+          let parsedSettings = null;
           if (serverSettings.success && serverSettings.data) {
-            // Server settings are available, use them
-            const parsedSettings = serverSettings.data;
-
+            parsedSettings = serverSettings.data;
+          } else if (serverSettings.success && serverSettings.fileSettings) {
+            parsedSettings = serverSettings.fileSettings;
+          } else if (serverSettings.environmentId || serverSettings.apiClientId) {
+            parsedSettings = serverSettings;
+          }
+          if (parsedSettings) {
             // Decrypt sensitive fields if they exist
             if (parsedSettings.apiSecret) {
               try {
@@ -9619,10 +6710,8 @@ class SettingsManager {
                 parsedSettings.apiSecret = '';
               }
             }
-
             // Deep merge with defaults
             this.settings = this.deepMerge(this.getDefaultSettings(), parsedSettings);
-
             // Save to localStorage as cache
             if (this.isLocalStorageAvailable()) {
               localStorage.setItem(this.storageKey, JSON.stringify(this.settings));
@@ -9631,7 +6720,6 @@ class SettingsManager {
             return this.settings;
           }
         }
-
         // If we get here, server load failed or returned invalid data
         throw new Error('Invalid server response');
       } catch (serverError) {
@@ -9716,6 +6804,11 @@ class SettingsManager {
       const settingsToSave = {
         ...updatedSettings
       };
+
+      // Only send apiSecret if a new value is provided (not blank or ********)
+      if (newSettings.apiSecret === '' || newSettings.apiSecret === '********') {
+        delete newSettings.apiSecret;
+      }
 
       // Only encrypt API secret if it's not already encrypted and not empty
       if (settingsToSave.apiSecret && !settingsToSave.apiSecret.startsWith('enc:')) {
@@ -9956,1133 +7049,499 @@ class SettingsManager {
 exports.SettingsManager = SettingsManager;
 const settingsManager = exports.settingsManager = new SettingsManager();
 
-},{"./crypto-utils.js":3}],12:[function(require,module,exports){
+},{"./crypto-utils.js":4}],12:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+/**
+ * TokenManager - Handles OAuth 2.0 token acquisition and caching
+ */
+class TokenManager {
+  /**
+   * Create a new TokenManager instance
+   * @param {Object} logger - Logger instance for logging messages
+   * @param {Object} settings - Settings object containing API credentials
+   */
+  constructor(logger, settings) {
+    this.logger = logger || console;
+    this.settings = settings || {};
+    this.tokenCache = {
+      accessToken: null,
+      expiresAt: 0,
+      tokenType: 'Bearer',
+      lastRefresh: 0
+    };
+    this.tokenExpiryBuffer = 5 * 60 * 1000; // 5 minutes buffer before token expiry
+    this.isRefreshing = false;
+    this.refreshQueue = [];
+
+    // Bind methods
+    this.getAccessToken = this.getAccessToken.bind(this);
+    this._requestNewToken = this._requestNewToken.bind(this);
+    this._isTokenValid = this._isTokenValid.bind(this);
+  }
+
+  /**
+   * Get a valid access token, either from cache or by requesting a new one
+   * @returns {Promise<string>} The access token
+   */
+  async getAccessToken() {
+    // Check if we have a valid cached token
+    if (this._isTokenValid()) {
+      this.logger.debug('Using cached access token');
+      return this.tokenCache.accessToken;
+    }
+
+    // If a refresh is already in progress, queue this request
+    if (this.isRefreshing) {
+      return new Promise(resolve => {
+        this.refreshQueue.push(resolve);
+      });
+    }
+
+    // Otherwise, request a new token
+    try {
+      this.isRefreshing = true;
+      const token = await this._requestNewToken();
+
+      // Resolve all queued requests
+      while (this.refreshQueue.length > 0) {
+        const resolve = this.refreshQueue.shift();
+        resolve(token);
+      }
+      return token;
+    } catch (error) {
+      // Clear token cache on error
+      this.tokenCache = {
+        accessToken: null,
+        expiresAt: 0,
+        tokenType: 'Bearer',
+        lastRefresh: 0
+      };
+
+      // Reject all queued requests
+      while (this.refreshQueue.length > 0) {
+        const resolve = this.refreshQueue.shift();
+        resolve(Promise.reject(error));
+      }
+      throw error;
+    } finally {
+      this.isRefreshing = false;
+    }
+  }
+
+  /**
+   * Get token information including expiry details
+   * @returns {Object|null} Token info object or null if no token
+   */
+  getTokenInfo() {
+    if (!this.tokenCache.accessToken) {
+      return null;
+    }
+    const now = Date.now();
+    const expiresIn = Math.max(0, this.tokenCache.expiresAt - now);
+    return {
+      accessToken: this.tokenCache.accessToken,
+      expiresIn: Math.floor(expiresIn / 1000),
+      // Convert to seconds
+      tokenType: this.tokenCache.tokenType,
+      expiresAt: this.tokenCache.expiresAt,
+      lastRefresh: this.tokenCache.lastRefresh,
+      isValid: this._isTokenValid()
+    };
+  }
+
+  /**
+   * Check if the current token is still valid
+   * @returns {boolean} True if token is valid, false otherwise
+   * @private
+   */
+  _isTokenValid() {
+    const now = Date.now();
+    return this.tokenCache.accessToken && this.tokenCache.expiresAt > now + this.tokenExpiryBuffer &&
+    // Ensure token isn't too old (max 1 hour)
+    now - this.tokenCache.lastRefresh < 60 * 60 * 1000;
+  }
+
+  /**
+   * Get the auth domain for a given region
+   * @private
+   */
+  _getAuthDomain(region) {
+    const authDomainMap = {
+      'NorthAmerica': 'auth.pingone.com',
+      'Europe': 'auth.eu.pingone.com',
+      'Canada': 'auth.ca.pingone.com',
+      'Asia': 'auth.apsoutheast.pingone.com',
+      'Australia': 'auth.aus.pingone.com',
+      'US': 'auth.pingone.com',
+      'EU': 'auth.eu.pingone.com',
+      'AP': 'auth.apsoutheast.pingone.com'
+    };
+    return authDomainMap[region] || 'auth.pingone.com';
+  }
+
+  /**
+   * Request a new access token from PingOne
+   * @returns {Promise<string>} The new access token
+   * @private
+   */
+  async _requestNewToken() {
+    const {
+      apiClientId,
+      apiSecret,
+      environmentId,
+      region = 'NorthAmerica'
+    } = this.settings;
+    const requestId = `req_${Math.random().toString(36).substr(2, 9)}`;
+    const startTime = Date.now();
+
+    // Validate required settings
+    if (!apiClientId || !apiSecret || !environmentId) {
+      const error = new Error('Missing required API credentials in settings');
+      this.logger.error('Token request failed: Missing credentials', {
+        requestId,
+        hasClientId: !!apiClientId,
+        hasSecret: !!apiSecret,
+        hasEnvId: !!environmentId
+      });
+      throw error;
+    }
+
+    // Prepare request
+    const authDomain = this._getAuthDomain(region);
+    const tokenUrl = `https://${authDomain}/${environmentId}/as/token`;
+    const credentials = btoa(`${apiClientId}:${apiSecret}`);
+    try {
+      this.logger.debug('Requesting new access token from PingOne...', {
+        requestId,
+        authDomain,
+        environmentId,
+        region
+      });
+      const response = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': `Basic ${credentials}`
+        },
+        body: 'grant_type=client_credentials',
+        credentials: 'omit'
+      });
+      const responseTime = Date.now() - startTime;
+      let responseData;
+      try {
+        responseData = await response.json();
+      } catch (e) {
+        const text = await response.text().catch(() => 'Failed to read response text');
+        throw new Error(`Invalid JSON response: ${e.message}. Response: ${text}`);
+      }
+      if (!response.ok) {
+        const errorMsg = responseData.error_description || responseData.error || `HTTP ${response.status} ${response.statusText}`;
+        this.logger.error('Token request failed', {
+          requestId,
+          status: response.status,
+          error: responseData.error,
+          errorDescription: responseData.error_description,
+          responseTime: `${responseTime}ms`,
+          url: tokenUrl
+        });
+        throw new Error(errorMsg);
+      }
+      if (!responseData.access_token) {
+        throw new Error('No access token in response');
+      }
+
+      // Update token cache
+      const expiresInMs = (responseData.expires_in || 3600) * 1000;
+      this.tokenCache = {
+        accessToken: responseData.access_token,
+        expiresAt: Date.now() + expiresInMs,
+        tokenType: responseData.token_type || 'Bearer',
+        lastRefresh: Date.now()
+      };
+      this.logger.info('Successfully obtained new access token', {
+        requestId,
+        tokenType: this.tokenCache.tokenType,
+        expiresIn: Math.floor(expiresInMs / 1000) + 's',
+        responseTime: `${responseTime}ms`
+      });
+      return this.tokenCache.accessToken;
+    } catch (error) {
+      this.logger.error('Error getting access token', {
+        requestId,
+        error: error.toString(),
+        message: error.message,
+        url: tokenUrl,
+        responseTime: `${Date.now() - startTime}ms`
+      });
+
+      // Clear token cache on error
+      this.tokenCache = {
+        accessToken: null,
+        expiresAt: 0,
+        tokenType: 'Bearer',
+        lastRefresh: 0
+      };
+      throw error;
+    }
+  }
+
+  /**
+   * Update settings and clear token cache if credentials changed
+   * @param {Object} newSettings - New settings object
+   */
+  updateSettings(newSettings) {
+    const credentialsChanged = newSettings.apiClientId !== this.settings.apiClientId || newSettings.apiSecret !== this.settings.apiSecret || newSettings.environmentId !== this.settings.environmentId || newSettings.region !== this.settings.region;
+    this.settings = {
+      ...this.settings,
+      ...newSettings
+    };
+    if (credentialsChanged) {
+      this.logger.debug('API credentials changed, clearing token cache');
+      this.tokenCache = {
+        accessToken: null,
+        expiresAt: 0,
+        tokenType: 'Bearer',
+        lastRefresh: 0
+      };
+    }
+  }
+}
+var _default = exports.default = TokenManager;
+
+},{}],13:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.UIManager = void 0;
+var _logger = require("./logger.js");
 class UIManager {
   constructor(logger) {
     this.logger = logger;
     this.currentView = 'import';
-
-    // Status tracking for all views
-    this.lastRunStatus = {
-      import: {
-        operation: 'None',
-        status: 'Ready',
-        timestamp: null,
-        details: null,
-        results: null
-      },
-      export: {
-        operation: 'None',
-        status: 'Ready',
-        timestamp: null,
-        details: null,
-        results: null
-      },
-      'delete-csv': {
-        operation: 'None',
-        status: 'Ready',
-        timestamp: null,
-        details: null,
-        results: null
-      },
-      modify: {
-        operation: 'None',
-        status: 'Ready',
-        timestamp: null,
-        details: null,
-        results: null
-      },
-      settings: {
-        operation: 'None',
-        status: 'Ready',
-        timestamp: null,
-        details: null,
-        results: null
-      },
-      logs: {
-        operation: 'None',
-        status: 'Ready',
-        timestamp: null,
-        details: null,
-        results: null
-      }
-    };
-
-    // Initialize UI elements
-    this.views = {
-      'home': document.getElementById('home-view'),
-      'import': document.getElementById('import-view'),
-      'settings': document.getElementById('settings-view'),
-      'logs': document.getElementById('logs-view'),
-      'delete-csv': document.getElementById('delete-csv-view'),
-      'modify': document.getElementById('modify-view'),
-      'export': document.getElementById('export-view'),
-      'progress': document.getElementById('progress-view')
-    };
-    // Navigation elements
-    this.navItems = document.querySelectorAll('.nav-item');
-    // Logs view elements
-    this.logsView = this.views.logs;
-    // Connection status element
-    this.connectionStatusElement = document.getElementById('connection-status');
-
-    // Attach navigation click listeners
-    this.navItems.forEach(item => {
-      item.addEventListener('click', e => {
-        e.preventDefault();
-        const view = item.getAttribute('data-view');
-        if (view) {
-          this.showView(view);
-        }
-      });
-    });
-
-    // Load persisted status from localStorage
-    this.loadPersistedStatus();
-
-    // Rate limit warning tracking
-    this.lastRateLimitWarning = null;
-    this.rateLimitWarningCooldown = 30000; // 30 seconds cooldown
-
-    // Progress log tracking
-    this.progressLog = [];
-    this.maxProgressLogEntries = 100; // Keep last 100 entries
-
-    // Import state tracking
     this.isImporting = false;
+    this.isExporting = false;
+    this.isDeleting = false;
+    this.isModifying = false;
+    this.isPopulationDeleting = false;
 
-    // Log pagination tracking
-    this.logsPagination = {
-      currentPage: 1,
-      pageSize: 25,
-      totalRecords: 0,
-      totalPages: 0,
-      allLogs: [],
-      // Store all logs for pagination
-      isLoading: false
-    };
+    // Navigation elements
+    this.navItems = [];
 
-    // Set up progress close button handlers
-    this.setupProgressCloseButtons();
-
-    // Set up log navigation handlers
-    this.setupLogNavigation();
+    // Progress tracking
+    this.lastRunStatus = {};
   }
-
-  /**
-   * Set up event handlers for log navigation buttons
-   */
-  setupLogNavigation() {
-    const logNavButtons = [{
-      id: 'scroll-logs-top',
-      action: 'scrollToTop'
-    }, {
-      id: 'scroll-logs-up',
-      action: 'scrollUp'
-    }, {
-      id: 'scroll-logs-down',
-      action: 'scrollDown'
-    }, {
-      id: 'scroll-logs-bottom',
-      action: 'scrollToBottom'
-    }];
-    logNavButtons.forEach(_ref => {
-      let {
-        id,
-        action
-      } = _ref;
-      const button = document.getElementById(id);
-      if (button) {
-        button.addEventListener('click', () => {
-          this[action]();
-          this.logger?.info(`Log navigation: ${action}`);
-        });
-      }
-    });
-  }
-
-  /**
-   * Scroll logs to the top
-   */
-  scrollToTop() {
-    const logsContainer = document.getElementById('log-entries');
-    if (logsContainer) {
-      logsContainer.scrollTop = 0;
-      this.showNotification('Scrolled to top of logs', 'info');
-    }
-  }
-
-  /**
-   * Scroll logs up by one page
-   */
-  scrollUp() {
-    const logsContainer = document.getElementById('log-entries');
-    if (logsContainer) {
-      const scrollAmount = logsContainer.clientHeight * 0.8;
-      logsContainer.scrollTop = Math.max(0, logsContainer.scrollTop - scrollAmount);
-      this.showNotification('Scrolled up in logs', 'info');
-    }
-  }
-
-  /**
-   * Scroll logs down by one page
-   */
-  scrollDown() {
-    const logsContainer = document.getElementById('log-entries');
-    if (logsContainer) {
-      const scrollAmount = logsContainer.clientHeight * 0.8;
-      logsContainer.scrollTop = Math.min(logsContainer.scrollHeight - logsContainer.clientHeight, logsContainer.scrollTop + scrollAmount);
-      this.showNotification('Scrolled down in logs', 'info');
-    }
-  }
-
-  /**
-   * Scroll logs to the bottom
-   */
-  scrollToBottom() {
-    const logsContainer = document.getElementById('log-entries');
-    if (logsContainer) {
-      logsContainer.scrollTop = logsContainer.scrollHeight;
-      this.showNotification('Scrolled to bottom of logs', 'info');
-    }
-  }
-
-  /**
-   * Update pagination controls and display
-   */
-  updatePaginationControls() {
-    const counter = document.getElementById('logs-counter');
-    const pageInput = document.getElementById('logs-page-input');
-    const totalPages = document.getElementById('logs-total-pages');
-    const firstBtn = document.getElementById('logs-first-page');
-    const prevBtn = document.getElementById('logs-prev-page');
-    const nextBtn = document.getElementById('logs-next-page');
-    const lastBtn = document.getElementById('logs-last-page');
-    const pageSizeSelect = document.getElementById('logs-page-size');
-    if (!counter || !pageInput || !totalPages) return;
-    const {
-      currentPage,
-      pageSize,
-      totalRecords,
-      totalPages: total
-    } = this.logsPagination;
-
-    // Update counter
-    const startRecord = (currentPage - 1) * pageSize + 1;
-    const endRecord = Math.min(currentPage * pageSize, totalRecords);
-    counter.textContent = `${startRecord}-${endRecord} of ${totalRecords} records shown`;
-
-    // Update page input and total pages
-    pageInput.value = currentPage;
-    totalPages.textContent = total;
-
-    // Update navigation buttons
-    firstBtn.disabled = currentPage <= 1;
-    prevBtn.disabled = currentPage <= 1;
-    nextBtn.disabled = currentPage >= total;
-    lastBtn.disabled = currentPage >= total;
-
-    // Update page size selector
-    if (pageSizeSelect) {
-      pageSizeSelect.value = pageSize;
-    }
-  }
-
-  /**
-   * Display logs for current page
-   */
-  displayCurrentPageLogs() {
-    const {
-      currentPage,
-      pageSize,
-      allLogs
-    } = this.logsPagination;
-    const startIndex = (currentPage - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
-    const pageLogs = allLogs.slice(startIndex, endIndex);
-    this.displayLogs(pageLogs);
-    this.updatePaginationControls();
-  }
-
-  /**
-   * Display logs in the log entries container
-   */
-  displayLogs(logs) {
-    const logEntries = document.getElementById('log-entries');
-    if (!logEntries) return;
-
-    // Clear existing content
-    logEntries.innerHTML = '';
-    if (!logs || logs.length === 0) {
-      const noLogsElement = document.createElement('div');
-      noLogsElement.className = 'log-entry info';
-      noLogsElement.textContent = 'No logs available';
-      logEntries.appendChild(noLogsElement);
-      return;
-    }
-    logs.forEach((log, index) => {
-      try {
-        if (log && typeof log === 'object') {
-          const logElement = document.createElement('div');
-          const logLevel = (log.level || 'info').toLowerCase();
-          logElement.className = `log-entry log-${logLevel}`;
-          logElement.style.cursor = 'pointer';
-          const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
-          const level = log.level ? log.level.toUpperCase() : 'INFO';
-          const message = log.message || 'No message';
-
-          // Create the main log content with expand icon
-          logElement.innerHTML = `
-                        <div class="log-content">
-                            <span class="log-timestamp">[${timestamp}]</span>
-                            <span class="log-level">${level}</span>
-                            <span class="log-message">${message}</span>
-                            <span class="log-expand-icon">
-                                <i class="fas fa-chevron-right"></i>
-                            </span>
-                        </div>
-                    `;
-
-          // Add expandable details section
-          const detailsElement = document.createElement('div');
-          detailsElement.className = 'log-details';
-          detailsElement.style.display = 'none';
-          detailsElement.innerHTML = `
-                        <div class="log-details-content">
-                            <pre class="log-detail-json">${JSON.stringify(log, null, 2)}</pre>
-                        </div>
-                    `;
-          logElement.appendChild(detailsElement);
-
-          // Add click handler for expand/collapse
-          const logContent = logElement.querySelector('.log-content');
-          const expandIcon = logElement.querySelector('.log-expand-icon i');
-          logContent.addEventListener('click', function (e) {
-            // Only toggle if not clicking a link or button inside
-            if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
-            const expanded = logElement.classList.toggle('expanded');
-            if (detailsElement) {
-              detailsElement.style.display = expanded ? 'block' : 'none';
-            }
-
-            // Update expand icon
-            if (expandIcon) {
-              expandIcon.className = expanded ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
-            }
-          });
-          logEntries.appendChild(logElement);
-        }
-      } catch (logError) {
-        console.error(`Error processing log entry at index ${index}:`, logError);
-      }
-    });
-  }
-
-  /**
-   * Setup pagination event handlers
-   */
-  setupPaginationHandlers() {
-    const firstBtn = document.getElementById('logs-first-page');
-    const prevBtn = document.getElementById('logs-prev-page');
-    const nextBtn = document.getElementById('logs-next-page');
-    const lastBtn = document.getElementById('logs-last-page');
-    const pageInput = document.getElementById('logs-page-input');
-    const pageSizeSelect = document.getElementById('logs-page-size');
-    if (firstBtn) firstBtn.addEventListener('click', () => this.goToPage(1));
-    if (prevBtn) prevBtn.addEventListener('click', () => this.goToPage(this.logsPagination.currentPage - 1));
-    if (nextBtn) nextBtn.addEventListener('click', () => this.goToPage(this.logsPagination.currentPage + 1));
-    if (lastBtn) lastBtn.addEventListener('click', () => this.goToPage(this.logsPagination.totalPages));
-    if (pageInput) {
-      pageInput.addEventListener('keypress', e => {
-        if (e.key === 'Enter') {
-          const page = parseInt(pageInput.value);
-          if (page && page >= 1 && page <= this.logsPagination.totalPages) {
-            this.goToPage(page);
-          }
-        }
-      });
-    }
-    if (pageSizeSelect) {
-      pageSizeSelect.addEventListener('change', e => {
-        this.logsPagination.pageSize = parseInt(e.target.value);
-        this.logsPagination.currentPage = 1;
-        this.calculatePagination();
-        this.displayCurrentPageLogs();
-      });
-    }
-  }
-
-  /**
-   * Navigate to a specific page
-   */
-  goToPage(page) {
-    if (page < 1 || page > this.logsPagination.totalPages) return;
-    this.logsPagination.currentPage = page;
-    this.displayCurrentPageLogs();
-  }
-
-  /**
-   * Calculate pagination values
-   */
-  calculatePagination() {
-    const {
-      pageSize,
-      totalRecords
-    } = this.logsPagination;
-    this.logsPagination.totalPages = Math.ceil(totalRecords / pageSize);
-
-    // Ensure current page is within bounds
-    if (this.logsPagination.currentPage > this.logsPagination.totalPages) {
-      this.logsPagination.currentPage = this.logsPagination.totalPages || 1;
-    }
-  }
-
-  /**
-   * Hide a progress screen with a delay
-   * @param {string} statusElementId - The ID of the status element to hide
-   * @param {number} delay - Delay in milliseconds (default: 5000)
-   */
-  hideProgressScreenWithDelay(statusElementId) {
-    let delay = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 5000;
-    const statusElement = document.getElementById(statusElementId);
-    if (!statusElement) return;
-
-    // Clear any existing timeout for this element
-    const timeoutKey = `hideTimeout_${statusElementId}`;
-    if (this[timeoutKey]) {
-      clearTimeout(this[timeoutKey]);
-    }
-
-    // Set new timeout to hide the progress screen
-    this[timeoutKey] = setTimeout(() => {
-      statusElement.style.display = 'none';
-      delete this[timeoutKey]; // Clean up the timeout reference
-      this.logger?.info(`Progress screen auto-hidden after delay: ${statusElementId}`);
-    }, delay);
-    this.logger?.info(`Progress screen will be hidden in ${delay}ms: ${statusElementId}`);
-  }
-
-  /**
-   * Set up event handlers for progress screen close buttons
-   */
-  setupProgressCloseButtons() {
-    const progressScreens = [{
-      buttonId: 'close-import-status',
-      statusId: 'import-status',
-      viewName: 'import'
-    }, {
-      buttonId: 'close-export-status',
-      statusId: 'export-status',
-      viewName: 'export'
-    }, {
-      buttonId: 'close-delete-csv-status',
-      statusId: 'delete-csv-status',
-      viewName: 'delete-csv'
-    }, {
-      buttonId: 'close-modify-status',
-      statusId: 'modify-status',
-      viewName: 'modify'
-    }, {
-      buttonId: 'close-population-delete-status',
-      statusId: 'population-delete-status',
-      viewName: 'population-delete'
-    }];
-    progressScreens.forEach(_ref2 => {
-      let {
-        buttonId,
-        statusId,
-        viewName
-      } = _ref2;
-      const closeButton = document.getElementById(buttonId);
-      const statusElement = document.getElementById(statusId);
-      if (closeButton && statusElement) {
-        closeButton.addEventListener('click', () => {
-          // Clear any pending hide timeout
-          const timeoutKey = `hideTimeout_${statusId}`;
-          if (this[timeoutKey]) {
-            clearTimeout(this[timeoutKey]);
-            delete this[timeoutKey];
-          }
-
-          // Hide the progress screen
-          statusElement.style.display = 'none';
-
-          // Also hide the modal overlay if it exists (for import specifically)
-          if (viewName === 'import') {
-            const overlay = document.getElementById('import-progress-modal-overlay');
-            if (overlay) {
-              overlay.style.display = 'none';
-            }
-            // Remove blur from app container
-            document.querySelector('.app-container')?.classList.remove('blurred');
-          }
-
-          // Reset the status to prevent it from showing again on page reload
-          const currentStatus = this.lastRunStatus[viewName];
-          if (currentStatus && currentStatus.status === 'In Progress') {
-            this.updateLastRunStatus(viewName, currentStatus.operation || 'Operation', 'Ready', 'Operation stopped by user');
-          }
-          this.logger?.info(`Progress screen closed: ${statusId}`);
-          this.showNotification(`${viewName.charAt(0).toUpperCase() + viewName.slice(1)} progress screen closed`, 'info');
-        });
-      }
-    });
-  }
-
-  /**
-   * Load persisted status from localStorage
-   */
-  loadPersistedStatus() {
+  async init() {
     try {
-      const saved = localStorage.getItem('pingone-import-last-status');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        this.lastRunStatus = {
-          ...this.lastRunStatus,
-          ...parsed
-        };
-      }
+      // Initialize navigation
+      this.navItems = document.querySelectorAll('[data-view]');
+
+      // Initialize progress tracking
+      this.lastRunStatus = {
+        import: {
+          status: 'idle',
+          message: 'No import run yet'
+        },
+        export: {
+          status: 'idle',
+          message: 'No export run yet'
+        },
+        delete: {
+          status: 'idle',
+          message: 'No delete run yet'
+        },
+        modify: {
+          status: 'idle',
+          message: 'No modify run yet'
+        },
+        'population-delete': {
+          status: 'idle',
+          message: 'No population delete run yet'
+        }
+      };
     } catch (error) {
-      this.logger.error('Failed to load persisted status:', error);
+      this.logger.error('UI Manager initialization error:', error);
+      throw error;
     }
   }
-
-  /**
-   * Save status to localStorage
-   */
-  savePersistedStatus() {
+  showSuccess(message) {
+    let details = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '';
+    this.showNotification('success', message, details);
+  }
+  showError(message) {
+    let details = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '';
+    this.showNotification('error', message, details);
+  }
+  showWarning(message) {
+    let details = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '';
+    this.showNotification('warning', message, details);
+  }
+  showInfo(message) {
+    let details = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '';
+    this.showNotification('info', message, details);
+  }
+  showNotification(type, message) {
+    let details = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : '';
     try {
-      localStorage.setItem('pingone-import-last-status', JSON.stringify(this.lastRunStatus));
-    } catch (error) {
-      this.logger.error('Failed to save persisted status:', error);
-    }
-  }
+      const notification = document.createElement('div');
+      notification.className = `status-message status-${type} alert-dismissible fade show`;
+      notification.setAttribute('role', 'alert');
+      notification.setAttribute('aria-live', 'polite');
 
-  /**
-   * Update the last run status for a view
-   * @param {string} viewName - The view name (import, export, delete-csv, modify, settings, logs)
-   * @param {string} operation - The operation performed
-   * @param {string} status - The status (Ready, In Progress, Completed, Failed, Error)
-   * @param {string} details - Additional details about the operation
-   * @param {Object} results - Results object with counts/data
-   */
-  updateLastRunStatus(viewName, operation, status) {
-    let details = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : null;
-    let results = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : null;
-    if (!this.lastRunStatus[viewName]) {
-      this.lastRunStatus[viewName] = {};
-    }
-    this.lastRunStatus[viewName] = {
-      operation,
-      status,
-      timestamp: new Date().toISOString(),
-      details,
-      results
-    };
-
-    // Save to localStorage
-    this.savePersistedStatus();
-
-    // Update the UI if this view is currently active or always show persistent status
-    this.displayLastRunStatus(viewName);
-  }
-
-  /**
-   * Display the last run status for a specific view
-   * @param {string} viewName - The view name
-   */
-  displayLastRunStatus(viewName) {
-    if (this.logger && typeof this.logger.debug === 'function') {
-      this.logger.debug(`Displaying last run status for ${viewName}`);
-    }
-    const status = this.lastRunStatus[viewName];
-    if (!status || status.operation === 'None') return;
-
-    // For operation views (import, export, delete-csv, modify), 
-    // show the progress section if the operation is currently "In Progress" OR if it was recently completed
-    if (['import', 'export', 'delete-csv', 'modify'].includes(viewName)) {
-      const statusElement = document.getElementById(`${viewName}-status`);
-
-      // Show the progress screen if the operation is currently in progress OR if it was completed recently
-      if (statusElement) {
-        if (status.status === 'In Progress') {
-          statusElement.style.display = 'block';
-          this.updateOperationStatus(viewName, status);
-        } else if (status.status === 'Completed' || status.status === 'Ready') {
-          // Keep the progress screen open even after completion so users can see results
-          statusElement.style.display = 'block';
-          this.updateOperationStatus(viewName, status);
-        }
-        // For other statuses (Failed, Cancelled, etc.), keep the screen open to show error details
-        else {
-          statusElement.style.display = 'block';
-          this.updateOperationStatus(viewName, status);
-        }
-      }
-    } else {
-      // For logs and settings, always show status
-      const statusElement = document.getElementById(`${viewName}-status`);
-      if (!statusElement) return;
-      statusElement.style.display = 'block';
-      if (viewName === 'logs') {
-        this.updateLogsStatus(status);
-      } else if (viewName === 'settings') {
-        this.updateSettingsLastRunStatus(status);
-      }
-    }
-  }
-
-  /**
-   * Update logs view status
-   */
-  updateLogsStatus(status) {
-    const elements = {
-      operation: document.getElementById('logs-last-operation'),
-      status: document.getElementById('logs-operation-status'),
-      timestamp: document.getElementById('logs-operation-timestamp'),
-      details: document.getElementById('logs-operation-details')
-    };
-    if (elements.operation) elements.operation.textContent = status.operation;
-    if (elements.status) {
-      elements.status.textContent = status.status;
-      elements.status.className = `stat-value ${this.getStatusClass(status.status)}`;
-    }
-    if (elements.timestamp) {
-      elements.timestamp.textContent = status.timestamp ? new Date(status.timestamp).toLocaleString() : '-';
-    }
-    if (elements.details) elements.details.textContent = status.details || '-';
-  }
-
-  /**
-   * Update settings view last run status
-   */
-  updateSettingsLastRunStatus(status) {
-    // Add a last operation status to settings if it doesn't exist
-    let lastOpElement = document.getElementById('settings-last-operation-status');
-    if (!lastOpElement) {
-      const container = document.querySelector('.settings-status-container');
-      if (container) {
-        lastOpElement = document.createElement('div');
-        lastOpElement.id = 'settings-last-operation-status';
-        lastOpElement.className = 'settings-last-operation-status';
-        lastOpElement.innerHTML = `
-                    <div class="status-details">
-                        <span class="status-icon">📋</span>
-                        <span class="status-message">
-                            <strong>Last Operation:</strong> <span id="settings-last-op-text">${status.operation}</span> - 
-                            <span id="settings-last-op-status" class="${this.getStatusClass(status.status)}">${status.status}</span>
-                            <small class="timestamp">${status.timestamp ? new Date(status.timestamp).toLocaleString() : ''}</small>
-                        </span>
+      // Get icon and styling based on type
+      const iconConfig = this.getStatusIconConfig(type);
+      notification.innerHTML = `
+                <div class="status-message-content">
+                    <span class="status-icon" aria-hidden="true">${iconConfig.icon}</span>
+                    <div class="status-text">
+                        <strong class="status-title">${message}</strong>
+                        ${details ? `<div class="status-details">${details}</div>` : ''}
                     </div>
-                `;
-        container.appendChild(lastOpElement);
-      }
-    } else {
-      // Update existing elements
-      const opText = document.getElementById('settings-last-op-text');
-      const opStatus = document.getElementById('settings-last-op-status');
-      const timestamp = lastOpElement.querySelector('.timestamp');
-      if (opText) opText.textContent = status.operation;
-      if (opStatus) {
-        opStatus.textContent = status.status;
-        opStatus.className = this.getStatusClass(status.status);
-      }
-      if (timestamp) {
-        timestamp.textContent = status.timestamp ? new Date(status.timestamp).toLocaleString() : '';
-      }
-    }
-  }
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close notification">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+            `;
 
-  /**
-   * Update operation status for import/export/delete/modify views
-   */
-  updateOperationStatus(viewName, status) {
-    if (this.logger && typeof this.logger.debug === 'function') {
-      this.logger.debug(`Updating operation status for ${viewName}: ${JSON.stringify(status)}`);
-    }
-    // Update the main status text
-    const statusTextElement = document.getElementById(`${viewName}-progress-text`);
-    if (statusTextElement) {
-      statusTextElement.textContent = `${status.operation} - ${status.status}`;
-      statusTextElement.className = `stat-value ${this.getStatusClass(status.status)}`;
-    }
+      // Use the correct notification area
+      const container = document.getElementById('notification-area');
+      if (container) {
+        container.appendChild(notification);
 
-    // If we have results, update the counters
-    if (status.results) {
-      const counters = ['success', 'failed', 'skipped'];
-      counters.forEach(counter => {
-        const element = document.getElementById(`${viewName}-${counter}-count`);
-        if (element && status.results[counter] !== undefined) {
-          element.textContent = status.results[counter];
-        }
-      });
-
-      // Update progress count if available
-      const progressCountElement = document.getElementById(`${viewName}-progress-count`);
-      if (progressCountElement && status.results.total !== undefined) {
-        const processed = (status.results.success || 0) + (status.results.failed || 0) + (status.results.skipped || 0);
-        progressCountElement.textContent = `${processed} of ${status.results.total} users`;
-      }
-    }
-
-    // Add timestamp info
-    const timestampElement = document.getElementById(`${viewName}-timestamp`);
-    if (!timestampElement && status.timestamp) {
-      const statsContainer = document.getElementById(`${viewName}-stats`);
-      if (statsContainer) {
-        const timestampDiv = document.createElement('div');
-        timestampDiv.className = 'stat-item';
-        timestampDiv.innerHTML = `
-                    <span class="stat-label">Last Run:</span>
-                    <span id="${viewName}-timestamp" class="stat-value">${new Date(status.timestamp).toLocaleString()}</span>
-                `;
-        statsContainer.appendChild(timestampDiv);
-      }
-    } else if (timestampElement) {
-      timestampElement.textContent = status.timestamp ? new Date(status.timestamp).toLocaleString() : '-';
-    }
-  }
-
-  /**
-   * Get CSS class for status
-   */
-  getStatusClass(status) {
-    // Ensure status is always a string
-    const safeStatus = typeof status === 'string' && status ? status : 'unknown';
-    switch (safeStatus.toLowerCase()) {
-      case 'success':
-        return 'status-success';
-      case 'error':
-        return 'status-error';
-      case 'warning':
-        return 'status-warning';
-      case 'info':
-        return 'status-info';
-      case 'ready':
-        return 'status-ready';
-      case 'in progress':
-        return 'status-in-progress';
-      case 'completed':
-        return 'status-completed';
-      case 'cancelled':
-        return 'status-cancelled';
-      default:
-        return 'status-unknown';
-    }
-  }
-
-  /**
-   * Show all persisted status sections when switching views
-   */
-  showPersistedStatus() {
-    Object.keys(this.lastRunStatus).forEach(viewName => {
-      this.displayLastRunStatus(viewName);
-    });
-  }
-
-  /**
-   * Switch between different views
-   * @param {string} viewName - The name of the view to switch to ('import', 'settings', 'logs')
-   */
-  /**
-   * Show a specific view (alias for switchView with async/await support)
-   * @param {string} viewName - The name of the view to show
-   * @returns {Promise<boolean>} True if view was shown successfully
-   * @throws {Error} If view is not found
-   */
-  async showView(viewName) {
-    // Hide all views and remove 'active'
-    Object.entries(this.views).forEach(_ref3 => {
-      let [name, element] = _ref3;
-      if (element) {
-        element.style.display = 'none';
-        element.classList.remove('active');
-      }
-      const navItem = document.querySelector(`[data-view="${name}"]`);
-      if (navItem) navItem.classList.remove('active');
-    });
-    // Show the selected view
-    const viewElement = this.views[viewName];
-    if (viewElement) {
-      viewElement.style.display = 'block';
-      viewElement.classList.add('active');
-      this.currentView = viewName;
-      const navItem = document.querySelector(`[data-view="${viewName}"]`);
-      if (navItem) navItem.classList.add('active');
-
-      // Special handling for logs/settings
-      switch (viewName) {
-        case 'logs':
-          await this.loadAndDisplayLogs();
-          this.scrollLogsToBottom();
-          break;
-        case 'settings':
-          // Load settings when the settings view is shown
-          if (window.app && typeof window.app.checkSettingsAndRestore === 'function') {
-            window.app.checkSettingsAndRestore();
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+          if (notification.parentNode) {
+            notification.remove();
           }
-          const currentStatus = this.connectionStatusElement?.classList.contains('status-connected') ? 'connected' : 'disconnected';
-          const currentMessage = this.connectionStatusElement?.querySelector('.status-message')?.textContent || '';
-          this.updateSettingsConnectionStatus(currentStatus, currentMessage);
-          break;
+        }, 5000);
       }
-
-      // Always display persisted status for the current view
-      this.displayLastRunStatus(viewName);
-      return true;
-    } else {
-      console.warn(`View '${viewName}' not found`);
-      return false;
+    } catch (error) {
+      console.error('Error showing notification:', error);
     }
   }
-
-  /**
-   * Switch between different views
-   * @param {string} viewName - The name of the view to switch to ('import', 'settings', 'logs')
-   */
-  switchView(viewName) {
-    // Convert view name to lowercase for case-insensitive comparison
-    const normalizedViewName = viewName.toLowerCase();
-    const viewElement = this.views[normalizedViewName];
-    if (!viewElement) {
-      console.error(`View '${viewName}' not found`);
-      throw new Error(`View '${viewName}' not found`);
-    }
-
-    // Hide all views
-    Object.entries(this.views).forEach(_ref4 => {
-      let [name, element] = _ref4;
-      if (element) {
-        element.style.display = 'none';
-        element.classList.remove('active');
+  getStatusIconConfig(type) {
+    const configs = {
+      success: {
+        icon: '✅',
+        bgColor: '#d4edda',
+        borderColor: '#c3e6cb',
+        textColor: '#155724',
+        iconColor: '#28a745'
+      },
+      warning: {
+        icon: '⚠️',
+        bgColor: '#fff3cd',
+        borderColor: '#ffeaa7',
+        textColor: '#856404',
+        iconColor: '#ffc107'
+      },
+      error: {
+        icon: '❌',
+        bgColor: '#f8d7da',
+        borderColor: '#f5c6cb',
+        textColor: '#721c24',
+        iconColor: '#dc3545'
+      },
+      info: {
+        icon: 'ℹ️',
+        bgColor: '#d1ecf1',
+        borderColor: '#bee5eb',
+        textColor: '#0c5460',
+        iconColor: '#17a2b8'
       }
-      // Update nav items
-      const navItem = document.querySelector(`[data-view="${name}"]`);
-      if (navItem) {
-        navItem.classList.remove('active');
-      }
-    });
-
-    // Show the selected view
-    viewElement.style.display = 'block';
-    viewElement.classList.add('active');
-    this.currentView = normalizedViewName;
-
-    // Update active state of nav item
-    const activeNavItem = document.querySelector(`[data-view="${normalizedViewName}"]`);
-    if (activeNavItem) {
-      activeNavItem.classList.add('active');
-    }
-    // Save current view to localStorage for persistence
+    };
+    return configs[type] || configs.info;
+  }
+  updateConnectionStatus(status) {
+    let message = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '';
     try {
-      localStorage.setItem('currentView', normalizedViewName);
-    } catch (e) {}
-    this.logger.debug(`Switched to ${viewName} view`);
-    return true;
-  }
-
-  /**
-   * Update the settings status in the UI
-   * @param {boolean} hasRequiredSettings - Whether all required settings are present
-   */
-  updateSettingsStatus(hasRequiredSettings) {
-    const statusElement = document.getElementById('settings-status');
-    if (!statusElement) return;
-    if (hasRequiredSettings) {
-      statusElement.innerHTML = `
-                <i class="fas fa-check-circle"></i>
-                <span>All required settings are configured</span>
-            `;
-      statusElement.className = 'status-message status-success';
-    } else {
-      statusElement.innerHTML = `
-                <i class="fas fa-exclamation-triangle"></i>
-                <span>Missing required settings</span>
-            `;
-      statusElement.className = 'status-message status-warning';
+      const statusElement = document.getElementById('connection-status');
+      if (!statusElement) return;
+      const iconElement = statusElement.querySelector('.status-icon');
+      const messageElement = statusElement.querySelector('.status-message');
+      if (iconElement) {
+        iconElement.className = `status-icon fas ${this.getStatusIcon(status)}`;
+      }
+      if (messageElement) {
+        messageElement.textContent = message || this.getDefaultStatusMessage(status);
+      }
+      statusElement.className = `connection-status ${status}`;
+    } catch (error) {
+      console.error('Error updating connection status:', error);
     }
   }
-
-  /**
-   * Update the connection status display with enhanced error handling and logging
-   * @param {string} status - The connection status ('connected', 'disconnected', 'error', 'connecting')
-   * @param {string} [message] - The status message to display (optional)
-   * @param {boolean} [updateSettingsStatus=true] - Whether to also update the settings page status
-   * @returns {boolean} - Returns true if update was successful, false otherwise
-   */
-  updateConnectionStatus(status, message) {
-    let updateSettingsStatus = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : true;
+  updateHomeTokenStatus(show) {
+    let message = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '';
     try {
-      // Validate input
-      if (!status) {
-        console.warn('No status provided to updateConnectionStatus');
-        return false;
-      }
-      const normalizedStatus = status.toLowerCase();
-      const normalizedMessage = message || this._getDefaultStatusMessage(normalizedStatus);
-      console.debug(`Updating connection status to: ${normalizedStatus} - ${normalizedMessage}`);
-
-      // Update main connection status
-      const mainUpdateSuccess = this._updateStatusElement('connection-status', normalizedStatus, normalizedMessage);
-
-      // Only update settings status if explicitly requested AND we're on the settings page
-      let settingsUpdateSuccess = true;
-      if (updateSettingsStatus) {
-        // Check if we're currently on the settings page
-        const settingsView = document.getElementById('settings-view');
-        const isOnSettingsPage = settingsView && settingsView.style.display !== 'none';
-        if (isOnSettingsPage) {
-          settingsUpdateSuccess = this.updateSettingsConnectionStatus(normalizedStatus, normalizedMessage);
-        } else {
-          console.debug('Not updating settings connection status - not on settings page');
+      const tokenStatusElement = document.getElementById('home-token-status');
+      if (!tokenStatusElement) return;
+      if (show) {
+        tokenStatusElement.style.display = 'block';
+        const messageElement = tokenStatusElement.querySelector('.token-status-message');
+        if (messageElement) {
+          messageElement.textContent = message;
         }
-      }
-
-      // Update any UI elements that depend on connection status
-      this._updateConnectionDependentUI(normalizedStatus);
-
-      // Log the status change
-      this._logStatusChange(normalizedStatus, normalizedMessage);
-      return mainUpdateSuccess && settingsUpdateSuccess;
-    } catch (error) {
-      console.error('Error in updateConnectionStatus:', error);
-      this._handleStatusUpdateError(error, status, message);
-      return false;
-    }
-  }
-
-  /**
-   * Update the connection status in the settings page
-   * @param {string} status - The connection status ('connected', 'disconnected', 'error', 'connecting')
-   * @param {string} [message] - The status message to display (optional)
-   * @returns {boolean} - Returns true if update was successful, false otherwise
-   */
-  updateSettingsConnectionStatus(status, message) {
-    try {
-      if (!status) {
-        console.warn('No status provided to updateSettingsConnectionStatus');
-        return false;
-      }
-      const normalizedStatus = status.toLowerCase();
-      const normalizedMessage = message || this._getDefaultStatusMessage(normalizedStatus);
-      return this._updateStatusElement('settings-connection-status', normalizedStatus, normalizedMessage);
-    } catch (error) {
-      console.error('Error in updateSettingsConnectionStatus:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Update UI elements that depend on connection status
-   * @private
-   * @param {string} status - The current connection status
-   */
-  _updateConnectionDependentUI(status) {
-    try {
-      // Update connection button state
-      const connectButton = document.getElementById('connect-button');
-      if (connectButton) {
-        connectButton.disabled = status === 'connected';
-        connectButton.textContent = status === 'connected' ? 'Connected' : 'Connect';
-        connectButton.className = `btn ${status === 'connected' ? 'btn-success' : 'btn-primary'}`;
-      }
-
-      // Update import button state
-      const importButton = document.getElementById('import-button');
-      if (importButton) {
-        importButton.disabled = status !== 'connected';
-        importButton.title = status === 'connected' ? 'Start user import' : 'Please connect to PingOne first';
-      }
-
-      // Update status indicator in navigation
-      const statusIndicator = document.getElementById('nav-connection-status');
-      if (statusIndicator) {
-        statusIndicator.className = `nav-status-indicator status-${status}`;
-        statusIndicator.title = `${status.charAt(0).toUpperCase() + status.slice(1)}: ${this._getDefaultStatusMessage(status)}`;
-      }
-
-      // Show/hide connection error message
-      const errorElement = document.getElementById('connection-error');
-      if (errorElement) {
-        if (status === 'error') {
-          errorElement.style.display = 'block';
-        } else {
-          errorElement.style.display = 'none';
-        }
+      } else {
+        tokenStatusElement.style.display = 'none';
       }
     } catch (error) {
-      console.error('Error updating connection-dependent UI:', error);
+      console.error('Error updating home token status:', error);
     }
   }
-
-  /**
-   * Helper method to update a status element with validation and error handling
-   * @private
-   * @param {string} elementId - The ID of the element to update
-   * @param {string} status - The status class to apply
-   * @param {string} message - The message to display
-   * @returns {boolean} - Returns true if update was successful, false otherwise
-   */
-  _updateStatusElement(elementId, status, message) {
-    if (!elementId) {
-      console.warn('No elementId provided to _updateStatusElement');
-      return false;
-    }
-    const element = document.getElementById(elementId);
-    if (!element) {
-      console.warn(`Element with ID '${elementId}' not found`);
-      return false;
-    }
+  updateSettingsSaveStatus(message) {
+    let type = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'info';
     try {
-      // Update the element's content and classes
-      element.textContent = message || '';
-
-      // Remove all status classes
-      element.className = element.className.split(' ').filter(cls => !cls.startsWith('status-')).join(' ');
-
-      // Add the new status class
-      element.classList.add(`status-${status}`);
-
-      // Add ARIA attributes for accessibility
-      element.setAttribute('aria-live', 'polite');
-      element.setAttribute('aria-atomic', 'true');
-      return true;
-    } catch (error) {
-      console.error(`Error updating element '${elementId}':`, error);
-      return false;
-    }
-  }
-
-  /**
-   * Log status changes for debugging and auditing
-   * @private
-   * @param {string} status - The connection status
-   * @param {string} message - The status message
-   */
-  _logStatusChange(status, message) {
-    const timestamp = new Date().toISOString();
-    console.debug(`[${timestamp}] Connection status changed to: ${status} - ${message}`);
-
-    // You could also log this to a server endpoint for auditing
-    // this._logToServer('connection-status', { status, message, timestamp });
-  }
-
-  /**
-   * Handle errors that occur during status updates
-   * @private
-   * @param {Error} error - The error that occurred
-   * @param {string} status - The status that was being set
-   * @param {string} message - The message that was being set
-   */
-  _handleStatusUpdateError(error, status, message) {
-    const errorMessage = `Failed to update status to '${status}': ${error.message}`;
-    console.error(errorMessage, error);
-
-    // Try to show a user-visible error if possible
-    try {
-      const errorElement = document.getElementById('connection-error');
-      if (errorElement) {
-        errorElement.textContent = `Error: ${errorMessage}. ${message || ''}`;
-        errorElement.style.display = 'block';
+      const statusElement = document.getElementById('settings-connection-status');
+      if (!statusElement) return;
+      const iconElement = statusElement.querySelector('.status-icon');
+      const messageElement = statusElement.querySelector('.status-message');
+      if (iconElement) {
+        iconElement.className = `status-icon fas ${this.getStatusIcon(type)}`;
       }
-    } catch (uiError) {
-      console.error('Failed to display error to user:', uiError);
+      if (messageElement) {
+        messageElement.textContent = message;
+      }
+      statusElement.className = `settings-connection-status ${type}`;
+    } catch (error) {
+      console.error('Error updating settings save status:', error);
     }
   }
-
-  /**
-   * Get the default status message for a given status
-   * @private
-   * @param {string} status - The connection status
-   * @returns {string} The default status message
-   */
-  _getDefaultStatusMessage(status) {
-    switch (status) {
-      case 'connected':
-        return '✅ Successfully connected to PingOne';
-      case 'connecting':
-        return 'Connecting to PingOne...';
-      case 'error':
-        return 'Connection error. Please check your settings.';
-      case 'disconnected':
-      default:
-        return 'Not connected. Please configure your API credentials and test the connection.';
-    }
+  getStatusIcon(status) {
+    const icons = {
+      connected: 'fa-check-circle text-success',
+      disconnected: 'fa-times-circle text-danger',
+      connecting: 'fa-spinner fa-spin text-warning',
+      error: 'fa-exclamation-triangle text-danger',
+      success: 'fa-check-circle text-success',
+      warning: 'fa-exclamation-triangle text-warning',
+      info: 'fa-info-circle text-info'
+    };
+    return icons[status] || 'fa-question-circle text-muted';
   }
-
-  /**
-   * Scroll the logs container to the bottom
-   */
-  scrollLogsToBottom() {
-    if (this.logsView) {
-      const logsContainer = this.logsView.querySelector('.logs-container') || this.logsView;
-      logsContainer.scrollTop = logsContainer.scrollHeight;
-    }
+  getDefaultStatusMessage(status) {
+    const messages = {
+      connected: 'Connected to PingOne',
+      disconnected: 'Not connected to PingOne',
+      connecting: 'Connecting to PingOne...',
+      error: 'Connection error',
+      success: 'Operation completed successfully',
+      warning: 'Warning',
+      info: 'Information'
+    };
+    return messages[status] || 'Unknown status';
   }
-
-  /**
-   * Load and display logs from the server
-   */
-  async loadAndDisplayLogs() {
-    if (!this.logsView) {
-      console.warn('Logs view element not found');
-      return;
-    }
-    if (this.logger && typeof this.logger.debug === 'function') {
-      this.logger.debug('Loading and displaying logs');
-    }
-    // Use /api/logs if available, else fallback to /api/logs/ui
-    let logsData;
-    try {
-      logsData = await this.fetchLogs();
-    } catch (e) {
-      // fallback to /api/logs/ui
-      const response = await fetch('/api/logs/ui?limit=1000');
-      logsData = await response.json();
-    }
-    let logEntries = this.logsView.querySelector('.log-entries');
-    if (!logEntries) {
-      logEntries = document.createElement('div');
-      logEntries.className = 'log-entries';
-      this.logsView.appendChild(logEntries);
-    }
-    logEntries.innerHTML = '';
-    if (logsData && Array.isArray(logsData.logs) && logsData.logs.length > 0) {
-      logsData.logs.forEach(log => {
-        const logElement = document.createElement('div');
-        logElement.className = 'log-entry';
-        logElement.textContent = log.message || JSON.stringify(log);
-        logEntries.appendChild(logElement);
-      });
-    } else {
-      const noLogsElement = document.createElement('div');
-      noLogsElement.className = 'log-entry info';
-      noLogsElement.textContent = 'No logs available';
-      logEntries.appendChild(noLogsElement);
-    }
-    if (this.logger && typeof this.logger.debug === 'function') {
-      this.logger.debug('Displayed logs in UI');
-    }
-  }
-
-  /**
-   * Show the import status section
-   * @param {number} totalUsers - Total number of users to import
-   */
   showImportStatus(totalUsers) {
     let populationName = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '';
+    let populationId = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : '';
     // Show modal overlay
     const overlay = document.getElementById('import-progress-modal-overlay');
     if (overlay) overlay.style.display = 'flex';
-    // Remove blur - no longer needed
-    // document.querySelector('.app-container')?.classList.add('blurred');
-
     const importStatus = document.getElementById('import-status');
     if (importStatus) {
       importStatus.style.display = 'block';
@@ -11094,1213 +7553,12 @@ class UIManager {
       failed: 0,
       skipped: 0
     });
-    this.updateImportProgress(0, totalUsers, 'Starting import...', {
-      success: 0,
-      failed: 0,
-      skipped: 0
-    }, populationName);
-    this.addProgressLogEntry(`Starting import of ${totalUsers} users`, 'info', {
-      total: totalUsers
-    });
-    this.setupProgressLogHandlers();
-
-    // Setup close button handler (idempotent)
-    const closeBtn = document.getElementById('close-import-status');
-    if (closeBtn && !closeBtn._modalHandlerSet) {
-      closeBtn.addEventListener('click', () => {
-        this.hideImportProgressModal();
-      });
-      closeBtn._modalHandlerSet = true;
-    }
-  }
-  hideImportProgressModal() {
-    // Hide modal overlay
-    const overlay = document.getElementById('import-progress-modal-overlay');
-    if (overlay) overlay.style.display = 'none';
-    // Remove blur
-    document.querySelector('.app-container')?.classList.remove('blurred');
-  }
-
-  /**
-   * Reset/Clear the Import Progress area for a new import
-   */
-  resetImportProgress() {
-    // Progress bar
-    const progressBar = document.getElementById('import-progress');
-    if (progressBar) {
-      progressBar.style.width = '0%';
-      progressBar.setAttribute('aria-valuenow', 0);
-    }
-    const progressPercent = document.getElementById('import-progress-percent');
-    if (progressPercent) progressPercent.textContent = '0%';
-    const progressText = document.getElementById('import-progress-text');
-    if (progressText) progressText.textContent = 'Ready';
-    const progressCount = document.getElementById('import-progress-count');
-    if (progressCount) progressCount.textContent = '0 of 0 users';
-
-    // Population name
-    const populationNameElement = document.getElementById('import-population-name');
-    if (populationNameElement) populationNameElement.textContent = 'Not selected';
-
-    // Stats
-    const successCount = document.getElementById('import-success-count');
-    const failedCount = document.getElementById('import-failed-count');
-    const skippedCount = document.getElementById('import-skipped-count');
-    if (successCount) successCount.textContent = '0';
-    if (failedCount) failedCount.textContent = '0';
-    if (skippedCount) skippedCount.textContent = '0';
-
-    // Hide modal overlay
-    const overlay = document.getElementById('import-progress-modal-overlay');
-    if (overlay) overlay.style.display = 'none';
-    // Remove blur - no longer needed
-    // document.querySelector('.app-container')?.classList.remove('blurred');
-
-    // Clear progress log
-    this.clearProgressLog();
-  }
-
-  /**
-   * Set the import button state
-   * @param {boolean} enabled - Whether the button should be enabled
-   * @param {string} [text] - Optional button text
-   */
-  setImportButtonState(enabled, text) {
-    // Top button was removed, only handle bottom button
-    const importButtonBottom = document.getElementById('start-import-btn-bottom');
-    if (importButtonBottom) {
-      importButtonBottom.disabled = !enabled;
-      if (text) {
-        importButtonBottom.textContent = text;
-      }
-    }
-  }
-
-  /**
-   * Show a success notification
-   * @param {string} message - The message to display
-   */
-  showSuccess(message) {
-    if (this.logger && typeof this.logger.info === 'function') {
-      this.logger.info(`Success notification: ${message}`);
-    }
-    // Add green checkmark if not already present
-    const messageWithCheckmark = message.startsWith('✅') ? message : `✅ ${message}`;
-    this.showNotification(messageWithCheckmark, 'success');
-  }
-
-  /**
-   * Show a warning notification
-   * @param {string} message - The message to display
-   */
-  showWarning(message) {
-    if (this.logger && typeof this.logger.warn === 'function') {
-      this.logger.warn(`Warning notification: ${message}`);
-    }
-    // Special handling for disclaimer warning
-    if (message.includes('disclaimer')) {
-      this.showDisclaimerWarning(message);
-    } else {
-      this.showNotification(message, 'warning');
-    }
-  }
-
-  /**
-   * Show a special disclaimer warning with light red background and longer duration
-   * @param {string} message - The disclaimer warning message
-   */
-  showDisclaimerWarning(message) {
-    console.log(`[disclaimer-warning] ${message}`);
-
-    // Get or create notification container
-    let notificationArea = document.getElementById('notification-area');
-    if (!notificationArea) {
-      console.warn('Notification area not found in the DOM');
-      return;
-    }
-
-    // Create notification element with light red background
-    const notification = document.createElement('div');
-    notification.className = 'notification notification-disclaimer';
-    notification.style.backgroundColor = '#ffe6e6'; // Light red background
-    notification.style.borderColor = '#ff9999'; // Light red border
-    notification.style.color = '#cc0000'; // Darker red text for contrast
-    notification.innerHTML = `
-            <div class="notification-content">
-                <span class="notification-message">${message}</span>
-                <button class="notification-close">&times;</button>
-            </div>
-        `;
-
-    // Add close button handler
-    const closeButton = notification.querySelector('.notification-close');
-    if (closeButton) {
-      closeButton.addEventListener('click', () => {
-        notification.classList.add('fade-out');
-        setTimeout(() => notification.remove(), 300);
-      });
-    }
-
-    // Add to notification area
-    notificationArea.appendChild(notification);
-
-    // Auto-remove after 10 seconds (twice as long as regular notifications)
-    setTimeout(() => {
-      if (notification.parentNode) {
-        notification.classList.add('fade-out');
-        setTimeout(() => notification.remove(), 300);
-      }
-    }, 10000);
-    return notification;
-  }
-
-  /**
-   * Show an error notification
-   * @param {string} message - The message to display
-   */
-  showError(message) {
-    if (this.logger && typeof this.logger.error === 'function') {
-      this.logger.error(`Error notification: ${message}`);
-    }
-    this.showNotification(message, 'error');
-  }
-
-  /**
-   * Show a specialized rate limit warning with enhanced information
-   * @param {string} message - The basic rate limit message
-   * @param {Object} [options] - Additional options for the rate limit warning
-   * @param {boolean} [options.isRetrying=false] - Whether the request is being retried automatically
-   * @param {number} [options.retryAttempt] - Current retry attempt number
-   * @param {number} [options.maxRetries] - Maximum number of retry attempts
-   * @param {number} [options.retryDelay] - Delay before next retry (in milliseconds)
-   */
-  showRateLimitWarning(message) {
-    let options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
-    if (this.logger && typeof this.logger.warn === 'function') {
-      this.logger.warn(`Rate limit warning: ${message}`);
-    }
-    const {
-      isRetrying = false,
-      retryAttempt,
-      maxRetries,
-      retryDelay
-    } = options;
-
-    // Check if we recently showed a rate limit warning
-    const now = Date.now();
-    if (this.lastRateLimitWarning && now - this.lastRateLimitWarning < this.rateLimitWarningCooldown) {
-      // Skip showing the warning if it was shown recently
-      return;
-    }
-
-    // Update the last warning time
-    this.lastRateLimitWarning = now;
-    let enhancedMessage = message;
-
-    // Add retry information if available
-    if (isRetrying && retryAttempt && maxRetries) {
-      enhancedMessage += ` (Retry ${retryAttempt}/${maxRetries})`;
-      if (retryDelay) {
-        const delaySeconds = Math.ceil(retryDelay / 1000);
-        enhancedMessage += ` - Waiting ${delaySeconds}s before retry`;
-      }
-    }
-
-    // Add helpful context
-    enhancedMessage += ' The system will pause slightly 💡 The system has automatically increased rate limits to handle more requests.';
-    this.showNotification(enhancedMessage, 'warning');
-  }
-
-  /**
-   * Show a notification
-   * @param {string} message - The message to display
-   * @param {string} type - The type of notification ('success', 'warning', 'error')
-   */
-  showNotification(message) {
-    let type = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'info';
-    if (this.logger && typeof this.logger.info === 'function') {
-      this.logger.info(`${type.charAt(0).toUpperCase() + type.slice(1)} notification: ${message}`);
-    }
-    let displayMessage = message;
-    if (type === 'success' || typeof message === 'string' && message.trim().toLowerCase() === 'disclaimer accepted. you can now use the tool.') {
-      // Ensure exactly one green check mark at the start, never two
-      displayMessage = message.replace(/^✅+\s*/, '');
-      displayMessage = `✅ ${displayMessage}`;
-    } else if (type === 'warning') {
-      // Ensure exactly one warning icon at the start, never two
-      displayMessage = message.replace(/^⚠️+\s*/, '');
-      displayMessage = `⚠️ ${displayMessage}`;
-    } else if (type === 'error') {
-      // Ensure exactly one red cross at the start, never two
-      displayMessage = message.replace(/^❌+\s*/, '');
-      displayMessage = `❌ ${displayMessage}`;
-    }
-    console.log(`[${type}] ${displayMessage}`);
-
-    // Get or create notification container
-    let notificationArea = document.getElementById('notification-area');
-    if (!notificationArea) {
-      console.warn('Notification area not found in the DOM');
-      return;
-    }
-
-    // Remove existing success notification if type is success
-    if (type === 'success') {
-      const existingSuccess = notificationArea.querySelector('.notification-success');
-      if (existingSuccess) {
-        existingSuccess.remove();
-      }
-    }
-
-    // Create notification element
-    const notification = document.createElement('div');
-    notification.className = `notification notification-${type}`;
-    notification.innerHTML = `
-            <div class="notification-content">
-                <span class="notification-message">${displayMessage}</span>
-                <button class="notification-close">&times;</button>
-            </div>
-        `;
-
-    // Add close button handler
-    const closeButton = notification.querySelector('.notification-close');
-    if (closeButton) {
-      closeButton.addEventListener('click', () => {
-        notification.classList.add('fade-out');
-        setTimeout(() => notification.remove(), 300);
-      });
-    }
-
-    // Add to notification area
-    notificationArea.appendChild(notification);
-
-    // Auto-remove after 5 seconds
-    setTimeout(() => {
-      if (notification.parentNode) {
-        notification.classList.add('fade-out');
-        setTimeout(() => notification.remove(), 300);
-      }
-    }, 5000);
-    return notification;
-  }
-
-  /**
-   * Update the settings form with the provided settings
-   * @param {Object} settings - The settings object containing the form values
-   */
-  updateSettingsForm(settings) {
-    if (!settings) return;
-
-    // Map of setting IDs to their corresponding form field IDs (support both styles)
-    const settingFields = {
-      'environmentId': ['environment-id', 'environmentId'],
-      'apiClientId': ['api-client-id', 'apiClientId'],
-      'apiSecret': ['api-secret', 'apiSecret'],
-      'populationId': ['population-id', 'populationId'],
-      'rateLimit': ['rate-limit', 'rateLimit']
-    };
-    Object.entries(settingFields).forEach(_ref5 => {
-      let [settingKey, fieldIds] = _ref5;
-      fieldIds.forEach(fieldId => {
-        const element = document.getElementById(fieldId);
-        if (element && settings[settingKey] !== undefined) {
-          element.value = settings[settingKey] || '';
-        }
-      });
-    });
-  }
-  init() {
-    let callbacks = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
-    // Store callbacks
-    this.callbacks = callbacks;
-    this.setupProgressCloseButtons();
-    this.navItems.forEach(item => {
-      if (item) {
-        item.addEventListener('click', e => {
-          e.preventDefault();
-          const view = item.getAttribute('data-view');
-          if (view) {
-            this.showView(view);
-          }
-        });
-      }
-    });
-    // Settings form
-    const settingsForm = document.getElementById('settings-form');
-    if (settingsForm) {
-      settingsForm.addEventListener('submit', async e => {
-        e.preventDefault();
-        const formData = new FormData(settingsForm);
-        const settings = {};
-        formData.forEach((value, key) => {
-          settings[key] = value;
-        });
-        try {
-          const result = await this.submitSettingsForm(settings);
-          this.showSuccess('Settings saved successfully');
-          this.updateSettingsForm(result.settings || settings);
-        } catch (err) {
-          this.showError('Failed to save settings');
-        }
-      });
-    }
-    // Test connection button
-    const testConnBtn = document.getElementById('test-connection-btn');
-    if (testConnBtn) {
-      testConnBtn.addEventListener('click', async e => {
-        e.preventDefault();
-        const settingsForm = document.getElementById('settings-form');
-        const formData = new FormData(settingsForm);
-        const settings = {};
-        formData.forEach((value, key) => {
-          settings[key] = value;
-        });
-        try {
-          const result = await this.testConnection(settings);
-          this.showSuccess('Connection successful');
-          this.updateConnectionStatus('connected', 'Successfully connected to PingOne');
-        } catch (err) {
-          this.showError('Connection failed');
-          this.updateConnectionStatus('error', 'Failed to connect to PingOne');
-        }
-      });
-    }
-    // Export form
-    const exportForm = document.getElementById('export-form');
-    if (exportForm) {
-      exportForm.addEventListener('submit', async e => {
-        e.preventDefault();
-        const formData = new FormData(exportForm);
-        const data = {};
-        formData.forEach((value, key) => {
-          data[key] = value;
-        });
-        try {
-          const result = await this.submitExportForm(data);
-          this.showSuccess('Export completed');
-          const exportStatus = document.getElementById('export-status');
-          if (exportStatus) exportStatus.textContent = 'Export completed';
-        } catch (err) {
-          this.showError('Export failed');
-          const exportStatus = document.getElementById('export-status');
-          if (exportStatus) exportStatus.textContent = 'Export failed';
-        }
-      });
-    }
-    // Clear logs button
-    const clearLogsBtn = document.getElementById('clear-logs');
-    if (clearLogsBtn) {
-      clearLogsBtn.style.display = 'none';
-      clearLogsBtn.addEventListener('click', async e => {
-        e.preventDefault();
-        try {
-          await fetch('/api/logs', {
-            method: 'DELETE'
-          });
-          this.showNotification('Logs cleared. Only UI logs are cleared. Server logs are not affected.', 'info');
-          await this.loadAndDisplayLogs();
-        } catch (error) {
-          this.showNotification('Error clearing logs: ' + error.message, 'error');
-        }
-      });
-    }
-    this.setupPaginationHandlers();
-    const currentView = this.getLastView();
-    this.showView(currentView);
-    const updateClearLogsBtnVisibility = viewName => {
-      if (clearLogsBtn) {
-        clearLogsBtn.style.display = viewName === 'logs' ? '' : 'none';
-      }
-    };
-    const origShowView = this.showView.bind(this);
-    this.showView = async viewName => {
-      updateClearLogsBtnVisibility(viewName);
-      return await origShowView(viewName);
-    };
-    updateClearLogsBtnVisibility(currentView);
-  }
-
-  /**
-   * Show loading state
-   * @param {boolean} [show=true] - Whether to show or hide the loading state
-   * @param {string} [message='Loading...'] - Optional loading message
-   */
-  showLoading() {
-    let show = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : true;
-    let message = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'Loading...';
-    let loadingElement = document.getElementById('loading-overlay');
-    if (show) {
-      // Create loading overlay if it doesn't exist
-      if (!loadingElement) {
-        loadingElement = document.createElement('div');
-        loadingElement.id = 'loading-overlay';
-        loadingElement.style.position = 'fixed';
-        loadingElement.style.top = '0';
-        loadingElement.style.left = '0';
-        loadingElement.style.width = '100%';
-        loadingElement.style.height = '100%';
-        loadingElement.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-        loadingElement.style.display = 'flex';
-        loadingElement.style.justifyContent = 'center';
-        loadingElement.style.alignItems = 'center';
-        loadingElement.style.zIndex = '9999';
-        const spinner = document.createElement('div');
-        spinner.className = 'spinner-border text-light';
-        spinner.role = 'status';
-        const srOnly = document.createElement('span');
-        srOnly.className = 'visually-hidden';
-        srOnly.textContent = 'Loading...';
-        spinner.appendChild(srOnly);
-        const messageElement = document.createElement('div');
-        messageElement.className = 'ms-3 text-light';
-        messageElement.textContent = message;
-        messageElement.id = 'loading-message';
-        loadingElement.appendChild(spinner);
-        loadingElement.appendChild(messageElement);
-        document.body.appendChild(loadingElement);
-      } else {
-        // Update existing loading message if needed
-        const messageElement = document.getElementById('loading-message');
-        if (messageElement) {
-          messageElement.textContent = message;
-        }
-        loadingElement.style.display = 'flex';
-      }
-    } else if (loadingElement) {
-      // Hide loading overlay
-      loadingElement.style.display = 'none';
-    }
-  }
-
-  /**
-   * Get the last viewed page from localStorage
-   * @returns {string} The name of the last viewed page, or 'import' if not set
-   */
-  getLastView() {
-    try {
-      return localStorage.getItem('currentView') || 'import';
-    } catch (e) {
-      console.warn('Could not read view from localStorage:', e);
-      return 'import';
-    }
-  }
-
-  /**
-   * Add a form with submission handling
-   * @param {string} formId - The ID of the form element
-   * @param {string} action - The URL to submit the form to
-   * @param {Function} onSuccess - Callback for successful submission
-   * @param {Function} onError - Callback for submission error
-   */
-  addForm(formId, action, onSuccess, onError) {
-    if (!this.forms) this.forms = {};
-    const form = document.getElementById(formId);
-    if (!form) {
-      console.error(`Form with ID '${formId}' not found`);
-      return;
-    }
-    this.forms[formId] = form;
-    form.addEventListener('submit', async event => {
-      event.preventDefault();
-      const formData = new FormData(form);
-      const formDataObj = {};
-      formData.forEach((value, key) => {
-        formDataObj[key] = value;
-      });
-      try {
-        const response = await fetch(action, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(formDataObj)
-        });
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error || 'Form submission failed');
-        }
-        if (typeof onSuccess === 'function') {
-          onSuccess(data);
-        }
-      } catch (error) {
-        console.error('Form submission error:', error);
-        if (typeof onError === 'function') {
-          onError({
-            error: error.message
-          });
-        }
-      }
-    });
-  }
-
-  /**
-   * Update the content of an element
-   * @param {string} elementId - The ID of the element to update
-   * @param {string} content - The new content to set
-   */
-  updateElementContent(elementId, content) {
-    const element = document.getElementById(elementId);
-    if (element) {
-      element.innerHTML = content;
-    } else {
-      console.error(`Element with ID ${elementId} not found`);
-    }
-  }
-
-  /**
-   * Show population ID warning message
-   * @param {string} csvPopulationId - The invalid population ID from CSV
-   * @param {string} settingsPopulationId - The population ID from settings that was used instead
-   */
-  showPopulationWarning(csvPopulationId, settingsPopulationId) {
-    const warningArea = document.getElementById('population-warning');
-    const warningText = document.getElementById('population-warning-text');
-    if (warningArea && warningText) {
-      warningText.textContent = `Invalid population ID "${csvPopulationId}" found in CSV file. Using settings population ID "${settingsPopulationId}" instead.`;
-      warningArea.style.display = 'block';
-    }
-  }
-
-  /**
-   * Hide population ID warning message
-   */
-  hidePopulationWarning() {
-    const warningArea = document.getElementById('population-warning');
-    if (warningArea) {
-      warningArea.style.display = 'none';
-    }
-  }
-  setDeletingCsv(isDeleting) {
-    const deleteButton = document.getElementById('start-delete-csv-btn');
-    const deleteButtonBottom = document.getElementById('start-delete-csv-btn-bottom');
-    const cancelButton = document.getElementById('cancel-delete-csv-btn');
-    const cancelButtonBottom = document.getElementById('cancel-delete-csv-btn-bottom');
-    if (deleteButton) {
-      deleteButton.disabled = isDeleting;
-      deleteButton.textContent = isDeleting ? 'Deleting...' : 'Delete Users';
-    }
-    if (deleteButtonBottom) {
-      deleteButtonBottom.disabled = isDeleting;
-      deleteButtonBottom.textContent = isDeleting ? 'Deleting...' : 'Delete Users';
-    }
-    if (cancelButton) {
-      cancelButton.style.display = isDeleting ? 'inline-block' : 'none';
-    }
-    if (cancelButtonBottom) {
-      cancelButtonBottom.style.display = isDeleting ? 'inline-block' : 'none';
-    }
-  }
-  setDeleteCsvButtonState(enabled, text) {
-    // Support both test and real IDs
-    const deleteButton = document.getElementById('delete-csv-button');
-    const deleteButtonBottom = document.getElementById('start-delete-csv-btn-bottom');
-    const deleteButtonReal = document.getElementById('start-delete-csv-btn');
-    [deleteButton, deleteButtonBottom, deleteButtonReal].forEach(btn => {
-      if (btn) {
-        btn.disabled = !enabled;
-        if (text) {
-          btn.textContent = text;
-        }
-      }
-    });
-  }
-  showDeleteCsvStatus(totalUsers) {
-    // Don't show the progress screen - delete operations will work without progress window
-    // const deleteStatus = document.getElementById('delete-csv-status');
-    // if (deleteStatus) {
-    //     deleteStatus.style.display = 'block';
-    // }
-    // this.updateDeleteCsvProgress(0, totalUsers, 'Starting delete operation...', {
-    //     success: 0,
-    //     failed: 0,
-    //     skipped: 0
-    // });
-
-    // Instead, just log the start of the operation
-    this.addProgressLogEntry(`Starting delete operation for ${totalUsers} users`, 'info', {
-      total: totalUsers
-    }, 'delete-csv');
-    this.updateLastRunStatus('delete-csv', 'User Delete', 'In Progress', `Deleting ${totalUsers} users`, {
-      total: totalUsers,
-      success: 0,
-      failed: 0,
-      skipped: 0
-    });
-  }
-  updateDeleteCsvProgress(current, total, message) {
-    let counts = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
-    // Don't update progress screen elements - delete operations work without progress window
-    // const progressBar = document.getElementById('delete-csv-progress');
-    // const progressPercent = document.getElementById('delete-csv-progress-percent');
-    // const progressText = document.getElementById('delete-csv-progress-text');
-    // const progressCount = document.getElementById('delete-csv-progress-count');
-    // const successCount = document.getElementById('delete-csv-success-count');
-    // const failedCount = document.getElementById('delete-csv-failed-count');
-    // const skippedCount = document.getElementById('delete-csv-skipped-count');
-
-    // if (progressBar) {
-    //     const percent = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
-    //     progressBar.style.width = `${percent}%`;
-    //     progressBar.setAttribute('aria-valuenow', percent);
-    // }
-    // if (progressPercent) {
-    //     progressPercent.textContent = `${total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0}%`;
-    // }
-    // if (progressText) {
-    //     progressText.textContent = message || '';
-    // }
-    // if (progressCount) {
-    //     progressCount.textContent = `${current} of ${total} users`;
-    // }
-    // if (successCount) successCount.textContent = counts.success || 0;
-    // if (failedCount) failedCount.textContent = counts.failed || 0;
-    // if (skippedCount) skippedCount.textContent = counts.skipped || 0;
-
-    // Update icon based on status
-    // const progressIcon = document.getElementById('delete-csv-progress-icon');
-    // if (progressIcon) {
-    //     if (message.includes('completed') || message.includes('finished')) {
-    //         progressIcon.innerHTML = '<i class="fas fa-check-circle text-success"></i>';
-    //     } else if (message.includes('failed') || message.includes('error')) {
-    //         progressIcon.innerHTML = '<i class="fas fa-exclamation-circle text-danger"></i>';
-    //     } else if (message.includes('cancelled') || message.includes('cancelled')) {
-    //         progressIcon.innerHTML = '<i class="fas fa-times-circle text-warning"></i>';
-    //     } else {
-    //         progressIcon.innerHTML = '<i class="fas fa-trash text-danger"></i>';
-    //     }
-    // }
-
-    // Add progress log entry
-    this.addProgressLogEntry(message, 'info', counts, 'delete-csv');
-
-    // Update last run status with current progress
-    this.updateLastRunStatus('delete-csv', 'User Delete', 'In Progress', message, counts);
-  }
-  resetDeleteCsvState() {
-    // Progress screen will stay hidden - delete operations work without progress window
-    // No automatic showing of progress screen
-  }
-  resetDeleteCsvProgress() {
-    // Don't update progress screen elements - delete operations work without progress window
-    // const progressBar = document.getElementById('delete-csv-progress');
-    // if (progressBar) {
-    //     progressBar.style.width = '0%';
-    //     progressBar.setAttribute('aria-valuenow', 0);
-    // }
-    // const progressPercent = document.getElementById('delete-csv-progress-percent');
-    // if (progressPercent) progressPercent.textContent = '0%';
-    // const progressText = document.getElementById('delete-csv-progress-text');
-    // if (progressText) progressText.textContent = 'Ready';
-    // const progressCount = document.getElementById('delete-csv-progress-count');
-    // if (progressCount) progressCount.textContent = '0 of 0 users';
-    // const successCount = document.getElementById('delete-csv-success-count');
-    // if (successCount) successCount.textContent = '0';
-    // const failedCount = document.getElementById('delete-csv-failed-count');
-    // if (failedCount) failedCount.textContent = '0';
-    // const skippedCount = document.getElementById('delete-csv-skipped-count');
-    // if (skippedCount) skippedCount.textContent = '0';
-  }
-  showPopulationDeleteStatus() {
-    const populationDeleteStatus = document.getElementById('population-delete-status');
-    if (populationDeleteStatus) {
-      populationDeleteStatus.style.display = 'block';
-    }
-    this.updateLastRunStatus('population-delete', 'Population Delete', 'In Progress', 'Starting population delete operation...');
-    this.addProgressLogEntry('Starting population delete operation...', 'info', {}, 'population-delete');
-  }
-  hidePopulationDeleteStatus() {
-    const populationDeleteStatus = document.getElementById('population-delete-status');
-    if (populationDeleteStatus) {
-      populationDeleteStatus.style.display = 'none';
-    }
-    this.updateLastRunStatus('population-delete', 'Population Delete', 'Ready', 'Population delete operation completed');
-  }
-  updatePopulationDeleteProgress(current, total, message) {
-    let counts = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
-    const progressBar = document.getElementById('population-delete-progress');
-    const progressPercent = document.getElementById('population-delete-progress-percent');
-    const progressText = document.getElementById('population-delete-progress-text');
-    const progressCount = document.getElementById('population-delete-progress-count');
-    const successCount = document.getElementById('population-delete-success-count');
-    const failedCount = document.getElementById('population-delete-failed-count');
-    const skippedCount = document.getElementById('population-delete-skipped-count');
-    if (progressBar) {
-      const percent = total > 0 ? Math.min(100, Math.round(current / total * 100)) : 0;
-      progressBar.style.width = `${percent}%`;
-      progressBar.setAttribute('aria-valuenow', percent);
-    }
-    if (progressPercent) {
-      progressPercent.textContent = `${total > 0 ? Math.min(100, Math.round(current / total * 100)) : 0}%`;
-    }
-    if (progressText) {
-      progressText.textContent = message || '';
-    }
-    if (progressCount) {
-      progressCount.textContent = `${current} of ${total} users`;
-    }
-    if (successCount) successCount.textContent = counts.success || 0;
-    if (failedCount) failedCount.textContent = counts.failed || 0;
-    if (skippedCount) skippedCount.textContent = counts.skipped || 0;
-
-    // Add progress log entry
-    this.addProgressLogEntry(message, 'info', counts, 'population-delete');
-
-    // Update last run status with current progress
-    this.updateLastRunStatus('population-delete', 'Population Delete', 'In Progress', message, counts);
-  }
-  setModifying(isModifying) {
-    const modifyButton = document.getElementById('start-modify-btn');
-    const modifyButtonBottom = document.getElementById('start-modify-btn-bottom');
-    const cancelButton = document.getElementById('cancel-modify-btn');
-    const cancelButtonBottom = document.getElementById('cancel-modify-btn-bottom');
-    if (modifyButton) {
-      modifyButton.disabled = isModifying;
-      modifyButton.textContent = isModifying ? 'Modifying...' : 'Modify Users';
-    }
-    if (modifyButtonBottom) {
-      modifyButtonBottom.disabled = isModifying;
-      modifyButtonBottom.textContent = isModifying ? 'Modifying...' : 'Modify Users';
-    }
-    if (cancelButton) {
-      cancelButton.style.display = isModifying ? 'inline-block' : 'none';
-    }
-    if (cancelButtonBottom) {
-      cancelButtonBottom.style.display = isModifying ? 'inline-block' : 'none';
-    }
-  }
-  setModifyCsvButtonState(enabled, text) {
-    // Support both test and real IDs
-    const modifyButton = document.getElementById('modify-button');
-    const modifyButtonBottom = document.getElementById('start-modify-btn-bottom');
-    const modifyButtonReal = document.getElementById('start-modify-btn');
-    [modifyButton, modifyButtonBottom, modifyButtonReal].forEach(btn => {
-      if (btn) {
-        btn.disabled = !enabled;
-        if (text) {
-          btn.textContent = text;
-        }
-      }
-    });
-  }
-  showModifyStatus(totalUsers) {
-    const modifyStatus = document.getElementById('modify-status');
-    if (modifyStatus) {
-      modifyStatus.style.display = 'block';
-    }
-    this.updateModifyProgress(0, totalUsers, 'Starting modify operation...');
-    this.resetModifyStats();
-  }
-  updateModifyProgress(current, total, status) {
-    let progress = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : null;
-    const progressBar = document.getElementById('modify-progress');
-    const progressPercent = document.getElementById('modify-progress-percent');
-    const progressText = document.getElementById('modify-progress-text');
-    const progressCount = document.getElementById('modify-progress-count');
-    if (progressBar && progressPercent) {
-      const percentage = total > 0 ? Math.round(current / total * 100) : 0;
-      progressBar.style.width = `${percentage}%`;
-      progressBar.setAttribute('aria-valuenow', percentage);
-      progressPercent.textContent = `${percentage}%`;
-    }
-    if (progressText) {
-      progressText.textContent = status || 'Processing...';
-      console.log('Updated modify progress text:', status);
-    } else {
-      console.warn('modify-progress-text element not found');
-    }
-    if (progressCount) {
-      progressCount.textContent = `${current} of ${total} users`;
-    }
-
-    // Also update stats if progress object is provided
-    if (progress && typeof progress === 'object') {
-      this.updateModifyStats(progress);
-    }
-  }
-  updateModifyStats(stats) {
-    const successCount = document.getElementById('modify-success-count');
-    const createdCount = document.getElementById('modify-created-count');
-    const failedCount = document.getElementById('modify-failed-count');
-    const skippedCount = document.getElementById('modify-skipped-count');
-    const noChangesCount = document.getElementById('modify-no-changes-count');
-    if (successCount) successCount.textContent = stats.modified || 0;
-    if (createdCount) createdCount.textContent = stats.created || 0;
-    if (failedCount) failedCount.textContent = stats.failed || 0;
-    if (skippedCount) skippedCount.textContent = stats.skipped || 0;
-    if (noChangesCount) noChangesCount.textContent = stats.noChanges || 0;
-  }
-  resetModifyStats() {
-    const successCount = document.getElementById('modify-success-count');
-    const createdCount = document.getElementById('modify-created-count');
-    const failedCount = document.getElementById('modify-failed-count');
-    const skippedCount = document.getElementById('modify-skipped-count');
-    const noChangesCount = document.getElementById('modify-no-changes-count');
-    if (successCount) successCount.textContent = '0';
-    if (createdCount) createdCount.textContent = '0';
-    if (failedCount) failedCount.textContent = '0';
-    if (skippedCount) skippedCount.textContent = '0';
-    if (noChangesCount) noChangesCount.textContent = '0';
-  }
-  resetModifyProgress() {
-    const progressBar = document.getElementById('modify-progress');
-    const progressPercent = document.getElementById('modify-progress-percent');
-    const progressText = document.getElementById('modify-progress-text');
-    const progressCount = document.getElementById('modify-progress-count');
-    if (progressBar) {
-      progressBar.style.width = '0%';
-      progressBar.setAttribute('aria-valuenow', 0);
-    }
-    if (progressPercent) progressPercent.textContent = '0%';
-    if (progressText) progressText.textContent = 'Ready';
-    if (progressCount) progressCount.textContent = '0 of 0 users';
-  }
-  resetModifyState() {
-    this.setModifying(false);
-    this.resetModifyProgress();
-    this.resetModifyStats();
-
-    // Progress screen will stay open until user manually closes it with X button
-    // No automatic hiding
-  }
-
-  /**
-   * Update the settings save status message
-   * @param {string} message - The status message to display
-   * @param {string} type - The type of status (success, error, warning, info)
-   * @param {boolean} show - Whether to show or hide the status
-   */
-  updateSettingsSaveStatus(message) {
-    let type = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'info';
-    let show = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : true;
-    // Use settings-connection-status for all messages
-    const statusElement = document.getElementById('settings-connection-status');
-    const statusIcon = statusElement?.querySelector('.status-icon');
-    const statusMessage = statusElement?.querySelector('.status-message');
-    if (statusElement && statusIcon && statusMessage) {
-      // Update the message
-      statusMessage.textContent = message;
-
-      // Update the icon based on type
-      const icons = {
-        success: '✅',
-        error: '❌',
-        warning: '⚠️',
-        info: 'ℹ️'
-      };
-      statusIcon.textContent = icons[type] || icons.info;
-
-      // Update the styling based on type
-      statusElement.className = `connection-status status-${type}`;
-
-      // Always show the status when a message is provided
-      if (show && message) {
-        statusElement.style.display = 'block';
-      } else if (!show || !message) {
-        // Hide if explicitly hidden or no message
-        statusElement.style.display = 'none';
-      }
-    }
-  }
-
-  /**
-   * Clear the settings save status
-   */
-  clearSettingsSaveStatus() {
-    this.updateSettingsSaveStatus('', 'info', false);
-  }
-
-  /**
-   * Show or hide the home token status message
-   * @param {boolean} show - Whether to show the token status
-   * @param {string} message - Optional custom message
-   */
-  updateHomeTokenStatus(show) {
-    let message = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : null;
-    const tokenStatusElement = document.getElementById('home-token-status');
-    const goToSettingsBtn = document.getElementById('go-to-settings-btn');
-    if (tokenStatusElement) {
-      if (show) {
-        tokenStatusElement.style.display = 'block';
-
-        // Set custom message if provided
-        if (message) {
-          const messageElement = tokenStatusElement.querySelector('.token-status-message p');
-          if (messageElement) {
-            messageElement.textContent = message;
-          }
-        }
-      } else {
-        tokenStatusElement.style.display = 'none';
-      }
-    }
-
-    // Set up the button click handler if it exists
-    if (goToSettingsBtn && !goToSettingsBtn.hasAttribute('data-handler-attached')) {
-      goToSettingsBtn.setAttribute('data-handler-attached', 'true');
-      goToSettingsBtn.addEventListener('click', () => {
-        this.showView('settings');
-      });
-    }
-  }
-
-  // Export functionality UI methods
-  showExportStatus() {
-    const statusElement = document.getElementById('export-status');
-    const startBtn = document.getElementById('start-export-btn');
-    const cancelBtn = document.getElementById('cancel-export-btn');
-    if (statusElement) statusElement.style.display = 'block';
-    if (startBtn) startBtn.style.display = 'none';
-    if (cancelBtn) cancelBtn.style.display = 'inline-block';
-  }
-
-  /**
-   * Set the export button state and text
-   * @param {boolean} isExporting - Whether export is in progress
-   */
-  setExporting(isExporting) {
-    const exportButton = document.getElementById('start-export-btn');
-    const cancelButton = document.getElementById('cancel-export-btn');
-    if (exportButton) {
-      exportButton.disabled = isExporting;
-      // Update button text with icon
-      exportButton.innerHTML = isExporting ? '<i class="fas fa-spinner fa-spin"></i> Exporting...' : '<i class="fas fa-download"></i> Export Users';
-    }
-    if (cancelButton) {
-      cancelButton.style.display = isExporting ? 'inline-block' : 'none';
-    }
-  }
-  hideExportStatus() {
-    const startBtn = document.getElementById('start-export-btn');
-    const cancelBtn = document.getElementById('cancel-export-btn');
-    if (startBtn) startBtn.style.display = 'inline-block';
-    if (cancelBtn) cancelBtn.style.display = 'none';
-
-    // Progress screen will stay open until user manually closes it with X button
-    // No automatic hiding
-  }
-  showExportButton() {
-    const startBtn = document.getElementById('start-export-btn');
-    const cancelBtn = document.getElementById('cancel-export-btn');
-    if (startBtn) startBtn.style.display = 'inline-block';
-    if (cancelBtn) cancelBtn.style.display = 'none';
-  }
-  updateExportProgress(current, total, message) {
-    const progressElement = document.getElementById('export-progress');
-    const progressPercent = document.getElementById('export-progress-percent');
-    const progressText = document.getElementById('export-progress-text');
-    const progressCount = document.getElementById('export-progress-count');
-    if (progressElement && total > 0) {
-      const percentage = Math.round(current / total * 100);
-      progressElement.style.width = `${percentage}%`;
-      progressElement.setAttribute('aria-valuenow', current);
-      progressElement.setAttribute('aria-valuemax', total);
-    }
-    if (progressPercent) {
-      progressPercent.textContent = total > 0 ? `${Math.round(current / total * 100)}%` : '0%';
-    }
-    if (progressText) {
-      progressText.textContent = message || 'Exporting...';
-    }
-    if (progressCount) {
-      progressCount.textContent = `${current} of ${total} users`;
-    }
-  }
-  updateExportStats(stats) {
-    const successCount = document.getElementById('export-success-count');
-    const failedCount = document.getElementById('export-failed-count');
-    const skippedCount = document.getElementById('export-skipped-count');
-    const ignoredCount = document.getElementById('export-ignored-count');
-    if (successCount) successCount.textContent = stats.exported || 0;
-    if (failedCount) failedCount.textContent = stats.failed || 0;
-    if (skippedCount) skippedCount.textContent = stats.skipped || 0;
-    if (ignoredCount) ignoredCount.textContent = stats.ignored || 0;
-  }
-  showSuccess(message) {
-    this.showNotification(message, 'success');
-  }
-  showInfo(message) {
-    this.showNotification(message, 'info');
-  }
-
-  /**
-   * Update logs operation status
-   * @param {string} operation - The operation being performed
-   * @param {boolean} success - Whether the operation was successful
-   * @param {string} message - Status message
-   */
-  updateLogsOperationStatus(operation, success, message) {
-    const status = success ? 'Completed' : 'Failed';
-    this.updateLastRunStatus('logs', operation, status, message);
-  }
-
-  /**
-   * Update file info in the UI (stub for compatibility)
-   * @param {Object} fileInfo - File info object
-   */
-  updateFileInfo(fileInfo) {
-    // Optionally implement UI update for file info, or leave as a no-op
-    // Example: update an element with file name/size
-    // console.log('updateFileInfo called', fileInfo);
-  }
-
-  /**
-   * Add an entry to the progress log
-   * @param {string} message - The progress message
-   * @param {string} type - The type of entry (success, error, warning, info)
-   * @param {Object} stats - Optional stats object
-   * @param {string} operation - Optional operation type (import, delete-csv, population-delete, etc.)
-   */
-  addProgressLogEntry(message) {
-    let type = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'info';
-    let stats = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : null;
-    let operation = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : 'import';
-    const timestamp = new Date().toLocaleTimeString();
-    const entry = {
-      timestamp,
-      message,
-      type,
-      stats,
-      operation
-    };
-
-    // Add to progress log array
-    this.progressLog.push(entry);
-
-    // Keep only the last maxProgressLogEntries
-    if (this.progressLog.length > this.maxProgressLogEntries) {
-      this.progressLog = this.progressLog.slice(-this.maxProgressLogEntries);
-    }
-
-    // Update the display based on operation
-    this.updateProgressLogDisplay(operation);
-  }
-
-  /**
-   * Update the progress log display
-   * @param {string} operation - The operation type to filter by
-   */
-  updateProgressLogDisplay() {
-    let operation = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 'import';
-    if (this.logger && typeof this.logger.debug === 'function') {
-      this.logger.debug(`Updating progress log display for ${operation}`);
-    }
-    // Get the appropriate log container based on operation
-    let logContainer;
-    let clearButton;
-    switch (operation) {
-      case 'delete-csv':
-        logContainer = document.getElementById('delete-csv-progress-log-entries');
-        clearButton = document.getElementById('clear-delete-csv-progress-log');
-        break;
-      case 'population-delete':
-        logContainer = document.getElementById('population-delete-progress-log-entries');
-        clearButton = document.getElementById('clear-population-delete-progress-log');
-        break;
-      default:
-        // import
-        logContainer = document.getElementById('progress-log-entries');
-        clearButton = document.getElementById('clear-progress-log');
-        break;
-    }
-    if (!logContainer) return;
-
-    // Clear existing entries
-    logContainer.innerHTML = '';
-
-    // Filter entries by operation and add them
-    const filteredEntries = this.progressLog.filter(entry => entry.operation === operation);
-    filteredEntries.forEach(entry => {
-      const entryElement = document.createElement('div');
-      entryElement.className = `progress-log-entry ${entry.type}`;
-      const icon = this.getProgressLogIcon(entry.type);
-      const statsText = entry.stats ? this.formatProgressStats(entry.stats) : '';
-      entryElement.innerHTML = `
-                <span class="entry-timestamp">${entry.timestamp}</span>
-                <span class="entry-icon">${icon}</span>
-                <span class="entry-message">${entry.message}</span>
-                ${statsText ? `<span class="entry-stats">${statsText}</span>` : ''}
-            `;
-      logContainer.appendChild(entryElement);
-    });
-
-    // Scroll to bottom to show latest entries
-    logContainer.scrollTop = logContainer.scrollHeight;
-
-    // Set up clear button handler if it exists
-    if (clearButton && !clearButton._handlerSet) {
-      clearButton.addEventListener('click', () => {
-        this.clearProgressLog(operation);
-      });
-      clearButton._handlerSet = true;
-    }
-  }
-
-  /**
-   * Get the appropriate icon for a progress log entry type
-   * @param {string} type - The entry type
-   * @returns {string} The icon HTML
-   */
-  getProgressLogIcon(type) {
-    const icons = {
-      success: '<i class="fas fa-check-circle"></i>',
-      error: '<i class="fas fa-exclamation-circle"></i>',
-      warning: '<i class="fas fa-exclamation-triangle"></i>',
-      info: '<i class="fas fa-info-circle"></i>',
-      progress: '<i class="fas fa-spinner fa-spin"></i>'
-    };
-    return icons[type] || icons.info;
-  }
-
-  /**
-   * Format progress stats for display
-   * @param {Object} stats - The stats object
-   * @returns {string} Formatted stats string
-   */
-  formatProgressStats(stats) {
-    const parts = [];
-    if (stats.success !== undefined) parts.push(`✅ ${stats.success}`);
-    if (stats.failed !== undefined) parts.push(`❌ ${stats.failed}`);
-    if (stats.skipped !== undefined) parts.push(`⏭️ ${stats.skipped}`);
-    if (stats.total !== undefined) parts.push(`📊 ${stats.total}`);
-    return parts.join(' ');
-  }
-
-  /**
-   * Clear the progress log
-   * @param {string} operation - The operation type to clear (optional, clears all if not specified)
-   */
-  clearProgressLog() {
-    let operation = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : null;
-    if (operation) {
-      // Clear only entries for the specific operation
-      this.progressLog = this.progressLog.filter(entry => entry.operation !== operation);
-      this.updateProgressLogDisplay(operation);
-      this.logger?.info(`Progress log cleared for operation: ${operation}`);
-    } else {
-      // Clear all entries
-      this.progressLog = [];
-      this.updateProgressLogDisplay();
-      this.logger?.info('Progress log cleared');
-    }
-  }
-  setImporting(isImporting) {
-    // Top button was removed, only handle bottom button
-    const importButtonBottom = document.getElementById('start-import-btn-bottom');
-    const cancelButton = document.getElementById('cancel-import-btn');
-    const cancelButtonBottom = document.getElementById('cancel-import-btn-bottom');
-    if (importButtonBottom) {
-      importButtonBottom.disabled = isImporting;
-      importButtonBottom.textContent = isImporting ? 'Importing...' : 'Import Users (v4.5)';
-    }
-    if (cancelButton) {
-      cancelButton.style.display = isImporting ? 'inline-block' : 'none';
-    }
-    if (cancelButtonBottom) {
-      cancelButtonBottom.style.display = isImporting ? 'inline-block' : 'none';
-    }
+    this.updateImportProgress(0, totalUsers, 'Starting import...', {}, populationName, populationId);
   }
   updateImportProgress(current, total, message) {
     let counts = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
+    let populationName = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : '';
+    let populationId = arguments.length > 5 && arguments[5] !== undefined ? arguments[5] : '';
     const progressBar = document.getElementById('import-progress');
     const progressPercent = document.getElementById('import-progress-percent');
     const progressText = document.getElementById('import-progress-text');
@@ -12308,6 +7566,8 @@ class UIManager {
     const successCount = document.getElementById('import-success-count');
     const failedCount = document.getElementById('import-failed-count');
     const skippedCount = document.getElementById('import-skipped-count');
+    const populationNameElement = document.getElementById('import-population-name');
+    const populationIdElement = document.getElementById('import-population-id');
 
     // Ensure percent is always defined before use
     const percent = total > 0 ? current / total * 100 : 0;
@@ -12316,41 +7576,557 @@ class UIManager {
       progressBar.setAttribute('aria-valuenow', percent);
     }
     if (progressPercent) progressPercent.textContent = `${Math.round(percent)}%`;
-    if (progressText) progressText.textContent = message;
-    if (progressCount) progressCount.textContent = `${current} of ${total} users`;
+    if (progressText) progressText.textContent = `${message}` + (populationName ? ` - ${populationName}` : '');
+    if (progressCount) progressCount.textContent = `${current}/${total}`;
+
+    // Update counts
     if (successCount) successCount.textContent = counts.success || 0;
     if (failedCount) failedCount.textContent = counts.failed || 0;
     if (skippedCount) skippedCount.textContent = counts.skipped || 0;
 
-    // Add progress log entry
-    this.addProgressLogEntry(message, 'info', {
-      current,
-      total,
-      ...counts
-    }, 'import');
-    this.updateLastRunStatus('import', `Import Progress: ${current}/${total} (${Math.round(percent)}%)`);
-  }
-  setupProgressLogHandlers() {
-    // Setup handlers for progress log functionality
-    const progressLogContainer = document.getElementById('progress-log');
-    if (progressLogContainer) {
-      // Clear any existing handlers
-      progressLogContainer.innerHTML = '';
+    // Update population name (show 'Not selected' if empty)
+    if (populationNameElement) {
+      const displayName = populationName && populationName.trim() ? populationName : 'Not selected';
+      populationNameElement.textContent = displayName;
+      populationNameElement.setAttribute('data-content', displayName);
+    }
+    // Update population ID (show 'Not set' if empty)
+    if (populationIdElement) {
+      const displayId = populationId && populationId.trim() ? populationId : 'Not set';
+      populationIdElement.textContent = displayId;
+      populationIdElement.setAttribute('data-content', displayId);
+    }
 
-      // Add event listeners for log entries if needed
-      progressLogContainer.addEventListener('click', e => {
-        if (e.target.classList.contains('log-entry')) {
-          // Handle log entry clicks if needed
-          console.log('Log entry clicked:', e.target.textContent);
-        }
+    // Add progress log entry
+    this.addProgressLogEntry(message, 'info', counts, 'import');
+
+    // Update last run status with current progress
+    this.updateLastRunStatus('import', 'User Import', 'In Progress', message, counts);
+  }
+  resetImportProgress() {
+    const progressBar = document.getElementById('import-progress');
+    const progressPercent = document.getElementById('import-progress-percent');
+    const progressText = document.getElementById('import-progress-text');
+    const progressCount = document.getElementById('import-progress-count');
+    const successCount = document.getElementById('import-success-count');
+    const failedCount = document.getElementById('import-failed-count');
+    const skippedCount = document.getElementById('import-skipped-count');
+    const populationNameElement = document.getElementById('import-population-name');
+    if (progressBar) {
+      progressBar.style.width = '0%';
+      progressBar.setAttribute('aria-valuenow', 0);
+    }
+    if (progressPercent) progressPercent.textContent = '0%';
+    if (progressText) progressText.textContent = 'Ready to import';
+    if (progressCount) progressCount.textContent = '0/0';
+    if (successCount) successCount.textContent = '0';
+    if (failedCount) failedCount.textContent = '0';
+    if (skippedCount) skippedCount.textContent = '0';
+
+    // Population name
+    if (populationNameElement) {
+      populationNameElement.textContent = 'Not selected';
+      populationNameElement.setAttribute('data-content', 'Not selected');
+    }
+  }
+  showExportStatus() {
+    const overlay = document.getElementById('export-progress-modal-overlay');
+    if (overlay) overlay.style.display = 'flex';
+    const exportStatus = document.getElementById('export-status');
+    if (exportStatus) {
+      exportStatus.style.display = 'block';
+    }
+    this.isExporting = true;
+    this.updateLastRunStatus('export', 'User Export', 'In Progress', 'Starting export...', {
+      total: 0,
+      success: 0,
+      failed: 0,
+      skipped: 0
+    });
+    this.updateExportProgress(0, 0, 'Starting export...');
+  }
+  updateExportProgress(current, total, message) {
+    let counts = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
+    const progressBar = document.getElementById('export-progress');
+    const progressPercent = document.getElementById('export-progress-percent');
+    const progressText = document.getElementById('export-progress-text');
+    const progressCount = document.getElementById('export-progress-count');
+    const successCount = document.getElementById('export-success-count');
+    const failedCount = document.getElementById('export-failed-count');
+    const skippedCount = document.getElementById('export-skipped-count');
+    const percent = total > 0 ? current / total * 100 : 0;
+    if (progressBar) {
+      progressBar.style.width = `${percent}%`;
+      progressBar.setAttribute('aria-valuenow', percent);
+    }
+    if (progressPercent) progressPercent.textContent = `${Math.round(percent)}%`;
+    if (progressText) progressText.textContent = message;
+    if (progressCount) progressCount.textContent = `${current}/${total}`;
+    if (successCount) successCount.textContent = counts.success || 0;
+    if (failedCount) failedCount.textContent = counts.failed || 0;
+    if (skippedCount) skippedCount.textContent = counts.skipped || 0;
+    this.addProgressLogEntry(message, 'info', counts, 'export');
+    this.updateLastRunStatus('export', 'User Export', 'In Progress', message, counts);
+  }
+  resetExportProgress() {
+    const progressBar = document.getElementById('export-progress');
+    const progressPercent = document.getElementById('export-progress-percent');
+    const progressText = document.getElementById('export-progress-text');
+    const progressCount = document.getElementById('export-progress-count');
+    const successCount = document.getElementById('export-success-count');
+    const failedCount = document.getElementById('export-failed-count');
+    const skippedCount = document.getElementById('export-skipped-count');
+    if (progressBar) {
+      progressBar.style.width = '0%';
+      progressBar.setAttribute('aria-valuenow', 0);
+    }
+    if (progressPercent) progressPercent.textContent = '0%';
+    if (progressText) progressText.textContent = 'Ready to export';
+    if (progressCount) progressCount.textContent = '0/0';
+    if (successCount) successCount.textContent = '0';
+    if (failedCount) failedCount.textContent = '0';
+    if (skippedCount) skippedCount.textContent = '0';
+  }
+  showDeleteStatus(totalUsers) {
+    let populationName = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '';
+    let populationId = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : '';
+    const overlay = document.getElementById('delete-progress-modal-overlay');
+    if (overlay) overlay.style.display = 'flex';
+    const deleteStatus = document.getElementById('delete-status');
+    if (deleteStatus) {
+      deleteStatus.style.display = 'block';
+    }
+    this.isDeleting = true;
+    this.updateLastRunStatus('delete', 'User Delete', 'In Progress', `Deleting ${totalUsers} users`, {
+      total: totalUsers,
+      success: 0,
+      failed: 0,
+      skipped: 0
+    });
+    this.updateDeleteProgress(0, totalUsers, 'Starting delete...', {}, populationName, populationId);
+  }
+  updateDeleteProgress(current, total, message) {
+    let counts = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
+    let populationName = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : '';
+    let populationId = arguments.length > 5 && arguments[5] !== undefined ? arguments[5] : '';
+    const progressBar = document.getElementById('delete-progress');
+    const progressPercent = document.getElementById('delete-progress-percent');
+    const progressText = document.getElementById('delete-progress-text');
+    const progressCount = document.getElementById('delete-progress-count');
+    const successCount = document.getElementById('delete-success-count');
+    const failedCount = document.getElementById('delete-failed-count');
+    const skippedCount = document.getElementById('delete-skipped-count');
+    const populationNameElement = document.getElementById('delete-population-name');
+    const populationIdElement = document.getElementById('delete-population-id');
+    const percent = total > 0 ? current / total * 100 : 0;
+    if (progressBar) {
+      progressBar.style.width = `${percent}%`;
+      progressBar.setAttribute('aria-valuenow', percent);
+    }
+    if (progressPercent) progressPercent.textContent = `${Math.round(percent)}%`;
+    if (progressText) progressText.textContent = message;
+    if (progressCount) progressCount.textContent = `${current}/${total}`;
+    if (successCount) successCount.textContent = counts.success || 0;
+    if (failedCount) failedCount.textContent = counts.failed || 0;
+    if (skippedCount) skippedCount.textContent = counts.skipped || 0;
+
+    // Update population name (show 'Not selected' if empty)
+    if (populationNameElement) {
+      const displayName = populationName && populationName.trim() ? populationName : 'Not selected';
+      populationNameElement.textContent = displayName;
+      populationNameElement.setAttribute('data-content', displayName);
+    }
+    // Update population ID (show 'Not set' if empty)
+    if (populationIdElement) {
+      const displayId = populationId && populationId.trim() ? populationId : 'Not set';
+      populationIdElement.textContent = displayId;
+      populationIdElement.setAttribute('data-content', displayId);
+    }
+    this.addProgressLogEntry(message, 'info', counts, 'delete');
+    this.updateLastRunStatus('delete', 'User Delete', 'In Progress', message, counts);
+  }
+  resetDeleteProgress() {
+    const progressBar = document.getElementById('delete-progress');
+    const progressPercent = document.getElementById('delete-progress-percent');
+    const progressText = document.getElementById('delete-progress-text');
+    const progressCount = document.getElementById('delete-progress-count');
+    const successCount = document.getElementById('delete-success-count');
+    const failedCount = document.getElementById('delete-failed-count');
+    const skippedCount = document.getElementById('delete-skipped-count');
+    if (progressBar) {
+      progressBar.style.width = '0%';
+      progressBar.setAttribute('aria-valuenow', 0);
+    }
+    if (progressPercent) progressPercent.textContent = '0%';
+    if (progressText) progressText.textContent = 'Ready to delete';
+    if (progressCount) progressCount.textContent = '0/0';
+    if (successCount) successCount.textContent = '0';
+    if (failedCount) failedCount.textContent = '0';
+    if (skippedCount) skippedCount.textContent = '0';
+  }
+  showModifyStatus(totalUsers) {
+    const overlay = document.getElementById('modify-progress-modal-overlay');
+    if (overlay) overlay.style.display = 'flex';
+    const modifyStatus = document.getElementById('modify-status');
+    if (modifyStatus) {
+      modifyStatus.style.display = 'block';
+    }
+    this.isModifying = true;
+    this.updateLastRunStatus('modify', 'User Modify', 'In Progress', `Modifying ${totalUsers} users`, {
+      total: totalUsers,
+      success: 0,
+      failed: 0,
+      skipped: 0
+    });
+    this.updateModifyProgress(0, totalUsers, 'Starting modify...');
+  }
+  updateModifyProgress(current, total, message) {
+    let counts = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
+    const progressBar = document.getElementById('modify-progress');
+    const progressPercent = document.getElementById('modify-progress-percent');
+    const progressText = document.getElementById('modify-progress-text');
+    const progressCount = document.getElementById('modify-progress-count');
+    const successCount = document.getElementById('modify-success-count');
+    const failedCount = document.getElementById('modify-failed-count');
+    const skippedCount = document.getElementById('modify-skipped-count');
+    const percent = total > 0 ? current / total * 100 : 0;
+    if (progressBar) {
+      progressBar.style.width = `${percent}%`;
+      progressBar.setAttribute('aria-valuenow', percent);
+    }
+    if (progressPercent) progressPercent.textContent = `${Math.round(percent)}%`;
+    if (progressText) progressText.textContent = message;
+    if (progressCount) progressCount.textContent = `${current}/${total}`;
+    if (successCount) successCount.textContent = counts.success || 0;
+    if (failedCount) failedCount.textContent = counts.failed || 0;
+    if (skippedCount) skippedCount.textContent = counts.skipped || 0;
+    this.addProgressLogEntry(message, 'info', counts, 'modify');
+    this.updateLastRunStatus('modify', 'User Modify', 'In Progress', message, counts);
+  }
+  resetModifyProgress() {
+    const progressBar = document.getElementById('modify-progress');
+    const progressPercent = document.getElementById('modify-progress-percent');
+    const progressText = document.getElementById('modify-progress-text');
+    const progressCount = document.getElementById('modify-progress-count');
+    const successCount = document.getElementById('modify-success-count');
+    const failedCount = document.getElementById('modify-failed-count');
+    const skippedCount = document.getElementById('modify-skipped-count');
+    if (progressBar) {
+      progressBar.style.width = '0%';
+      progressBar.setAttribute('aria-valuenow', 0);
+    }
+    if (progressPercent) progressPercent.textContent = '0%';
+    if (progressText) progressText.textContent = 'Ready to modify';
+    if (progressCount) progressCount.textContent = '0/0';
+    if (successCount) successCount.textContent = '0';
+    if (failedCount) failedCount.textContent = '0';
+    if (skippedCount) skippedCount.textContent = '0';
+  }
+  showPopulationDeleteStatus(populationName) {
+    const overlay = document.getElementById('population-delete-progress-modal-overlay');
+    if (overlay) overlay.style.display = 'flex';
+    const populationDeleteStatus = document.getElementById('population-delete-status');
+    if (populationDeleteStatus) {
+      populationDeleteStatus.style.display = 'block';
+    }
+    this.isPopulationDeleting = true;
+    this.updateLastRunStatus('population-delete', 'Population Delete', 'In Progress', `Deleting population: ${populationName}`, {
+      total: 1,
+      success: 0,
+      failed: 0,
+      skipped: 0
+    });
+    this.updatePopulationDeleteProgress(0, 1, 'Starting population delete...');
+  }
+  updatePopulationDeleteProgress(current, total, message) {
+    let counts = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
+    const progressBar = document.getElementById('population-delete-progress');
+    const progressPercent = document.getElementById('population-delete-progress-percent');
+    const progressText = document.getElementById('population-delete-progress-text');
+    const progressCount = document.getElementById('population-delete-progress-count');
+    const percent = total > 0 ? current / total * 100 : 0;
+    if (progressBar) {
+      progressBar.style.width = `${percent}%`;
+      progressBar.setAttribute('aria-valuenow', percent);
+    }
+    if (progressPercent) progressPercent.textContent = `${Math.round(percent)}%`;
+    if (progressText) progressText.textContent = message;
+    if (progressCount) progressCount.textContent = `${current}/${total}`;
+    this.addProgressLogEntry(message, 'info', counts, 'population-delete');
+    this.updateLastRunStatus('population-delete', 'Population Delete', 'In Progress', message, counts);
+  }
+  resetPopulationDeleteProgress() {
+    const progressBar = document.getElementById('population-delete-progress');
+    const progressPercent = document.getElementById('population-delete-progress-percent');
+    const progressText = document.getElementById('population-delete-progress-text');
+    const progressCount = document.getElementById('population-delete-progress-count');
+    if (progressBar) {
+      progressBar.style.width = '0%';
+      progressBar.setAttribute('aria-valuenow', 0);
+    }
+    if (progressPercent) progressPercent.textContent = '0%';
+    if (progressText) progressText.textContent = 'Ready to delete population';
+    if (progressCount) progressCount.textContent = '0/0';
+  }
+  updateLastRunStatus(operation, title, status, message) {
+    let counts = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : {};
+    this.lastRunStatus[operation] = {
+      title,
+      status,
+      message,
+      counts,
+      timestamp: new Date().toISOString()
+    };
+  }
+  addProgressLogEntry(message, level) {
+    let counts = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
+    let operation = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : '';
+    try {
+      const logEntry = {
+        timestamp: new Date().toISOString(),
+        level,
+        message,
+        counts,
+        operation
+      };
+
+      // Add to progress logs if available
+      const progressLogs = document.getElementById('progress-logs');
+      if (progressLogs) {
+        const logElement = document.createElement('div');
+        logElement.className = `log-entry log-${level}`;
+        logElement.innerHTML = `
+                    <span class="log-timestamp">${new Date().toLocaleTimeString()}</span>
+                    <span class="log-level">${level.toUpperCase()}</span>
+                    <span class="log-message">${message}</span>
+                    ${counts.success !== undefined ? `<span class="log-success">✓ ${counts.success}</span>` : ''}
+                    ${counts.failed !== undefined ? `<span class="log-failed">✗ ${counts.failed}</span>` : ''}
+                    ${counts.skipped !== undefined ? `<span class="log-skipped">- ${counts.skipped}</span>` : ''}
+                `;
+        progressLogs.appendChild(logElement);
+        progressLogs.scrollTop = progressLogs.scrollHeight;
+      }
+    } catch (error) {
+      console.error('Error adding progress log entry:', error);
+    }
+  }
+  refreshProgressData() {
+    // Refresh progress data from server
+    fetch('/api/queue/status').then(response => response.json()).then(data => {
+      if (data.success && data.jobs) {
+        // Update progress displays
+        this.updateProgressFromServer(data.jobs);
+      }
+    }).catch(error => {
+      this.logger.error('Error refreshing progress data:', error);
+    });
+  }
+
+  // Missing methods that were removed during cleanup
+
+  async showView(viewName) {
+    return await this.switchView(viewName);
+  }
+  switchView(viewName) {
+    try {
+      // Hide all views
+      const views = document.querySelectorAll('[data-view]');
+      views.forEach(view => {
+        view.style.display = 'none';
       });
+
+      // Show the requested view
+      const targetView = document.querySelector(`[data-view="${viewName}"]`);
+      if (!targetView) {
+        throw new Error(`View '${viewName}' not found`);
+      }
+      targetView.style.display = 'block';
+
+      // Update navigation
+      this.navItems.forEach(item => {
+        item.classList.remove('active');
+      });
+      const activeNav = document.querySelector(`[data-view="${viewName}"]`);
+      if (activeNav) {
+        activeNav.classList.add('active');
+      }
+      this.currentView = viewName;
+      this.logger.info(`Switched to view: ${viewName}`);
+
+      // Load logs if switching to logs view
+      if (viewName === 'logs') {
+        this.loadAndDisplayLogs();
+      }
+    } catch (error) {
+      this.logger.error(`Error switching to view '${viewName}':`, error);
+      throw error;
+    }
+  }
+  async loadAndDisplayLogs() {
+    try {
+      const response = await fetch('/api/logs/ui?limit=200');
+      const data = await response.json();
+      if (data.success) {
+        const logsContainer = document.getElementById('logs-container');
+        if (logsContainer) {
+          logsContainer.innerHTML = '';
+          if (data.logs && data.logs.length > 0) {
+            data.logs.forEach(log => {
+              const logEntry = document.createElement('div');
+              logEntry.className = `log-entry log-${log.level}`;
+              logEntry.innerHTML = `
+                                <span class="log-timestamp">${new Date(log.timestamp).toLocaleString()}</span>
+                                <span class="log-level">${log.level.toUpperCase()}</span>
+                                <span class="log-message">${log.message}</span>
+                            `;
+              logsContainer.appendChild(logEntry);
+            });
+          } else {
+            logsContainer.innerHTML = '<div class="no-logs">No logs available</div>';
+          }
+        }
+      } else {
+        this.logger.error('Failed to load logs:', data.error);
+      }
+    } catch (error) {
+      this.logger.error('Error loading logs:', error);
+    }
+  }
+  addForm(formId, action, onSuccess, onError) {
+    try {
+      const form = document.getElementById(formId);
+      if (!form) {
+        this.logger.error(`Form with ID '${formId}' not found`);
+        return;
+      }
+
+      // Store form handlers
+      if (!this.forms) {
+        this.forms = {};
+      }
+      this.forms[formId] = {
+        action,
+        onSuccess,
+        onError
+      };
+
+      // Add submit handler
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        await this.handleFormSubmit(formId, event);
+      });
+      this.logger.info(`Form '${formId}' added with action '${action}'`);
+    } catch (error) {
+      this.logger.error(`Error adding form '${formId}':`, error);
+    }
+  }
+  async handleFormSubmit(formId, event) {
+    try {
+      const formConfig = this.forms[formId];
+      if (!formConfig) {
+        this.logger.error(`No configuration found for form '${formId}'`);
+        return;
+      }
+
+      // Convert FormData to JSON for testing compatibility
+      const formData = new FormData(event.target);
+      const jsonData = {};
+      for (const [key, value] of formData.entries()) {
+        jsonData[key] = value;
+      }
+      const response = await fetch(formConfig.action, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(jsonData)
+      });
+      const data = await response.json();
+      if (data.success) {
+        if (formConfig.onSuccess) {
+          formConfig.onSuccess(data);
+        }
+      } else {
+        if (formConfig.onError) {
+          formConfig.onError(data);
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Error submitting form '${formId}':`, error);
+      if (this.forms[formId] && this.forms[formId].onError) {
+        this.forms[formId].onError({
+          error: error.message
+        });
+      }
+    }
+  }
+  updateElementContent(elementId, content) {
+    try {
+      const element = document.getElementById(elementId);
+      if (!element) {
+        console.warn(`Element with ID '${elementId}' not found`);
+        return;
+      }
+      element.innerHTML = content;
+    } catch (error) {
+      this.logger.error(`Error updating element '${elementId}':`, error);
+    }
+  }
+  savePersistedStatus() {
+    try {
+      const status = {
+        import: this.lastRunStatus.import,
+        export: this.lastRunStatus.export,
+        delete: this.lastRunStatus.delete,
+        modify: this.lastRunStatus.modify,
+        'population-delete': this.lastRunStatus['population-delete']
+      };
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('pingone_import_status', JSON.stringify(status));
+      }
+    } catch (error) {
+      this.logger.error('Error saving persisted status:', error);
+    }
+  }
+  setButtonLoading(buttonId, isLoading) {
+    try {
+      const button = document.getElementById(buttonId);
+      if (!button) {
+        this.logger.warn(`Button with ID '${buttonId}' not found`);
+        return;
+      }
+      if (isLoading) {
+        // Add loading state
+        button.disabled = true;
+        button.classList.add('loading');
+
+        // Add spinner if not already present
+        if (!button.querySelector('.spinner-border')) {
+          const spinner = document.createElement('span');
+          spinner.className = 'spinner-border spinner-border-sm me-2';
+          spinner.setAttribute('role', 'status');
+          spinner.setAttribute('aria-hidden', 'true');
+          button.insertBefore(spinner, button.firstChild);
+        }
+      } else {
+        // Remove loading state
+        button.disabled = false;
+        button.classList.remove('loading');
+
+        // Remove spinner
+        const spinner = button.querySelector('.spinner-border');
+        if (spinner) {
+          spinner.remove();
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Error setting button loading state for '${buttonId}':`, error);
     }
   }
 }
-// ... nothing after this ...
 exports.UIManager = UIManager;
 
-},{}],13:[function(require,module,exports){
+},{"./logger.js":9}],14:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -12429,4 +8205,4 @@ class VersionManager {
 // ES Module export
 exports.VersionManager = VersionManager;
 
-},{}]},{},[1]);
+},{}]},{},[2]);

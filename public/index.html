@@ -326,6 +326,10 @@
                                     <span id="import-population-name" class="stat-value">Not selected</span>
                                 </div>
                                 <div class="stat-item">
+                                    <span class="stat-label">Population ID:</span>
+                                    <span id="import-population-id" class="stat-value">Not set</span>
+                                </div>
+                                <div class="stat-item">
                                     <span class="stat-label">Progress:</span>
                                     <span id="import-progress-count" class="stat-value">0 of 0 users</span>
                                 </div>
@@ -626,6 +630,14 @@
                             <div class="stat-item">
                                 <span class="stat-label">Skipped:</span>
                                 <span id="population-delete-skipped-count" class="stat-value warning">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Population:</span>
+                                <span id="delete-population-name" class="stat-value">Not selected</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Population ID:</span>
+                                <span id="delete-population-id" class="stat-value">Not set</span>
                             </div>
                         </div>
                         
@@ -1405,10 +1417,18 @@
         const topBtn = document.getElementById('start-import-btn');
         const bottomBtn = document.getElementById('start-import-btn-bottom');
         if (topBtn && bottomBtn) {
-          // Sync click
+          // Sync click - call startImport directly instead of triggering top button
           bottomBtn.addEventListener('click', function(e) {
             e.preventDefault();
-            if (!bottomBtn.disabled) topBtn.click();
+            if (!bottomBtn.disabled) {
+              // Get the app instance and call startImport directly
+              if (window.app && typeof window.app.startImport === 'function') {
+                window.app.startImport();
+              } else {
+                // Fallback to triggering top button if app instance not available
+                topBtn.click();
+              }
+            }
           });
           // Sync enabled/disabled state
           const syncState = () => {

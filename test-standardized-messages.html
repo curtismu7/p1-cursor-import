@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Standardized Status Messages Test</title>
+    <link rel="stylesheet" href="public/css/styles.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding: 20px;
+            background-color: #f5f7fa;
+        }
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e1e5e9;
+            border-radius: 8px;
+        }
+        .test-section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        .test-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .test-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        .test-btn.success {
+            background-color: #28a745;
+            color: white;
+        }
+        .test-btn.success:hover {
+            background-color: #218838;
+        }
+        .test-btn.warning {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        .test-btn.warning:hover {
+            background-color: #e0a800;
+        }
+        .test-btn.error {
+            background-color: #dc3545;
+            color: white;
+        }
+        .test-btn.error:hover {
+            background-color: #c82333;
+        }
+        .test-btn.info {
+            background-color: #17a2b8;
+            color: white;
+        }
+        .test-btn.info:hover {
+            background-color: #138496;
+        }
+        .notification-area {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            max-width: 350px;
+        }
+        .code-example {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 15px 0;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        .feature-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #f1f3f4;
+        }
+        .feature-list li:last-child {
+            border-bottom: none;
+        }
+        .feature-list li::before {
+            content: "✅";
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>Standardized Status Messages Test</h1>
+        <p>This page demonstrates the new standardized status message system with consistent styling across all message types.</p>
+
+        <div class="test-section">
+            <h2>Message Types</h2>
+            <div class="test-buttons">
+                <button class="test-btn success" onclick="showSuccessMessage()">Show Success Message</button>
+                <button class="test-btn warning" onclick="showWarningMessage()">Show Warning Message</button>
+                <button class="test-btn error" onclick="showErrorMessage()">Show Error Message</button>
+                <button class="test-btn info" onclick="showInfoMessage()">Show Info Message</button>
+            </div>
+            
+            <div class="code-example">
+                <strong>Usage Example:</strong><br>
+                uiManager.showSuccess('Operation completed successfully', 'All users were imported successfully.');<br>
+                uiManager.showWarning('Connection timeout', 'The request took longer than expected.');<br>
+                uiManager.showError('Import failed', 'Failed to connect to PingOne API.');<br>
+                uiManager.showInfo('Processing file', 'Reading CSV data...');
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>Features Implemented</h2>
+            <ul class="feature-list">
+                <li><strong>Success Messages:</strong> Green background with ✅ green checkmark icon</li>
+                <li><strong>Warning Messages:</strong> Yellow background with ⚠️ yellow exclamation mark</li>
+                <li><strong>Error Messages:</strong> Red background with ❌ red X icon</li>
+                <li><strong>Info Messages:</strong> Blue background with ℹ️ blue info icon</li>
+                <li><strong>Accessibility:</strong> ARIA labels and roles for screen readers</li>
+                <li><strong>Consistent Styling:</strong> Unified design across all message types</li>
+                <li><strong>Auto-dismiss:</strong> Messages automatically disappear after 5 seconds</li>
+                <li><strong>Manual close:</strong> X button to manually close messages</li>
+                <li><strong>Smooth animations:</strong> Slide-in and fade-out transitions</li>
+                <li><strong>Responsive design:</strong> Works on all screen sizes</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h2>CSS Classes Used</h2>
+            <div class="code-example">
+                <strong>Primary Classes:</strong><br>
+                .status-message - Base message container<br>
+                .status-message.status-success - Success styling<br>
+                .status-message.status-warning - Warning styling<br>
+                .status-message.status-error - Error styling<br>
+                .status-message.status-info - Info styling<br><br>
+                <strong>Structure:</strong><br>
+                .status-message-content - Flex container<br>
+                .status-icon - Icon element<br>
+                .status-text - Text container<br>
+                .status-title - Main message text<br>
+                .status-details - Additional details text
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>Backward Compatibility</h2>
+            <p>The new system maintains backward compatibility with existing alert and notification classes:</p>
+            <div class="code-example">
+                <strong>Legacy Support:</strong><br>
+                .alert.alert-success - Still works<br>
+                .alert.alert-warning - Still works<br>
+                .alert.alert-danger - Still works<br>
+                .alert.alert-info - Still works<br>
+                .notification.success - Still works<br>
+                .notification.error - Still works<br>
+                .notification.warning - Still works
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification area for messages -->
+    <div id="notification-area" class="notification-area"></div>
+
+    <script>
+        // Mock UIManager for testing
+        class MockUIManager {
+            constructor() {
+                this.logger = {
+                    info: (msg) => console.log('INFO:', msg),
+                    error: (msg) => console.log('ERROR:', msg)
+                };
+            }
+
+            showSuccess(message, details = '') {
+                this.showNotification('success', message, details);
+            }
+
+            showError(message, details = '') {
+                this.showNotification('error', message, details);
+            }
+
+            showWarning(message, details = '') {
+                this.showNotification('warning', message, details);
+            }
+
+            showInfo(message, details = '') {
+                this.showNotification('info', message, details);
+            }
+
+            showNotification(type, message, details = '') {
+                try {
+                    const notification = document.createElement('div');
+                    notification.className = `status-message status-${type} alert-dismissible fade show`;
+                    notification.setAttribute('role', 'alert');
+                    notification.setAttribute('aria-live', 'polite');
+                    
+                    // Get icon and styling based on type
+                    const iconConfig = this.getStatusIconConfig(type);
+                    
+                    notification.innerHTML = `
+                        <div class="status-message-content">
+                            <span class="status-icon" aria-hidden="true">${iconConfig.icon}</span>
+                            <div class="status-text">
+                                <strong class="status-title">${message}</strong>
+                                ${details ? `<div class="status-details">${details}</div>` : ''}
+                            </div>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close notification">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                        </div>
+                    `;
+                    
+                    // Use the correct notification area
+                    const container = document.getElementById('notification-area');
+                    if (container) {
+                        container.appendChild(notification);
+                        
+                        // Auto-remove after 5 seconds
+                        setTimeout(() => {
+                            if (notification.parentNode) {
+                                notification.remove();
+                            }
+                        }, 5000);
+                    }
+                } catch (error) {
+                    console.error('Error showing notification:', error);
+                }
+            }
+
+            getStatusIconConfig(type) {
+                const configs = {
+                    success: {
+                        icon: '✅',
+                        bgColor: '#d4edda',
+                        borderColor: '#c3e6cb',
+                        textColor: '#155724',
+                        iconColor: '#28a745'
+                    },
+                    warning: {
+                        icon: '⚠️',
+                        bgColor: '#fff3cd',
+                        borderColor: '#ffeaa7',
+                        textColor: '#856404',
+                        iconColor: '#ffc107'
+                    },
+                    error: {
+                        icon: '❌',
+                        bgColor: '#f8d7da',
+                        borderColor: '#f5c6cb',
+                        textColor: '#721c24',
+                        iconColor: '#dc3545'
+                    },
+                    info: {
+                        icon: 'ℹ️',
+                        bgColor: '#d1ecf1',
+                        borderColor: '#bee5eb',
+                        textColor: '#0c5460',
+                        iconColor: '#17a2b8'
+                    }
+                };
+                
+                return configs[type] || configs.info;
+            }
+        }
+
+        // Initialize mock UI manager
+        const uiManager = new MockUIManager();
+
+        // Test functions
+        function showSuccessMessage() {
+            uiManager.showSuccess('Settings saved successfully', 'Your PingOne configuration has been updated and saved.');
+        }
+
+        function showWarningMessage() {
+            uiManager.showWarning('Connection timeout', 'The request to PingOne API took longer than expected. Please check your connection.');
+        }
+
+        function showErrorMessage() {
+            uiManager.showError('Import failed', 'Failed to connect to PingOne API. Please check your credentials and try again.');
+        }
+
+        function showInfoMessage() {
+            uiManager.showInfo('Processing file', 'Reading CSV data and validating user records...');
+        }
+
+        // Add event listeners for close buttons
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('btn-close')) {
+                const notification = e.target.closest('.status-message');
+                if (notification) {
+                    notification.remove();
+                }
+            }
+        });
+    </script>
+</body>
+</html> 

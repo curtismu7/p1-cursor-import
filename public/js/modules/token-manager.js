@@ -78,6 +78,28 @@ class TokenManager {
     }
 
     /**
+     * Get token information including expiry details
+     * @returns {Object|null} Token info object or null if no token
+     */
+    getTokenInfo() {
+        if (!this.tokenCache.accessToken) {
+            return null;
+        }
+        
+        const now = Date.now();
+        const expiresIn = Math.max(0, this.tokenCache.expiresAt - now);
+        
+        return {
+            accessToken: this.tokenCache.accessToken,
+            expiresIn: Math.floor(expiresIn / 1000), // Convert to seconds
+            tokenType: this.tokenCache.tokenType,
+            expiresAt: this.tokenCache.expiresAt,
+            lastRefresh: this.tokenCache.lastRefresh,
+            isValid: this._isTokenValid()
+        };
+    }
+
+    /**
      * Check if the current token is still valid
      * @returns {boolean} True if token is valid, false otherwise
      * @private

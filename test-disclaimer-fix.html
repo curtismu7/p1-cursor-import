@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disclaimer Button Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .result { margin: 10px 0; padding: 10px; background: #f5f5f5; border-radius: 3px; }
+        button { padding: 10px 15px; margin: 5px; border: none; border-radius: 3px; cursor: pointer; }
+        button:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .agreement-checkbox { margin: 10px 0; }
+        .agreement-checkbox input[type="checkbox"] { margin-right: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Disclaimer Button Test</h1>
+    
+    <div class="test-section">
+        <h2>Test Disclaimer Agreement</h2>
+        
+        <div class="agreement-checkbox">
+            <input type="checkbox" id="disclaimer-agreement" required>
+            <label for="disclaimer-agreement">
+                <strong>I have read, understood, and agree to all terms and conditions above.</strong>
+            </label>
+        </div>
+        
+        <div class="agreement-checkbox">
+            <input type="checkbox" id="risk-acceptance" required>
+            <label for="risk-acceptance">
+                <strong>I understand this is an unsupported tool and accept full responsibility for any consequences.</strong>
+            </label>
+        </div>
+
+        <button id="accept-disclaimer" class="btn-danger" disabled>
+            <i class="fas fa-exclamation-triangle"></i>
+            I UNDERSTAND AND ACCEPT ALL RISKS
+        </button>
+        
+        <div id="test-results"></div>
+    </div>
+
+    <script>
+        // Simulate the disclaimer setup function
+        function setupDisclaimerAgreement() {
+            console.log('=== Setting up Disclaimer Agreement ===');
+            
+            // Get the required elements
+            const disclaimerCheckbox = document.getElementById('disclaimer-agreement');
+            const riskCheckbox = document.getElementById('risk-acceptance');
+            const acceptButton = document.getElementById('accept-disclaimer');
+            
+            // Validate elements exist
+            if (!disclaimerCheckbox || !riskCheckbox || !acceptButton) {
+                console.error('Required disclaimer elements not found');
+                return;
+            }
+            
+            console.log('All disclaimer elements found successfully');
+            
+            // Function to check if both checkboxes are checked
+            const checkAgreementStatus = () => {
+                const disclaimerChecked = disclaimerCheckbox.checked;
+                const riskChecked = riskCheckbox.checked;
+                const bothChecked = disclaimerChecked && riskChecked;
+                
+                console.log('Agreement status check:', {
+                    disclaimerChecked,
+                    riskChecked,
+                    bothChecked
+                });
+                
+                // Enable/disable button based on checkbox status
+                acceptButton.disabled = !bothChecked;
+                
+                // Update button appearance
+                if (bothChecked) {
+                    acceptButton.classList.remove('btn-secondary');
+                    acceptButton.classList.add('btn-danger');
+                    console.log('✅ Disclaimer button enabled');
+                } else {
+                    acceptButton.classList.remove('btn-danger');
+                    acceptButton.classList.add('btn-secondary');
+                    console.log('❌ Disclaimer button disabled');
+                }
+                
+                // Update test results
+                document.getElementById('test-results').innerHTML = `
+                    <div class="result">
+                        <strong>Current Status:</strong><br>
+                        Disclaimer Checkbox: ${disclaimerChecked ? '✅ Checked' : '❌ Unchecked'}<br>
+                        Risk Checkbox: ${riskChecked ? '✅ Checked' : '❌ Unchecked'}<br>
+                        Button Enabled: ${bothChecked ? '✅ Yes' : '❌ No'}<br>
+                        Button Classes: ${acceptButton.className}
+                    </div>
+                `;
+            };
+            
+            // Set up event listeners for both checkboxes
+            disclaimerCheckbox.addEventListener('change', (e) => {
+                console.log('Disclaimer checkbox changed:', e.target.checked);
+                checkAgreementStatus();
+            });
+            
+            riskCheckbox.addEventListener('change', (e) => {
+                console.log('Risk checkbox changed:', e.target.checked);
+                checkAgreementStatus();
+            });
+            
+            // Set up event listener for the accept button
+            acceptButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                console.log('Disclaimer accept button clicked');
+                
+                // Validate both checkboxes are still checked
+                if (disclaimerCheckbox.checked && riskCheckbox.checked) {
+                    console.log('✅ Disclaimer accepted');
+                    alert('Disclaimer accepted! Tool would be enabled.');
+                } else {
+                    console.warn('❌ Disclaimer button clicked but checkboxes not checked');
+                    alert('Please check both agreement boxes before proceeding.');
+                }
+            });
+            
+            // Initial status check
+            checkAgreementStatus();
+            
+            console.log('=== Disclaimer Agreement Setup Complete ===');
+        }
+        
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Page loaded, setting up disclaimer agreement...');
+            setupDisclaimerAgreement();
+        });
+    </script>
+</body>
+</html> 
