@@ -652,7 +652,7 @@ router.post('/import', upload.single('file'), async (req, res, next) => {
         
         // Get settings for environment ID
         // [CLEANUP] Removed unused imports: fs, path, fileURLToPath, fetch
-        const settingsData = await fetch('http://localhost:3000/api/settings').then(res => res.json());
+        const settingsData = await fetch('http://localhost:4000/api/settings').then(res => res.json());
         const settings = settingsData;
         const environmentId = settings.environmentId;
         

@@ -825,8 +825,21 @@ class App {
       // Show import status
       this.uiManager.showImportStatus(importOptions.totalUsers, populationNameForThisRun, populationIdForThisRun);
 
-      // Start import process
-      const response = await this.localClient.post('/api/import', importOptions, {
+      // Start import process - send file as FormData
+      const formData = new FormData();
+      formData.append('file', importOptions.file);
+      formData.append('selectedPopulationId', importOptions.selectedPopulationId);
+      formData.append('selectedPopulationName', importOptions.selectedPopulationName);
+      formData.append('totalUsers', importOptions.totalUsers.toString());
+
+      // Debug: Log the FormData contents
+      console.log('=== FormData Debug ===');
+      console.log('File being sent:', importOptions.file);
+      console.log('Population ID:', importOptions.selectedPopulationId);
+      console.log('Population Name:', importOptions.selectedPopulationName);
+      console.log('Total Users:', importOptions.totalUsers);
+      console.log('========================');
+      const response = await this.localClient.postFormData('/api/import', formData, {
         signal: this.importAbortController.signal,
         onProgress: (current, total, message, counts) => {
           this.uiManager.updateImportProgress(current, total, message, counts, populationNameForThisRun, populationIdForThisRun);
@@ -3460,6 +3473,122 @@ class LocalAPIClient {
   post(endpoint, data) {
     let options = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
     return this.request('POST', endpoint, data, options);
+  }
+
+  /**
+   * Send a POST request with FormData (for file uploads)
+   * @param {string} endpoint - API endpoint
+   * @param {FormData} formData - FormData object
+   * @param {Object} options - Additional options
+   * @returns {Promise<Object>} Response data
+   */
+  async postFormData(endpoint, formData) {
+    let options = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
+    const url = `${this.baseUrl}${endpoint}`;
+    const startTime = Date.now();
+
+    // Enhanced options with retry logic
+    const requestOptions = {
+      ...options,
+      retries: options.retries || 3,
+      retryDelay: options.retryDelay || 1000 // 1 second base delay
+    };
+
+    // Prepare headers for FormData (don't set Content-Type, let browser set it with boundary)
+    const headers = {
+      'Accept': 'application/json'
+    };
+
+    // Add authorization if available
+    if (this.accessToken) {
+      headers.Authorization = `Bearer ${this.accessToken}`;
+    }
+
+    // Log the request with minimal details to avoid rate limiting
+    const requestLog = {
+      type: 'api_request',
+      method: 'POST',
+      url,
+      timestamp: new Date().toISOString(),
+      source: 'local-api-client',
+      contentType: 'multipart/form-data'
+    };
+    this.logger.debug('🔄 Local API FormData Request:', requestLog);
+
+    // Retry logic
+    let lastError = null;
+    for (let attempt = 1; attempt <= requestOptions.retries; attempt++) {
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: formData
+        });
+        const responseData = await this._handleResponse(response);
+
+        // Log successful response with minimal details
+        const responseLog = {
+          type: 'api_response',
+          status: response.status,
+          method: 'POST',
+          duration: Date.now() - startTime,
+          attempt: attempt,
+          source: 'local-api-client'
+        };
+        this.logger.debug('✅ Local API FormData Response:', responseLog);
+        return responseData;
+      } catch (error) {
+        lastError = error;
+        this.logger.error(`Local API FormData Error (attempt ${attempt}/${requestOptions.retries}):`, error);
+
+        // Get the friendly error message if available
+        const friendlyMessage = error.friendlyMessage || error.message;
+        const isRateLimit = error.status === 429;
+
+        // Calculate baseDelay and delay here, before using them
+        const baseDelay = isRateLimit ? requestOptions.retryDelay * 2 : requestOptions.retryDelay;
+        const delay = baseDelay * Math.pow(2, attempt - 1);
+
+        // Show appropriate UI messages based on error type
+        if (window.app && window.app.uiManager) {
+          if (isRateLimit) {
+            if (attempt < requestOptions.retries) {
+              // Use enhanced rate limit warning with retry information
+              window.app.uiManager.showRateLimitWarning(friendlyMessage, {
+                isRetrying: true,
+                retryAttempt: attempt,
+                maxRetries: requestOptions.retries,
+                retryDelay: delay
+              });
+            } else {
+              window.app.uiManager.showError(friendlyMessage);
+            }
+          } else if (attempt === requestOptions.retries) {
+            // For other errors, show friendly message on final attempt
+            window.app.uiManager.showError(friendlyMessage);
+          }
+        }
+
+        // If this is the last attempt, throw with friendly message
+        if (attempt === requestOptions.retries) {
+          throw error;
+        }
+
+        // Only retry for rate limits (429) and server errors (5xx)
+        const shouldRetry = isRateLimit || error.status >= 500 || !error.status;
+        if (!shouldRetry) {
+          // Don't retry for client errors (4xx except 429), throw immediately
+          throw error;
+        }
+
+        // Use the delay calculated above
+        this.logger.info(`Retrying FormData request in ${delay}ms... (attempt ${attempt + 1}/${requestOptions.retries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    // If all retries fail, throw the last error
+    throw lastError;
   }
   put(endpoint, data) {
     let options = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};

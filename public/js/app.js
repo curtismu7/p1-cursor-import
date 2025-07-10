@@ -849,8 +849,22 @@ class App {
             // Show import status
             this.uiManager.showImportStatus(importOptions.totalUsers, populationNameForThisRun, populationIdForThisRun);
             
-            // Start import process
-            const response = await this.localClient.post('/api/import', importOptions, {
+            // Start import process - send file as FormData
+            const formData = new FormData();
+            formData.append('file', importOptions.file);
+            formData.append('selectedPopulationId', importOptions.selectedPopulationId);
+            formData.append('selectedPopulationName', importOptions.selectedPopulationName);
+            formData.append('totalUsers', importOptions.totalUsers.toString());
+            
+            // Debug: Log the FormData contents
+            console.log('=== FormData Debug ===');
+            console.log('File being sent:', importOptions.file);
+            console.log('Population ID:', importOptions.selectedPopulationId);
+            console.log('Population Name:', importOptions.selectedPopulationName);
+            console.log('Total Users:', importOptions.totalUsers);
+            console.log('========================');
+            
+            const response = await this.localClient.postFormData('/api/import', formData, {
                 signal: this.importAbortController.signal,
                 onProgress: (current, total, message, counts) => {
                     this.uiManager.updateImportProgress(current, total, message, counts, populationNameForThisRun, populationIdForThisRun);
