@@ -194,12 +194,23 @@ class SettingsManager {
                 const response = await fetch('/api/settings');
                 
                 if (response.ok) {
-                    const serverSettings = await response.json();
-                    
+                    let serverSettings = await response.json();
+                    // Handle stringified JSON in data
+                    if (typeof serverSettings === 'string') {
+                        try {
+                            serverSettings = JSON.parse(serverSettings);
+                        } catch (e) {}
+                    }
+                    // Accept both {success, data} and {success, fileSettings}
+                    let parsedSettings = null;
                     if (serverSettings.success && serverSettings.data) {
-                        // Server settings are available, use them
-                        const parsedSettings = serverSettings.data;
-                        
+                        parsedSettings = serverSettings.data;
+                    } else if (serverSettings.success && serverSettings.fileSettings) {
+                        parsedSettings = serverSettings.fileSettings;
+                    } else if (serverSettings.environmentId || serverSettings.apiClientId) {
+                        parsedSettings = serverSettings;
+                    }
+                    if (parsedSettings) {
                         // Decrypt sensitive fields if they exist
                         if (parsedSettings.apiSecret) {
                             try {
@@ -209,23 +220,18 @@ class SettingsManager {
                                 parsedSettings.apiSecret = '';
                             }
                         }
-                        
                         // Deep merge with defaults
                         this.settings = this.deepMerge(this.getDefaultSettings(), parsedSettings);
-                        
                         // Save to localStorage as cache
                         if (this.isLocalStorageAvailable()) {
                             localStorage.setItem(this.storageKey, JSON.stringify(this.settings));
                         }
-                        
                         this.logger.log('Settings loaded from server', 'success');
                         return this.settings;
                     }
                 }
-                
                 // If we get here, server load failed or returned invalid data
                 throw new Error('Invalid server response');
-                
             } catch (serverError) {
                 this.logger.warn('Failed to load settings from server, falling back to localStorage', serverError);
                 
@@ -310,6 +316,11 @@ class SettingsManager {
             
             // Create a copy of settings for saving (without connection fields)
             const settingsToSave = { ...updatedSettings };
+            
+            // Only send apiSecret if a new value is provided (not blank or ********)
+            if (newSettings.apiSecret === '' || newSettings.apiSecret === '********') {
+                delete newSettings.apiSecret;
+            }
             
             // Only encrypt API secret if it's not already encrypted and not empty
             if (settingsToSave.apiSecret && !settingsToSave.apiSecret.startsWith('enc:')) {

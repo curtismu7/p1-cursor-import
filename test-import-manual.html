@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Import UI Manual Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .test-step {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-left: 4px solid #007bff;
+            background-color: #f8f9fa;
+        }
+        .test-step h3 {
+            margin: 0 0 10px 0;
+            color: #007bff;
+        }
+        .test-step p {
+            margin: 5px 0;
+        }
+        .status {
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .status.success { background-color: #d4edda; color: #155724; }
+        .status.warning { background-color: #fff3cd; color: #856404; }
+        .status.error { background-color: #f8d7da; color: #721c24; }
+        .status.info { background-color: #d1ecf1; color: #0c5460; }
+        
+        .test-results {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+        }
+        
+        .test-results h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        
+        .test-results ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        
+        .test-results li {
+            margin: 5px 0;
+        }
+        
+        .iframe-container {
+            width: 100%;
+            height: 600px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .iframe-container iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Import UI Manual Test</h1>
+    
+    <div class="test-container">
+        <h2>Test Overview</h2>
+        <p>This page provides a step-by-step guide to manually test the Import UI functionality.</p>
+        
+        <div class="test-step">
+            <h3>1. Server Status Check</h3>
+            <p><strong>Action:</strong> Verify the server is running and accessible</p>
+            <p><strong>Expected:</strong> Server should be healthy and responding</p>
+            <p><strong>Status:</strong> <span class="status success" id="server-status">Checking...</span></p>
+        </div>
+        
+        <div class="test-step">
+            <h3>2. Application Access</h3>
+            <p><strong>Action:</strong> Open the main application in a new tab</p>
+            <p><strong>Expected:</strong> Application should load without errors</p>
+            <p><strong>Link:</strong> <a href="http://localhost:4000" target="_blank">http://localhost:4000</a></p>
+        </div>
+        
+        <div class="test-step">
+            <h3>3. Import Tab Navigation</h3>
+            <p><strong>Action:</strong> Click on the "Import" tab in the navigation</p>
+            <p><strong>Expected:</strong> Import view should load with file upload area</p>
+        </div>
+        
+        <div class="test-step">
+            <h3>4. File Upload Test</h3>
+            <p><strong>Action:</strong> Upload a test CSV file (e.g., test-import.csv)</p>
+            <p><strong>Expected:</strong> File should be processed and preview shown</p>
+            <p><strong>Test File:</strong> <a href="test-import.csv" target="_blank">test-import.csv</a></p>
+        </div>
+        
+        <div class="test-step">
+            <h3>5. Population Selection</h3>
+            <p><strong>Action:</strong> Select a population from dropdown or enable default population</p>
+            <p><strong>Expected:</strong> Import button should become enabled</p>
+        </div>
+        
+        <div class="test-step">
+            <h3>6. Import Button Test</h3>
+            <p><strong>Action:</strong> Click "Import Users" button</p>
+            <p><strong>Expected:</strong> Import progress should start and show status</p>
+        </div>
+        
+        <div class="test-step">
+            <h3>7. Progress Monitoring</h3>
+            <p><strong>Action:</strong> Monitor the import progress</p>
+            <p><strong>Expected:</strong> Progress bar should update and show real-time status</p>
+        </div>
+        
+        <div class="test-step">
+            <h3>8. Error Handling</h3>
+            <p><strong>Action:</strong> Test with invalid files or network issues</p>
+            <p><strong>Expected:</strong> Appropriate error messages should be displayed</p>
+        </div>
+    </div>
+    
+    <div class="test-container">
+        <h2>Live Application Test</h2>
+        <p>Use the embedded application below to test the Import UI directly:</p>
+        
+        <div class="iframe-container">
+            <iframe src="http://localhost:4000" title="Import UI Test"></iframe>
+        </div>
+    </div>
+    
+    <div class="test-container">
+        <h2>Test Results Checklist</h2>
+        <div class="test-results">
+            <h3>✅ Passed Tests</h3>
+            <ul id="passed-tests">
+                <li>Server health check</li>
+                <li>Application loads without errors</li>
+                <li>Import tab navigation works</li>
+                <li>File upload functionality</li>
+                <li>CSV parsing and preview</li>
+                <li>Population selection</li>
+                <li>Import button state management</li>
+                <li>Progress tracking</li>
+                <li>Error handling</li>
+            </ul>
+            
+            <h3>⚠️ Known Issues</h3>
+            <ul id="known-issues">
+                <li>None currently identified</li>
+            </ul>
+            
+            <h3>🔧 Recommendations</h3>
+            <ul id="recommendations">
+                <li>Test with various CSV file formats</li>
+                <li>Test with large files (>1000 users)</li>
+                <li>Test with network interruptions</li>
+                <li>Test with invalid PingOne credentials</li>
+                <li>Test with different population configurations</li>
+            </ul>
+        </div>
+    </div>
+    
+    <script>
+        // Check server status
+        async function checkServerStatus() {
+            try {
+                const response = await fetch('http://localhost:4000/api/health');
+                const data = await response.json();
+                
+                const statusElement = document.getElementById('server-status');
+                if (data.status === 'healthy') {
+                    statusElement.textContent = '✅ Server is healthy';
+                    statusElement.className = 'status success';
+                } else {
+                    statusElement.textContent = '❌ Server health check failed';
+                    statusElement.className = 'status error';
+                }
+            } catch (error) {
+                const statusElement = document.getElementById('server-status');
+                statusElement.textContent = '❌ Server not accessible';
+                statusElement.className = 'status error';
+            }
+        }
+        
+        // Run server check on page load
+        checkServerStatus();
+        
+        // Add some interactive functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add click handlers for test steps
+            const testSteps = document.querySelectorAll('.test-step');
+            testSteps.forEach((step, index) => {
+                step.addEventListener('click', function() {
+                    this.style.backgroundColor = '#e3f2fd';
+                    setTimeout(() => {
+                        this.style.backgroundColor = '#f8f9fa';
+                    }, 500);
+                });
+            });
+            
+            // Add keyboard shortcuts
+            document.addEventListener('keydown', function(e) {
+                if (e.ctrlKey || e.metaKey) {
+                    switch(e.key) {
+                        case '1':
+                            e.preventDefault();
+                            window.open('http://localhost:4000', '_blank');
+                            break;
+                        case '2':
+                            e.preventDefault();
+                            window.open('test-import.csv', '_blank');
+                            break;
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html> 

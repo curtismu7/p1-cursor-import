@@ -82,15 +82,34 @@ export class PingOneClient {
      * @returns {Promise<string>} Access token
      */
     async getAccessToken() {
-        console.log('[DEBUG] getAccessToken called');
         // Check for cached token first
         const cachedToken = this.getCachedToken();
         if (cachedToken) {
-            console.log('[DEBUG] Using cached token:', cachedToken.substring(0, 8) + '...');
+            let timeLeftMsg = '';
+            if (typeof localStorage !== 'undefined') {
+                const expiry = localStorage.getItem('pingone_token_expiry');
+                if (expiry) {
+                    const expiryTime = parseInt(expiry, 10);
+                    const now = Date.now();
+                    const msLeft = expiryTime - now;
+                    if (msLeft > 0) {
+                        const min = Math.floor(msLeft / 60000);
+                        const sec = Math.floor((msLeft % 60000) / 1000);
+                        timeLeftMsg = ` (expires in ${min}m ${sec}s)`;
+                    }
+                }
+            }
+            const msg = `✅ Using cached PingOne Worker token${timeLeftMsg}`;
+            if (typeof window !== 'undefined' && window.app && window.app.uiManager) {
+                window.app.uiManager.updateConnectionStatus('connected', msg);
+                window.app.uiManager.showNotification(msg, 'success');
+            }
+            this.accessToken = cachedToken; // Cache the token
             return cachedToken;
         }
+        
+        // If no cached token or it's expired, get a new one from the server
         try {
-            console.log('[DEBUG] Fetching token from /api/pingone/get-token');
             const response = await fetch('/api/pingone/get-token', {
                 method: 'POST',
                 headers: {
@@ -98,91 +117,47 @@ export class PingOneClient {
                     'Accept': 'application/json'
                 }
             });
-            console.log('[DEBUG] Fetch response:', response);
+            
             if (!response.ok) {
-                let errorMsg = `Failed to get access token: ${response.status}`;
-                try {
-                    const errorData = await response.json();
-                    errorMsg += errorData.message ? ` - ${errorData.message}` : '';
-                } catch (e) {
-                    // Ignore JSON parse errors
-                }
-                console.error('[DEBUG] Fetch error:', errorMsg);
-                if (window.app && window.app.uiManager) {
-                    window.app.uiManager.showNotification('❌ ' + errorMsg, 'error');
-                }
-                throw new Error(errorMsg);
+                const error = await response.text();
+                throw new Error(`Failed to get access token: ${response.status} - ${error}`);
             }
+            
             const data = await response.json();
-            console.log('[DEBUG] Data received from server:', data);
-            if (!data.access_token) {
-                console.warn('[TOKEN] No access_token in server response:', data);
-                if (window.app && window.app.uiManager) {
-                    window.app.uiManager.showNotification('⚠️ No token received from server. Please check your PingOne credentials and try again.', 'warning');
-                }
-                return null;
-            }
-            let tokenSaved = false;
+            
+            // Cache the new token
             try {
                 if (typeof localStorage !== 'undefined' && typeof window !== 'undefined') {
                     const expiryTime = Date.now() + (data.expires_in * 1000);
                     try {
                         localStorage.setItem('pingone_worker_token', data.access_token);
                         localStorage.setItem('pingone_token_expiry', expiryTime.toString());
-                        tokenSaved = true;
-                        console.log('[DEBUG] Token saved to localStorage:', {
-                            token: data.access_token ? data.access_token.substring(0, 8) + '...' : null,
-                            expiry: expiryTime,
-                            expires_in: data.expires_in
-                        });
-                        console.log('[DEBUG] localStorage now:', {
-                            pingone_worker_token: localStorage.getItem('pingone_worker_token'),
-                            pingone_token_expiry: localStorage.getItem('pingone_token_expiry')
-                        });
-                        if (this.logger && this.logger.info) {
-                            this.logger.info('[TOKEN] Saved to localStorage', {
-                                token: data.access_token ? data.access_token.substring(0, 8) + '...' : null,
-                                expiry: expiryTime,
-                                expires_in: data.expires_in
-                            });
+                        
+                        // Update status bar with new token info
+                        let timeLeftMsg = '';
+                        const min = Math.floor(data.expires_in / 60);
+                        const sec = data.expires_in % 60;
+                        timeLeftMsg = ` (expires in ${min}m ${sec}s)`;
+                        
+                        const msg = `✅ New PingOne Worker token obtained${timeLeftMsg}`;
+                        if (window.app && window.app.uiManager) {
+                            window.app.uiManager.updateConnectionStatus('connected', msg);
+                            window.app.uiManager.showNotification(msg, 'success');
                         }
                     } catch (storageError) {
                         console.warn('Failed to store token in localStorage:', storageError);
-                        if (this.logger && this.logger.error) {
-                            this.logger.error('[TOKEN] Failed to store token in localStorage', storageError);
-                        }
-                        if (window.app && window.app.uiManager) {
-                            window.app.uiManager.showNotification('❌ Failed to save token in your browser. Please check your browser settings or try another browser.', 'error');
-                        }
+                        // Continue without storing the token
                     }
                 }
             } catch (error) {
                 console.warn('Error accessing localStorage:', error);
-                if (this.logger && this.logger.error) {
-                    this.logger.error('[TOKEN] Error accessing localStorage', error);
-                }
-                if (window.app && window.app.uiManager) {
-                    window.app.uiManager.showNotification('❌ Error accessing browser storage. Token may not be saved.', 'error');
-                }
+                // Continue without storing the token
             }
+            
             this.accessToken = data.access_token; // Cache the token
-            if (tokenSaved) {
-                let timeLeftMsg = '';
-                const min = Math.floor(data.expires_in / 60);
-                const sec = data.expires_in % 60;
-                timeLeftMsg = ` (expires in ${min}m ${sec}s)`;
-                let msg = `✅ New PingOne Worker token obtained${timeLeftMsg}`;
-                if (!msg || msg.trim() === '' || msg === '✅') {
-                    msg = '✅ Token obtained successfully.';
-                }
-                if (window.app && window.app.uiManager) {
-                    window.app.uiManager.updateConnectionStatus('connected', msg);
-                    window.app.uiManager.showNotification(msg, 'success');
-                }
-            }
             return data.access_token;
+            
         } catch (error) {
-            console.error('[DEBUG] Error in getAccessToken:', error);
             this.logger.error('Error getting access token:', error);
             throw error;
         }
@@ -325,29 +300,7 @@ export class PingOneClient {
      */
     async getPopulations() {
         const settings = this.getSettings();
-        const response = await this.request('GET', `/environments/${settings.environmentId}/populations`);
-        
-        // Handle different response formats
-        if (typeof response === 'string') {
-            try {
-                return JSON.parse(response);
-            } catch (error) {
-                this.logger.error('Failed to parse populations response:', error);
-                return [];
-            }
-        } else if (Array.isArray(response)) {
-            return response;
-        } else if (response && typeof response === 'object') {
-            // If response is an object, it might be wrapped
-            if (Array.isArray(response.data)) {
-                return response.data;
-            } else if (Array.isArray(response.populations)) {
-                return response.populations;
-            }
-        }
-        
-        this.logger.warn('Unexpected populations response format:', response);
-        return [];
+        return this.request('GET', `/environments/${settings.environmentId}/populations`);
     }
 
     /**
@@ -385,7 +338,6 @@ export class PingOneClient {
         let retryCount = 0;
         
         console.log('[IMPORT] Initial setup completed');
-        this.logger.debug('[IMPORT] Starting import of users', { totalUsers });
 
         // Validate input
         console.log('[IMPORT] Validating input...');
@@ -415,7 +367,7 @@ export class PingOneClient {
             fallbackPopulationId = settings.populationId;
             console.log('[IMPORT] Using default population from settings:', fallbackPopulationId);
         }
-        // Priority 3: Check if CSV has population data (only if explicitly enabled)
+        // Priority 3: Check if CSV has population data (even if no explicit selection)
         else if (useCsvPopulationId) {
             // Check if any user has populationId data
             const hasCsvPopulationData = users.some(user => user.populationId && user.populationId.trim() !== '');
@@ -427,15 +379,10 @@ export class PingOneClient {
             }
         }
         
-        // If still no population, show modal but allow import to continue
+        // If still no population, show modal
         if (!fallbackPopulationId) {
             console.log('[IMPORT] No population selected, showing modal...');
             if (window.app) {
-                // Reset import button state before showing modal
-                if (window.app.uiManager) {
-                    window.app.uiManager.resetImportState();
-                }
-                
                 // Show modal and wait for user action
                 const modalResult = await window.app.showPopulationWarningModal();
                 if (modalResult === 'settings') {
@@ -449,56 +396,17 @@ export class PingOneClient {
                         error: 'No population selected or configured - user redirected to settings.'
                     };
                 }
-                // User clicked OK, continue with import but use default population
-                console.log('[IMPORT] User chose to continue without population selection, using default population');
-                // Get the first available population as fallback
-                try {
-                    const availablePopulations = await this.getPopulations();
-                    if (availablePopulations && availablePopulations.length > 0) {
-                        fallbackPopulationId = availablePopulations[0].id;
-                        console.log('[IMPORT] Using first available population as fallback:', fallbackPopulationId);
-                    } else {
-                        console.log('[IMPORT] No populations available, skipping all users');
-                        return {
-                            total: totalUsers,
-                            success: 0,
-                            failed: 0,
-                            skipped: totalUsers,
-                            results: users.map(user => ({
-                                success: false,
-                                user: user,
-                                error: 'No population available in PingOne environment',
-                                skipped: true
-                            })),
-                            error: 'No population available in PingOne environment.'
-                        };
-                    }
-                } catch (error) {
-                    console.error('[IMPORT] Error getting populations:', error);
-                    return {
-                        total: totalUsers,
-                        success: 0,
-                        failed: 0,
-                        skipped: totalUsers,
-                        results: users.map(user => ({
-                            success: false,
-                            user: user,
-                            error: 'Failed to get available populations',
-                            skipped: true
-                        })),
-                        error: 'Failed to get available populations.'
-                    };
-                }
-            } else {
-                return {
-                    total: totalUsers,
-                    success: 0,
-                    failed: 0,
-                    skipped: 0,
-                    results: [],
-                    error: 'No population selected or configured.'
-                };
+                // User clicked OK, stay on import page
+                window.app.showView('import');
             }
+            return {
+                total: totalUsers,
+                success: 0,
+                failed: 0,
+                skipped: 0,
+                results: [],
+                error: 'No population selected or configured.'
+            };
         }
         console.log('[IMPORT] Population selection completed, fallbackPopulationId:', fallbackPopulationId);
         this.logger.info('Population selection for import', {
@@ -515,7 +423,6 @@ export class PingOneClient {
         for (let i = 0; i < totalUsers; i += batchSize) {
             const batch = users.slice(i, i + batchSize);
             console.log(`[IMPORT] Processing batch ${Math.floor(i/batchSize) + 1}, users ${i+1}-${Math.min(i+batchSize, totalUsers)}`);
-            this.logger.debug(`[IMPORT] Processing batch`, { batchNumber: Math.floor(i/batchSize) + 1, from: i+1, to: Math.min(i+batchSize, totalUsers) });
             for (let batchIndex = 0; batchIndex < batch.length; batchIndex++) {
                 const currentIndex = i + batchIndex;
                 const currentUser = batch[batchIndex];
@@ -569,54 +476,9 @@ export class PingOneClient {
                     
                     // Determine population ID for this user
                     let userPopulationId = fallbackPopulationId;
-                    
-                    // If CSV population ID is enabled and user has a population ID
                     if (useCsvPopulationId && currentUser.populationId) {
-                        // Validate the CSV population ID format (should be a valid UUID)
-                        const isValidPopulationId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentUser.populationId);
-                        
-                        if (isValidPopulationId) {
-                            // Check if the population exists in the available populations
-                            const availablePopulations = await this.getPopulations();
-                            const populationExists = availablePopulations.some(pop => pop.id === currentUser.populationId);
-                            
-                            if (populationExists) {
-                                userPopulationId = currentUser.populationId;
-                                this.logger.info(`Using CSV population ID for user ${currentUser.email || currentUser.username}: ${userPopulationId}`);
-                            } else {
-                                // CSV population ID doesn't exist, fall back to UI-selected population
-                                this.logger.warn(`CSV population ID ${currentUser.populationId} does not exist in PingOne environment. Falling back to UI-selected population: ${fallbackPopulationId}`);
-                                if (fallbackPopulationId && fallbackPopulationId !== 'csv-population-ids') {
-                                    userPopulationId = fallbackPopulationId;
-                                } else {
-                                    this.logger.warn(`No valid population ID available for user ${currentUser.email || currentUser.username}. Skipping user.`);
-                                    failedCount++;
-                                    results.push({
-                                        success: false,
-                                        user: currentUser,
-                                        error: `CSV population ID ${currentUser.populationId} does not exist in PingOne environment. No fallback population available.`,
-                                        skipped: true
-                                    });
-                                    continue;
-                                }
-                            }
-                        } else {
-                            // CSV population ID is invalid format, fall back to UI-selected population
-                            this.logger.warn(`Invalid CSV population ID format for user ${currentUser.email || currentUser.username}: ${currentUser.populationId}. Falling back to UI-selected population: ${fallbackPopulationId}`);
-                            if (fallbackPopulationId && fallbackPopulationId !== 'csv-population-ids') {
-                                userPopulationId = fallbackPopulationId;
-                            } else {
-                                this.logger.warn(`No valid population ID available for user ${currentUser.email || currentUser.username}. Skipping user.`);
-                                failedCount++;
-                                results.push({
-                                    success: false,
-                                    user: currentUser,
-                                    error: `Invalid CSV population ID format: ${currentUser.populationId}. No fallback population available.`,
-                                    skipped: true
-                                });
-                                continue;
-                            }
-                        }
+                        userPopulationId = currentUser.populationId;
+                        this.logger.info(`Using CSV population ID for user ${currentUser.email || currentUser.username}: ${userPopulationId}`);
                     } else if (fallbackPopulationId && fallbackPopulationId !== 'csv-population-ids') {
                         if (selectedPopulationId && fallbackPopulationId === selectedPopulationId) {
                             this.logger.info(`Using selected population ID for user ${currentUser.email || currentUser.username}: ${fallbackPopulationId}`);
@@ -624,39 +486,8 @@ export class PingOneClient {
                             this.logger.info(`Using fallback population ID for user ${currentUser.email || currentUser.username}: ${fallbackPopulationId}`);
                         }
                     } else if (fallbackPopulationId === 'csv-population-ids' && currentUser.populationId) {
-                        // Validate the CSV population ID format
-                        const isValidPopulationId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentUser.populationId);
-                        
-                        if (isValidPopulationId) {
-                            // Check if the population exists in the available populations
-                            const availablePopulations = await this.getPopulations();
-                            const populationExists = availablePopulations.some(pop => pop.id === currentUser.populationId);
-                            
-                            if (populationExists) {
-                                userPopulationId = currentUser.populationId;
-                                this.logger.info(`Using CSV population ID for user ${currentUser.email || currentUser.username}: ${userPopulationId}`);
-                            } else {
-                                this.logger.warn(`CSV population ID ${currentUser.populationId} does not exist in PingOne environment. Skipping user.`);
-                                failedCount++;
-                                results.push({
-                                    success: false,
-                                    user: currentUser,
-                                    error: `CSV population ID ${currentUser.populationId} does not exist in PingOne environment.`,
-                                    skipped: true
-                                });
-                                continue;
-                            }
-                        } else {
-                            this.logger.warn(`Invalid CSV population ID format for user ${currentUser.email || currentUser.username}: ${currentUser.populationId}. Skipping user.`);
-                            failedCount++;
-                            results.push({
-                                success: false,
-                                user: currentUser,
-                                error: `Invalid CSV population ID format: ${currentUser.populationId}`,
-                                skipped: true
-                            });
-                            continue;
-                        }
+                        userPopulationId = currentUser.populationId;
+                        this.logger.info(`Using CSV population ID for user ${currentUser.email || currentUser.username}: ${userPopulationId}`);
                     } else {
                         this.logger.warn(`No population ID available for user ${currentUser.email || currentUser.username}. Skipping user.`);
                         failedCount++;
@@ -668,20 +499,6 @@ export class PingOneClient {
                         });
                         continue;
                     }
-                    // Store enabled status for later use (after user creation)
-                    let userEnabledStatus = true; // default to true
-                    if (currentUser.enabled !== undefined && currentUser.enabled !== null) {
-                        if (typeof currentUser.enabled === 'boolean') {
-                            userEnabledStatus = currentUser.enabled;
-                        } else if (typeof currentUser.enabled === 'string') {
-                            // Convert string values to boolean
-                            const enabledStr = currentUser.enabled.toLowerCase().trim();
-                            userEnabledStatus = enabledStr === 'true' || enabledStr === '1' || enabledStr === 'yes';
-                        } else if (typeof currentUser.enabled === 'number') {
-                            userEnabledStatus = currentUser.enabled !== 0;
-                        }
-                    }
-                    
                     const userData = {
                         name: {
                             given: currentUser.firstName || '',
@@ -691,29 +508,17 @@ export class PingOneClient {
                         username: currentUser.username || currentUser.email,
                         population: {
                             id: userPopulationId
-                        }
+                        },
+                        enabled: currentUser.enabled !== false
                     };
                     if (currentUser.password) {
                         userData.password = {
-                            value: '[REDACTED]'
+                            value: currentUser.password
                         };
                     }
                     if (currentUser.additionalProperties) {
                         Object.assign(userData, currentUser.additionalProperties);
                     }
-                    // Extra debug output for each user
-                    this.logger.debug('[IMPORT] Preparing to import user', {
-                        index: currentIndex + 1,
-                        total: totalUsers,
-                        user: {
-                            email: currentUser.email,
-                            username: currentUser.username,
-                            firstName: currentUser.firstName,
-                            lastName: currentUser.lastName,
-                            populationId: userPopulationId
-                        },
-                        userData
-                    });
                     // Make the API request with retry logic
                     let result;
                     let lastError = null;
@@ -732,8 +537,7 @@ export class PingOneClient {
                             });
                             console.log(`[IMPORT] Making API request for user ${currentUser.email || currentUser.username} (attempt ${attempt}/${retryAttempts})`);
                             result = await this.request('POST', endpoint, userData, { signal: abortController ? abortController.signal : undefined });
-                            this.logger.debug('[IMPORT] API Response', { user: currentUser.email || currentUser.username, result });
-                            console.log(`[IMPORT] API request completed for user ${currentUser.email || currentUser.username}`);
+                                            console.log(`[IMPORT] API request completed for user ${currentUser.email || currentUser.username}`);
                             
                             // Check for different possible response structures
                             let userId = null;
@@ -787,21 +591,9 @@ export class PingOneClient {
                             }
                             
                             if (userId) {
-                                // Handle user status if needed (enable/disable)
-                                if (userEnabledStatus === false) {
-                                    try {
-                                        console.log(`[IMPORT] Disabling user ${userId} after creation`);
-                                        await this.updateUserStatus(userId, false);
-                                        console.log(`[IMPORT] Successfully disabled user ${userId}`);
-                                    } catch (statusError) {
-                                        console.warn(`[IMPORT] Failed to disable user ${userId}:`, statusError.message);
-                                        // Don't fail the import, just log the warning
-                                    }
-                                }
-                                
                                 successCount++;
-                                results.push({ success: true, user: currentUser, id: userId, enabled: userEnabledStatus });
-                                console.log(`[IMPORT] Successfully created user with ID: ${userId} (enabled: ${userEnabledStatus})`);
+                                results.push({ success: true, user: currentUser, id: userId });
+                                console.log(`[IMPORT] Successfully created user with ID: ${userId}`);
                                 break;
                             } else {
                                 console.log(`[IMPORT] Invalid response structure - no ID found:`, result);
@@ -854,37 +646,15 @@ export class PingOneClient {
                         }
                     }
                 } catch (err) {
-                    this.logger.error('[IMPORT] Unexpected error during import', {
-                        user: currentUser.email || currentUser.username,
-                        error: err.message,
-                        stack: err.stack
-                    });
-                    console.error(`[IMPORT] Unexpected error for user ${currentUser.email || currentUser.username}:`, err);
                     failedCount++;
-                    results.push({
-                        success: false,
-                        user: currentUser,
-                        error: err.message,
-                        skipped: false
-                    });
+                    results.push({ success: false, user: currentUser, error: err.message || 'Unknown error' });
+                    this.logger.error(`Import error for user ${currentUser.email || currentUser.username}: ${err.message}`);
+                    if (window.app && window.app.uiManager) {
+                        window.app.uiManager.showNotification(`Import error for user ${currentUser.email || currentUser.username}: ${err.message}`, 'error');
+                    }
                 }
             }
         }
-        // Batch summary
-        this.logger.info('[IMPORT] Batch import summary', {
-            total: totalUsers,
-            success: successCount,
-            failed: failedCount,
-            skipped: skippedCount,
-            retries: retryCount
-        });
-        console.log('[IMPORT] Batch import summary:', {
-            total: totalUsers,
-            success: successCount,
-            failed: failedCount,
-            skipped: skippedCount,
-            retries: retryCount
-        });
         return {
             total: totalUsers,
             success: successCount,
@@ -977,32 +747,6 @@ export class PingOneClient {
         }
         
         return false;
-    }
-
-    /**
-     * Update user status (enable/disable)
-     * @param {string} userId - The user ID
-     * @param {boolean} enabled - Whether the user should be enabled
-     * @returns {Promise<Object>} The API response
-     */
-    async updateUserStatus(userId, enabled) {
-        const settings = this.getSettings();
-        const endpoint = `/environments/${settings.environmentId}/users/${userId}`;
-        
-        const updateData = {
-            enabled: enabled
-        };
-        
-        this.logger.info(`[STATUS] Updating user ${userId} status to enabled: ${enabled}`);
-        
-        try {
-            const result = await this.request('PATCH', endpoint, updateData);
-            this.logger.info(`[STATUS] Successfully updated user ${userId} status to enabled: ${enabled}`);
-            return result;
-        } catch (error) {
-            this.logger.error(`[STATUS] Failed to update user ${userId} status:`, error);
-            throw error;
-        }
     }
 
     /**
@@ -1335,7 +1079,7 @@ export class PingOneClient {
                         try {
                             this.logger.info(`[MODIFY] User not found, creating new user: ${user.username || user.email}`);
                             
-                            // Prepare user data for creation (without enabled field)
+                            // Prepare user data for creation
                             const userData = {
                                 name: {
                                     given: user.firstName || user.givenName || '',
@@ -1345,18 +1089,9 @@ export class PingOneClient {
                                 username: user.username || user.email,
                                 population: {
                                     id: user.populationId || defaultPopulationId || this.getSettings().populationId
-                                }
+                                },
+                                enabled: user.enabled !== undefined ? user.enabled : defaultEnabled
                             };
-                            
-                            // Determine if user should be enabled (for later status update)
-                            let userEnabledStatus = defaultEnabled;
-                            if (user.enabled !== undefined) {
-                                if (typeof user.enabled === 'string') {
-                                    userEnabledStatus = user.enabled.toLowerCase() === 'true' || user.enabled === '1';
-                                } else {
-                                    userEnabledStatus = user.enabled;
-                                }
-                            }
 
                             // Add password if generatePasswords is enabled
                             if (generatePasswords) {
@@ -1367,17 +1102,7 @@ export class PingOneClient {
 
                             // Create the user
                             const createdUser = await this.request('POST', `/environments/${this.getSettings().environmentId}/users`, userData);
-
-                            // After creation, update status if needed
-                            if (userEnabledStatus === false) {
-                                try {
-                                    await this.updateUserStatus(createdUser.id, false);
-                                    this.logger.info(`[MODIFY] Disabled user after creation: ${createdUser.username || createdUser.email} (ID: ${createdUser.id})`);
-                                } catch (statusErr) {
-                                    this.logger.warn(`[MODIFY] Failed to disable user after creation: ${createdUser.username || createdUser.email} (ID: ${createdUser.id})`, statusErr);
-                                }
-                            }
-
+                            
                             results.created++;
                             results.details.push({
                                 user,
@@ -1482,15 +1207,16 @@ export class PingOneClient {
                     }
                     
                     // Check for enabled status updates if updateUserStatus is enabled
-                    let enabledStatusToUpdate = null;
                     if (updateUserStatus && user.enabled !== undefined && user.enabled !== existingUser.enabled) {
                         // Convert string values to boolean if needed
                         let newEnabledValue = user.enabled;
                         if (typeof newEnabledValue === 'string') {
                             newEnabledValue = newEnabledValue.toLowerCase() === 'true' || newEnabledValue === '1';
                         }
+                        
                         if (newEnabledValue !== existingUser.enabled) {
-                            enabledStatusToUpdate = newEnabledValue;
+                            changes.enabled = newEnabledValue;
+                            hasChanges = true;
                             this.logger.debug(`[MODIFY] Enabled status will be changed from "${existingUser.enabled}" to "${newEnabledValue}"`);
                         }
                     } else if (!updateUserStatus && user.enabled !== undefined && user.enabled !== existingUser.enabled) {
@@ -1500,12 +1226,7 @@ export class PingOneClient {
                             window.app.uiManager.showWarning(`Cannot modify 'enabled' status for user ${existingUser.username} - updateUserStatus option is disabled`);
                         }
                     }
-
-                    // Remove enabled from changes if present
-                    if (changes.enabled !== undefined) {
-                        delete changes.enabled;
-                    }
-
+                    
                     // For PingOne API, we need to include required fields in the update
                     // Always include username and email as they are required
                     if (hasChanges) {
@@ -1513,8 +1234,8 @@ export class PingOneClient {
                         changes.email = existingUser.email;
                         this.logger.debug(`[MODIFY] Including required fields: username=${existingUser.username}, email=${existingUser.email}`);
                     }
-
-                    if (!hasChanges && enabledStatusToUpdate === null) {
+                    
+                    if (!hasChanges) {
                         results.noChanges++;
                         results.details.push({
                             user,
@@ -1525,27 +1246,15 @@ export class PingOneClient {
                         this.logger.info(`[MODIFY] No changes needed for user: ${existingUser.username || existingUser.email} (ID: ${existingUser.id})`);
                         return;
                     }
-
+                    
                     this.logger.info(`[MODIFY] Applying changes to user:`, {
                         userId: existingUser.id,
                         changes: changes
                     });
-
-                    // Update the user with changes if there are any
-                    if (hasChanges) {
-                        await this.request('PUT', `/environments/${this.getSettings().environmentId}/users/${existingUser.id}`, changes);
-                    }
-
-                    // Update enabled status if needed
-                    if (enabledStatusToUpdate !== null) {
-                        try {
-                            await this.updateUserStatus(existingUser.id, enabledStatusToUpdate);
-                            this.logger.info(`[MODIFY] Updated enabled status for user: ${existingUser.username || existingUser.email} (ID: ${existingUser.id}) to ${enabledStatusToUpdate}`);
-                        } catch (statusErr) {
-                            this.logger.warn(`[MODIFY] Failed to update enabled status for user: ${existingUser.username || existingUser.email} (ID: ${existingUser.id})`, statusErr);
-                        }
-                    }
-
+                    
+                    // Update the user with changes
+                    await this.request('PUT', `/environments/${this.getSettings().environmentId}/users/${existingUser.id}`, changes);
+                    
                     results.modified++;
                     results.details.push({
                         user,
@@ -1700,7 +1409,7 @@ export class PingOneClient {
                         try {
                             this.logger.info(`[MODIFY] User not found, creating new user: ${user.username || user.email}`);
                             
-                            // Prepare user data for creation (without enabled field)
+                            // Prepare user data for creation
                             const userData = {
                                 name: {
                                     given: user.firstName || user.givenName || '',
@@ -1710,18 +1419,9 @@ export class PingOneClient {
                                 username: user.username || user.email,
                                 population: {
                                     id: user.populationId || defaultPopulationId || this.getSettings().populationId
-                                }
+                                },
+                                enabled: user.enabled !== undefined ? user.enabled : defaultEnabled
                             };
-                            
-                            // Determine if user should be enabled (for later status update)
-                            let userEnabledStatus = defaultEnabled;
-                            if (user.enabled !== undefined) {
-                                if (typeof user.enabled === 'string') {
-                                    userEnabledStatus = user.enabled.toLowerCase() === 'true' || user.enabled === '1';
-                                } else {
-                                    userEnabledStatus = user.enabled;
-                                }
-                            }
 
                             // Add password if generatePasswords is enabled
                             if (generatePasswords) {
@@ -1732,17 +1432,6 @@ export class PingOneClient {
 
                             // Create the user
                             const createdUser = await this.request('POST', `/environments/${this.getSettings().environmentId}/users`, userData);
-
-                            // After creation, update status if needed
-                            if (userEnabledStatus === false) {
-                                try {
-                                    await this.updateUserStatus(createdUser.id, false);
-                                    this.logger.info(`[MODIFY] Disabled user after creation: ${createdUser.username || createdUser.email} (ID: ${createdUser.id})`);
-                                } catch (statusErr) {
-                                    this.logger.warn(`[MODIFY] Failed to disable user after creation: ${createdUser.username || createdUser.email} (ID: ${createdUser.id})`, statusErr);
-                                }
-                            }
-
                             results.created++;
                             results.details.push({
                                 user,

@@ -270,7 +270,6 @@ if (process.env.NODE_ENV !== 'production') {
 app.use(cors());
 
 // Log all incoming requests
-app.use((req, res, next) => {
 app.use(morgan('dev'));
 
 // Standard body parsers
@@ -1553,8 +1552,7 @@ const startServer = async () => {
     });
 };
 
-    })
-};// Export for production use
+// Export for production use
 module.exports = app;
 
 // If this file is run directly, start the server

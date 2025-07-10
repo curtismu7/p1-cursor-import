@@ -212,8 +212,10 @@ export class PingOneClient {
         let lastError = null;
         for (let attempt = 1; attempt <= (options.retries || 3); attempt++) {
             try {
+                console.log(`[REQUEST] Making API request (attempt ${attempt}): ${method} ${url}`);
                 // Pass signal to localAPI.request if supported
                 const response = await this.localAPI.request(method, url, data, { ...options, headers, signal: options.signal });
+                console.log(`[REQUEST] API request completed (attempt ${attempt}):`, response);
                 
                 // Log successful response with minimal details
                 const responseLog = {
@@ -324,6 +326,7 @@ export class PingOneClient {
      * @returns {Promise<Object>} Import results
      */
     async importUsers(users, options = {}) {
+        console.log('[IMPORT] importUsers method called');
         const settings = this.getSettings();
         const endpoint = `/environments/${settings.environmentId}/users`;
         const { onProgress, retryAttempts = 3, delayBetweenRetries = 1000, importOptions = {}, abortController } = options;
@@ -333,8 +336,11 @@ export class PingOneClient {
         let failedCount = 0;
         let skippedCount = 0;
         let retryCount = 0;
+        
+        console.log('[IMPORT] Initial setup completed');
 
         // Validate input
+        console.log('[IMPORT] Validating input...');
         if (!users || !Array.isArray(users) || users.length === 0) {
             throw new Error('No users provided for import');
         }
@@ -342,8 +348,10 @@ export class PingOneClient {
         if (!settings.environmentId) {
             throw new Error('Environment ID not configured');
         }
+        console.log('[IMPORT] Input validation completed');
 
         // Handle population selection based on import options
+        console.log('[IMPORT] Handling population selection...');
         const { selectedPopulationId, useCsvPopulationId, useDefaultPopulation } = importOptions;
         
         // Determine the fallback population ID
@@ -352,54 +360,55 @@ export class PingOneClient {
         // Priority 1: Selected population from dropdown
         if (selectedPopulationId) {
             fallbackPopulationId = selectedPopulationId;
+            console.log('[IMPORT] Using selected population from dropdown:', fallbackPopulationId);
         }
         // Priority 2: Default population from settings
         else if (useDefaultPopulation && settings.populationId) {
             fallbackPopulationId = settings.populationId;
+            console.log('[IMPORT] Using default population from settings:', fallbackPopulationId);
         }
-        // Priority 3: Fetch populations from PingOne and use first one
-        else {
-            try {
-                const populationsResp = await this.getPopulations();
-                let populations = populationsResp && populationsResp._embedded && populationsResp._embedded.populations ? populationsResp._embedded.populations : [];
-                if (populations.length > 0) {
-                    // Use the first population as default (or find one marked as default if available)
-                    fallbackPopulationId = populations[0].id;
-                    // Optionally, look for a population marked as default
-                    const defaultPop = populations.find(p => p.default === true);
-                    if (defaultPop) fallbackPopulationId = defaultPop.id;
-                } else {
-                    // No populations exist, prompt the user and return
-                    if (window.app && window.app.uiManager) {
-                        window.app.uiManager.showNotification('No populations found in PingOne. Please create a population and try again.', 'error');
-                        window.app.showView('import');
-                    }
+        // Priority 3: Check if CSV has population data (even if no explicit selection)
+        else if (useCsvPopulationId) {
+            // Check if any user has populationId data
+            const hasCsvPopulationData = users.some(user => user.populationId && user.populationId.trim() !== '');
+            if (hasCsvPopulationData) {
+                console.log('[IMPORT] CSV has population data, will use individual population IDs from CSV');
+                fallbackPopulationId = 'csv-population-ids'; // Special marker
+            } else {
+                console.log('[IMPORT] CSV population ID enabled but no population data found in CSV');
+            }
+        }
+        
+        // If still no population, show modal
+        if (!fallbackPopulationId) {
+            console.log('[IMPORT] No population selected, showing modal...');
+            if (window.app) {
+                // Show modal and wait for user action
+                const modalResult = await window.app.showPopulationWarningModal();
+                if (modalResult === 'settings') {
+                    // User chose to go to settings, return early
                     return {
                         total: totalUsers,
                         success: 0,
                         failed: 0,
                         skipped: 0,
                         results: [],
-                        error: 'No populations found in PingOne.'
+                        error: 'No population selected or configured - user redirected to settings.'
                     };
                 }
-            } catch (err) {
-                this.logger.error('Failed to fetch populations from PingOne:', err);
-                if (window.app && window.app.uiManager) {
-                    window.app.uiManager.showNotification('Failed to fetch populations from PingOne. Please check your connection and try again.', 'error');
-                    window.app.showView('import');
-                }
-                return {
-                    total: totalUsers,
-                    success: 0,
-                    failed: 0,
-                    skipped: 0,
-                    results: [],
-                    error: 'Failed to fetch populations from PingOne.'
-                };
+                // User clicked OK, stay on import page
+                window.app.showView('import');
             }
+            return {
+                total: totalUsers,
+                success: 0,
+                failed: 0,
+                skipped: 0,
+                results: [],
+                error: 'No population selected or configured.'
+            };
         }
-        
+        console.log('[IMPORT] Population selection completed, fallbackPopulationId:', fallbackPopulationId);
         this.logger.info('Population selection for import', {
             useCsvPopulationId,
             selectedPopulationId,
@@ -407,33 +416,17 @@ export class PingOneClient {
             fallbackPopulationId,
             settingsPopulationId: settings.populationId
         });
-        
+
         // Process users in batches with improved error handling
-        const batchSize = 10; // Increased from 5 to 10 for better throughput
-        
+        console.log('[IMPORT] Starting user processing loop...');
+        const batchSize = 10;
         for (let i = 0; i < totalUsers; i += batchSize) {
-            // Check for cancellation before processing each batch
-            if (abortController && abortController.signal.aborted) {
-                this.logger.info('Import cancelled by user during batch processing');
-                throw new Error('Import cancelled by user');
-            }
-            
-            // Process current batch
             const batch = users.slice(i, i + batchSize);
-            
-            // Process users sequentially within each batch to avoid overwhelming the API
+            console.log(`[IMPORT] Processing batch ${Math.floor(i/batchSize) + 1}, users ${i+1}-${Math.min(i+batchSize, totalUsers)}`);
             for (let batchIndex = 0; batchIndex < batch.length; batchIndex++) {
                 const currentIndex = i + batchIndex;
-                const currentUser = users[currentIndex];
-                
-                // Check for cancellation before processing each user
-                if (abortController && abortController.signal.aborted) {
-                    this.logger.info('Import cancelled by user during user processing');
-                    throw new Error('Import cancelled by user');
-                }
-                
+                const currentUser = batch[batchIndex];
                 try {
-                    // Call progress callback before processing each user
                     if (onProgress) {
                         onProgress(currentIndex, totalUsers, currentUser, {
                             success: successCount,
@@ -442,7 +435,6 @@ export class PingOneClient {
                             retries: retryCount
                         });
                     }
-                    
                     // Validate user data before creating
                     const validationError = this.validateUserForImport(currentUser);
                     if (validationError) {
@@ -454,27 +446,59 @@ export class PingOneClient {
                             error: validationError,
                             skipped: true
                         });
-                        continue; // Continue to next user
+                        continue;
+                    }
+                    
+                    // Additional validation for required name fields
+                    if (!currentUser.firstName || currentUser.firstName.trim() === '') {
+                        this.logger.warn(`User ${currentUser.email || currentUser.username} missing firstName, skipping`, 'warn');
+                        skippedCount++;
+                        results.push({
+                            success: false,
+                            user: currentUser,
+                            error: 'firstName is required and cannot be empty',
+                            skipped: true
+                        });
+                        continue;
+                    }
+                    
+                    if (!currentUser.lastName || currentUser.lastName.trim() === '') {
+                        this.logger.warn(`User ${currentUser.email || currentUser.username} missing lastName, skipping`, 'warn');
+                        skippedCount++;
+                        results.push({
+                            success: false,
+                            user: currentUser,
+                            error: 'lastName is required and cannot be empty',
+                            skipped: true
+                        });
+                        continue;
                     }
                     
                     // Determine population ID for this user
                     let userPopulationId = fallbackPopulationId;
-                    
                     if (useCsvPopulationId && currentUser.populationId) {
-                        // Use population ID from CSV if available
                         userPopulationId = currentUser.populationId;
                         this.logger.info(`Using CSV population ID for user ${currentUser.email || currentUser.username}: ${userPopulationId}`);
-                    } else if (fallbackPopulationId) {
-                        // Use selected or fallback population ID
+                    } else if (fallbackPopulationId && fallbackPopulationId !== 'csv-population-ids') {
                         if (selectedPopulationId && fallbackPopulationId === selectedPopulationId) {
                             this.logger.info(`Using selected population ID for user ${currentUser.email || currentUser.username}: ${fallbackPopulationId}`);
                         } else {
                             this.logger.info(`Using fallback population ID for user ${currentUser.email || currentUser.username}: ${fallbackPopulationId}`);
                         }
+                    } else if (fallbackPopulationId === 'csv-population-ids' && currentUser.populationId) {
+                        userPopulationId = currentUser.populationId;
+                        this.logger.info(`Using CSV population ID for user ${currentUser.email || currentUser.username}: ${userPopulationId}`);
                     } else {
-                        throw new Error('No population ID available for user');
+                        this.logger.warn(`No population ID available for user ${currentUser.email || currentUser.username}. Skipping user.`);
+                        failedCount++;
+                        results.push({
+                            success: false,
+                            user: currentUser,
+                            error: 'No population ID available for user',
+                            skipped: true
+                        });
+                        continue;
                     }
-                    
                     const userData = {
                         name: {
                             given: currentUser.firstName || '',
@@ -487,179 +511,155 @@ export class PingOneClient {
                         },
                         enabled: currentUser.enabled !== false
                     };
-
-                    // Add password only if provided, otherwise let PingOne generate one
                     if (currentUser.password) {
                         userData.password = {
                             value: currentUser.password
                         };
                     }
-
-                    // Add any additional user properties
                     if (currentUser.additionalProperties) {
                         Object.assign(userData, currentUser.additionalProperties);
                     }
-
                     // Make the API request with retry logic
                     let result;
                     let lastError = null;
-                    
                     for (let attempt = 1; attempt <= retryAttempts; attempt++) {
-                        // Check for cancellation before each retry attempt
-                        if (abortController && abortController.signal.aborted) {
-                            this.logger.info('Import cancelled by user during retry attempt');
-                            throw new Error('Import cancelled by user');
-                        }
-                        
                         try {
-                            result = await this.request('POST', endpoint, userData);
+                            // Log full request details for debugging
+                            this.logger.debug('[IMPORT] API Request Details', {
+                                attempt,
+                                endpoint,
+                                userData,
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                    'Authorization': '[REDACTED]'
+                                }
+                            });
+                            console.log(`[IMPORT] Making API request for user ${currentUser.email || currentUser.username} (attempt ${attempt}/${retryAttempts})`);
+                            result = await this.request('POST', endpoint, userData, { signal: abortController ? abortController.signal : undefined });
+                                            console.log(`[IMPORT] API request completed for user ${currentUser.email || currentUser.username}`);
                             
-                            // Check for backend warning (uniqueness violation)
-                            if (result && result.warning === true && /already exists/i.test(result.message)) {
-                                this.logger.warn(`User ${currentUser.email || currentUser.username} already exists, skipping`, 'warn');
-                                skippedCount++;
-                                // Call progress callback for skipped user
-                                if (onProgress) {
-                                    onProgress(currentIndex + 1, totalUsers, currentUser, {
-                                        success: successCount,
-                                        failed: failedCount,
-                                        skipped: skippedCount
+                            // Check for different possible response structures
+                            let userId = null;
+                            
+                            // Handle the actual PingOne API response structure
+                            // PingOne API returns the user object directly with an 'id' field
+                            if (result && typeof result === 'object') {
+                                // Check for special "user already exists" response
+                                if (result.success && result.warning && result.message && result.message.includes('already exists')) {
+                                    // This is a special case where the user already exists
+                                    // We should treat this as a skip rather than an error
+                                    console.log(`[IMPORT] User already exists: ${currentUser.email || currentUser.username}`);
+                                    skippedCount++;
+                                    results.push({ 
+                                        success: false, 
+                                        user: currentUser, 
+                                        warning: true,
+                                        message: result.message,
+                                        skipped: true 
+                                    });
+                                    break; // Exit the retry loop
+                                }
+                                
+                                // Direct user object from PingOne API
+                                if (result.id) {
+                                    userId = result.id;
+                                } else if (result._id) {
+                                    userId = result._id;
+                                } else if (result.userId) {
+                                    userId = result.userId;
+                                }
+                                
+                                // If no ID found in direct object, check nested structures
+                                if (!userId) {
+                                    if (result.user && result.user.id) {
+                                        userId = result.user.id;
+                                    } else if (result.data && result.data.id) {
+                                        userId = result.data.id;
+                                    } else if (result.success && result.id) {
+                                        userId = result.id;
+                                    }
+                                }
+                            }
+                            
+                            // If still no ID found, check if this is a wrapped response
+                            if (!userId && result && typeof result === 'object') {
+                                // Check if the response is wrapped in a data property
+                                if (result.data && typeof result.data === 'object' && result.data.id) {
+                                    userId = result.data.id;
+                                }
+                            }
+                            
+                            if (userId) {
+                                successCount++;
+                                results.push({ success: true, user: currentUser, id: userId });
+                                console.log(`[IMPORT] Successfully created user with ID: ${userId}`);
+                                break;
+                            } else {
+                                console.log(`[IMPORT] Invalid response structure - no ID found:`, result);
+                                throw new Error('Unknown API response - no user ID found in response');
+                            }
+                        } catch (apiError) {
+                            lastError = apiError;
+                            // Try to extract error message and log full error details
+                            let apiErrorMsg = apiError && apiError.message ? apiError.message : 'API request failed';
+                            let apiErrorDetails = {};
+                            if (apiError && apiError.response && typeof apiError.response.json === 'function') {
+                                try {
+                                    const errorBody = await apiError.response.json();
+                                    apiErrorDetails.body = errorBody;
+                                    if (errorBody && errorBody.detail) {
+                                        apiErrorMsg = errorBody.detail;
+                                    } else if (errorBody && errorBody.error_description) {
+                                        apiErrorMsg = errorBody.error_description;
+                                    } else if (errorBody && errorBody.message) {
+                                        apiErrorMsg = errorBody.message;
+                                    }
+                                } catch (parseErr) {
+                                    apiErrorDetails.bodyParseError = parseErr.message;
+                                }
+                            }
+                            if (apiError && apiError.response) {
+                                apiErrorDetails.status = apiError.response.status;
+                                apiErrorDetails.statusText = apiError.response.statusText;
+                                apiErrorDetails.headers = {};
+                                if (apiError.response.headers && typeof apiError.response.headers.forEach === 'function') {
+                                    apiError.response.headers.forEach((value, key) => {
+                                        apiErrorDetails.headers[key] = value;
                                     });
                                 }
-                                results.push({
-                                    success: false,
-                                    user: currentUser,
-                                    error: 'User already exists',
-                                    skipped: true
-                                });
-                                break; // Break out of retry loop and continue to next user
                             }
-                            
-                            successCount++;
-                            results.push({ success: true, user: currentUser, result });
-                            break; // Break out of retry loop on success
-                            
-                        } catch (error) {
-                            lastError = error;
-                            
-                            // Check if this is a retryable error
-                            if (this.isRetryableError(error) && attempt < retryAttempts) {
-                                this.logger.warn(`Attempt ${attempt} failed for user ${currentUser.email || currentUser.username}, retrying in ${delayBetweenRetries}ms...`, 'warn');
-                                retryCount++;
-                                await new Promise(resolve => setTimeout(resolve, delayBetweenRetries));
-                                continue;
-                            }
-                            
-                            // If we've exhausted retries or it's not retryable, break
-                            break;
-                        }
-                    }
-                    
-                    // If we get here, all attempts failed
-                    if (!result || (result && result.warning === true && /already exists/i.test(result.message))) {
-                        // User was skipped, already handled above
-                        continue;
-                    }
-                    
-                    // If we get here, all attempts failed
-                    if (lastError) {
-                        this.logger.error(`All ${retryAttempts} attempts failed for user ${currentUser.email || currentUser.username}: ${lastError.message}`, 'error');
-                        failedCount++;
-                        
-                        if (options.continueOnError) {
-                            results.push({ 
-                                success: false, 
-                                user: currentUser, 
-                                error: lastError.message,
-                                skipped: false
+                            this.logger.error(`[IMPORT] PingOne API Error (attempt ${attempt}/${retryAttempts}): ${apiErrorMsg}`, {
+                                apiErrorMsg,
+                                apiErrorDetails,
+                                user: currentUser
                             });
-                            continue; // Continue to next user instead of throwing
+                            if (attempt === retryAttempts) {
+                                failedCount++;
+                                results.push({ success: false, user: currentUser, error: apiErrorMsg, apiErrorDetails });
+                                if (window.app && window.app.uiManager) {
+                                    window.app.uiManager.showNotification(`PingOne API Error: ${apiErrorMsg}`, 'error');
+                                }
+                            } else {
+                                await new Promise(res => setTimeout(res, delayBetweenRetries));
+                            }
                         }
-                        throw lastError;
                     }
-                    
-                } catch (error) {
-                    // Check if this was a cancellation
-                    if (error.message === 'Import cancelled by user' || error.name === 'AbortError') {
-                        this.logger.info('Import cancelled by user during user processing');
-                        throw error; // Re-throw to be caught by the main try-catch
-                    }
-                    
-                    this.logger.error('Error importing user:', error);
+                } catch (err) {
                     failedCount++;
-                    
-                    if (options.continueOnError) {
-                        // Old logic for 409 Conflict (should not be needed now, but keep for safety)
-                        const isSkipped = error.response?.status === 409;
-                        if (isSkipped) {
-                            this.logger.warn(`User ${currentUser.email} already exists, skipping`, 'warn');
-                            skippedCount++;
-                            // Call progress callback for skipped user
-                            if (onProgress) {
-                                onProgress(currentIndex + 1, totalUsers, currentUser, {
-                                    success: successCount,
-                                    failed: failedCount,
-                                    skipped: skippedCount
-                                });
-                            }
-                            results.push({ 
-                                success: false, 
-                                user: currentUser, 
-                                error: 'User already exists',
-                                skipped: true
-                            });
-                            continue; // Continue to next user
-                        }
-                        results.push({ 
-                            success: false, 
-                            user: currentUser, 
-                            error: error.message,
-                            skipped: false
-                        });
-                        continue; // Continue to next user
+                    results.push({ success: false, user: currentUser, error: err.message || 'Unknown error' });
+                    this.logger.error(`Import error for user ${currentUser.email || currentUser.username}: ${err.message}`);
+                    if (window.app && window.app.uiManager) {
+                        window.app.uiManager.showNotification(`Import error for user ${currentUser.email || currentUser.username}: ${err.message}`, 'error');
                     }
-                    throw error;
                 }
-                
-                // Add small delay between individual user operations to prevent rate limiting
-                if (batchIndex < batch.length - 1) {
-                    // Check for cancellation before delay
-                    if (abortController && abortController.signal.aborted) {
-                        this.logger.info('Import cancelled by user during delay');
-                        throw new Error('Import cancelled by user');
-                    }
-                    await new Promise(resolve => setTimeout(resolve, 100)); // 100ms delay between users
-                }
-            }
-            
-            // Add delay between batches to avoid rate limiting
-            if (i + batchSize < totalUsers) {
-                // Check for cancellation before batch delay
-                if (abortController && abortController.signal.aborted) {
-                    this.logger.info('Import cancelled by user during batch delay');
-                    throw new Error('Import cancelled by user');
-                }
-                await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay between batches
-            }
-            
-            // Call progress callback after batch completes
-            if (onProgress) {
-                const processedCount = Math.min(i + batch.length, totalUsers);
-                onProgress(processedCount, totalUsers, null, {
-                    success: successCount,
-                    failed: failedCount,
-                    skipped: skippedCount,
-                    retries: retryCount
-                });
             }
         }
-
         return {
             total: totalUsers,
             success: successCount,
             failed: failedCount,
             skipped: skippedCount,
-            retries: retryCount,
             results
         };
     }
@@ -674,6 +674,15 @@ export class PingOneClient {
         // Check required fields
         if (!user.username) {
             return 'User must have a username';
+        }
+        
+        // Check required name fields
+        if (!user.firstName || user.firstName.trim() === '') {
+            return 'User must have a firstName (given name)';
+        }
+        
+        if (!user.lastName || user.lastName.trim() === '') {
+            return 'User must have a lastName (family name)';
         }
         
         // Validate email format if provided
@@ -967,7 +976,7 @@ export class PingOneClient {
     }
 
     async modifyUsersFromCsv(users, options = {}) {
-        const { onProgress, batchSize = 10, delayBetweenBatches = 1000, createIfNotExists = false, updateUserStatus = false, defaultPopulationId = '', defaultEnabled = true, generatePasswords = true } = options;
+        const { onProgress, batchSize = 5, delayBetweenBatches = 2000, createIfNotExists = false, updateUserStatus = false, defaultPopulationId = '', defaultEnabled = true, generatePasswords = true } = options;
         const results = {
             total: users.length,
             modified: 0,
@@ -981,7 +990,10 @@ export class PingOneClient {
         // Process users in batches to avoid overwhelming the API
         for (let i = 0; i < users.length; i += batchSize) {
             const batch = users.slice(i, i + batchSize);
-            const batchPromises = batch.map(async (user, batchIndex) => {
+            
+            // Process users sequentially within each batch to avoid overwhelming the API
+            for (let batchIndex = 0; batchIndex < batch.length; batchIndex++) {
+                const user = batch[batchIndex];
                 const userIndex = i + batchIndex;
                 const current = userIndex + 1;
                 
@@ -1308,10 +1320,317 @@ export class PingOneClient {
                         noChanges: results.noChanges
                     });
                 }
-            });
             
-            // Wait for current batch to complete
-            await Promise.all(batchPromises);
+            // Process users sequentially within each batch to avoid overwhelming the API
+            for (let batchIndex = 0; batchIndex < batch.length; batchIndex++) {
+                const user = batch[batchIndex];
+                const userIndex = i + batchIndex;
+                const current = userIndex + 1;
+                
+                try {
+                    // Enhanced logging for user lookup
+                    this.logger.info(`[MODIFY] Processing user ${current}/${users.length}:`, {
+                        userId: user.userId || user.id || 'NOT_PROVIDED',
+                        username: user.username || 'NOT_PROVIDED',
+                        email: user.email || 'NOT_PROVIDED',
+                        rawUserData: user
+                    });
+                    
+                    // Find user by userId, username, or email with enhanced fallback
+                    let existingUser = null;
+                    let lookupMethod = null;
+                    
+                    // First, try to find user by userId if provided (direct lookup)
+                    if (user.userId || user.id) {
+                        const userId = user.userId || user.id;
+                        try {
+                            this.logger.debug(`[MODIFY] Looking up user by ID: "${userId}"`);
+                            const response = await this.request('GET', `/environments/${this.getSettings().environmentId}/users/${userId}`);
+                            existingUser = response;
+                            lookupMethod = 'userId';
+                            this.logger.info(`[MODIFY] Found user by ID: "${userId}" -> ID: ${existingUser.id}`);
+                        } catch (error) {
+                            this.logger.debug(`[MODIFY] Error looking up user by ID "${userId}":`, error.message);
+                        }
+                    }
+                    
+                    // If no user found by ID, try username (if provided)
+                    if (!existingUser && user.username) {
+                        try {
+                            this.logger.debug(`[MODIFY] Looking up user by username: "${user.username}"`);
+                            const response = await this.request('GET', `/environments/${this.getSettings().environmentId}/users?filter=username eq "${encodeURIComponent(user.username)}"`);
+                            
+                            if (response._embedded && response._embedded.users && response._embedded.users.length > 0) {
+                                existingUser = response._embedded.users[0];
+                                lookupMethod = 'username';
+                                this.logger.info(`[MODIFY] Found user by username: "${user.username}" -> ID: ${existingUser.id}`);
+                            } else {
+                                this.logger.debug(`[MODIFY] No user found by username: "${user.username}"`);
+                            }
+                        } catch (error) {
+                            this.logger.debug(`[MODIFY] Error looking up user by username "${user.username}":`, error.message);
+                        }
+                    }
+                    
+                    // If no user found by ID or username, try email (if provided)
+                    if (!existingUser && user.email) {
+                        try {
+                            this.logger.debug(`[MODIFY] Looking up user by email: "${user.email}"`);
+                            const response = await this.request('GET', `/environments/${this.getSettings().environmentId}/users?filter=email eq "${encodeURIComponent(user.email)}"`);
+                            
+                            if (response._embedded && response._embedded.users && response._embedded.users.length > 0) {
+                                const emailUser = response._embedded.users[0];
+                                
+                                // If we already found a user by username, check if it's the same user
+                                if (existingUser) {
+                                    if (existingUser.id === emailUser.id) {
+                                        this.logger.info(`[MODIFY] Email lookup confirmed same user: "${user.email}" -> ID: ${emailUser.id}`);
+                                    } else {
+                                        this.logger.warn(`[MODIFY] Found different users by username and email! Username: "${user.username}" -> ID: ${existingUser.id}, Email: "${user.email}" -> ID: ${emailUser.id}`);
+                                        // Use the email user as it might be more reliable
+                                        existingUser = emailUser;
+                                        lookupMethod = 'email';
+                                    }
+                                } else {
+                                    existingUser = emailUser;
+                                    lookupMethod = 'email';
+                                    this.logger.info(`[MODIFY] Found user by email: "${user.email}" -> ID: ${existingUser.id}`);
+                                }
+                            } else {
+                                this.logger.debug(`[MODIFY] No user found by email: "${user.email}"`);
+                            }
+                        } catch (error) {
+                            this.logger.debug(`[MODIFY] Error looking up user by email "${user.email}":`, error.message);
+                        }
+                    }
+                    
+                    // If user not found and createIfNotExists is enabled, create the user
+                    if (!existingUser && createIfNotExists) {
+                        try {
+                            this.logger.info(`[MODIFY] User not found, creating new user: ${user.username || user.email}`);
+                            
+                            // Prepare user data for creation
+                            const userData = {
+                                name: {
+                                    given: user.firstName || user.givenName || '',
+                                    family: user.lastName || user.familyName || ''
+                                },
+                                email: user.email,
+                                username: user.username || user.email,
+                                population: {
+                                    id: user.populationId || defaultPopulationId || this.getSettings().populationId
+                                },
+                                enabled: user.enabled !== undefined ? user.enabled : defaultEnabled
+                            };
+
+                            // Add password if generatePasswords is enabled
+                            if (generatePasswords) {
+                                userData.password = {
+                                    value: this.generateTemporaryPassword()
+                                };
+                            }
+
+                            // Create the user
+                            const createdUser = await this.request('POST', `/environments/${this.getSettings().environmentId}/users`, userData);
+                            results.created++;
+                            results.details.push({
+                                user,
+                                status: 'created',
+                                pingOneId: createdUser.id,
+                                reason: 'User created because createIfNotExists was enabled'
+                            });
+                            this.logger.info(`[MODIFY] Successfully created user: ${createdUser.username || createdUser.email} (ID: ${createdUser.id})`);
+
+                            // Update progress
+                            if (onProgress) {
+                                onProgress({
+                                    current,
+                                    total: users.length,
+                                    modified: results.modified,
+                                    created: results.created,
+                                    failed: results.failed,
+                                    skipped: results.skipped,
+                                    noChanges: results.noChanges
+                                });
+                            }
+                            continue;
+                        } catch (error) {
+                            this.logger.error(`[MODIFY] Failed to create user ${user.username || user.email}:`, error.message);
+                            results.failed++;
+                            results.details.push({
+                                user,
+                                status: 'failed',
+                                error: `Failed to create user: ${error.message}`,
+                                reason: 'User creation failed'
+                            });
+                            continue;
+                        }
+                    }
+                    
+                    // If user not found and createIfNotExists is disabled, skip the user
+                    if (!existingUser) {
+                        results.skipped++;
+                        results.details.push({
+                            user,
+                            status: 'skipped',
+                            reason: 'User not found and createIfNotExists is disabled'
+                        });
+                        this.logger.warn(`[MODIFY] User not found: ${user.username || user.email}. Skipping (createIfNotExists: ${createIfNotExists})`);
+                        continue;
+                    }
+                    
+                    // Log the user we're about to modify
+                    this.logger.info(`[MODIFY] Modifying user found by ${lookupMethod}:`, {
+                        username: existingUser.username,
+                        email: existingUser.email,
+                        id: existingUser.id,
+                        originalLookup: { username: user.username, email: user.email }
+                    });
+                    
+                    // Compare CSV data with existing user data
+                    const changes = {};
+                    let hasChanges = false;
+                    
+                    // Map CSV fields to PingOne API fields
+                    const fieldMappings = {
+                        firstName: 'name.given',
+                        lastName: 'name.family',
+                        givenName: 'name.given',
+                        familyName: 'name.family',
+                        email: 'email',
+                        phoneNumber: 'phoneNumber',
+                        title: 'title',
+                        department: 'department'
+                    };
+                    
+                    // Add enabled field to mappings if updateUserStatus is enabled
+                    if (updateUserStatus) {
+                        fieldMappings.enabled = 'enabled';
+                    }
+                    
+                    // Check each field for changes
+                    Object.keys(fieldMappings).forEach(csvField => {
+                        if (user[csvField] !== undefined && user[csvField] !== null && user[csvField] !== '') {
+                            const apiField = fieldMappings[csvField];
+                            const currentValue = this.getNestedValue(existingUser, apiField);
+                            const newValue = user[csvField];
+                            
+                            if (currentValue !== newValue) {
+                                this.setNestedValue(changes, apiField, newValue);
+                                hasChanges = true;
+                                this.logger.debug(`[MODIFY] Field "${csvField}" changed: "${currentValue}" -> "${newValue}"`);
+                            }
+                        }
+                    });
+                    
+                    // If no changes detected, skip the user
+                    if (!hasChanges) {
+                        results.noChanges++;
+                        results.details.push({
+                            user,
+                            status: 'no_changes',
+                            reason: 'No changes detected'
+                        });
+                        this.logger.info(`[MODIFY] No changes detected for user: ${user.username || user.email}`);
+                        
+                        // Update progress
+                        if (onProgress) {
+                            onProgress({
+                                current,
+                                total: users.length,
+                                modified: results.modified,
+                                created: results.created,
+                                failed: results.failed,
+                                skipped: results.skipped,
+                                noChanges: results.noChanges
+                            });
+                        }
+                        continue;
+                    }
+                    
+                    // Update the user with changes
+                    try {
+                        this.logger.info(`[MODIFY] Updating user ${existingUser.id} with changes:`, changes);
+                        const updatedUser = await this.request('PUT', `/environments/${this.getSettings().environmentId}/users/${existingUser.id}`, changes);
+                        
+                        results.modified++;
+                        results.details.push({
+                            user,
+                            status: 'modified',
+                            pingOneId: updatedUser.id,
+                            changes: changes
+                        });
+                        
+                        this.logger.info(`[MODIFY] Successfully modified user: ${updatedUser.username || updatedUser.email} (ID: ${updatedUser.id})`);
+                    } catch (error) {
+                        // Get friendly error message if available
+                        const friendlyMessage = error.friendlyMessage || error.message;
+                        
+                        // Check if this is a 404 error (user not found)
+                        if (error.status === 404 || error.message.includes('404') || error.message.includes('not found')) {
+                            results.skipped++;
+                            results.details.push({
+                                user,
+                                status: 'skipped',
+                                reason: 'User not found (404)'
+                            });
+                            this.logger.warn(`[MODIFY] User '${user.username || user.email}' not found in PingOne (404). Skipping this user.`);
+                        } else {
+                            results.failed++;
+                            
+                            // Provide more context for different error types
+                            let errorReason = friendlyMessage;
+                            if (error.status === 400) {
+                                errorReason = `Data validation failed: ${friendlyMessage}`;
+                            } else if (error.status === 429) {
+                                errorReason = `Rate limited: ${friendlyMessage}`;
+                            } else if (error.status === 403) {
+                                errorReason = `Permission denied: ${friendlyMessage}`;
+                            }
+                            
+                            results.details.push({
+                                user,
+                                status: 'failed',
+                                error: errorReason,
+                                statusCode: error.status
+                            });
+                            
+                            this.logger.error(`[MODIFY] Failed to modify user '${user.username || user.email}': ${errorReason}`);
+                            
+                            // Show user-friendly error in UI for specific error types
+                            if (window.app && window.app.uiManager && (error.status === 400 || error.status === 403)) {
+                                window.app.uiManager.showWarning(`User '${user.username || user.email}': ${friendlyMessage}`);
+                            }
+                        }
+                    }
+                    
+                    // Update progress for each user
+                    if (onProgress) {
+                        onProgress({
+                            current,
+                            total: users.length,
+                            modified: results.modified,
+                            failed: results.failed,
+                            skipped: results.skipped,
+                            noChanges: results.noChanges
+                        });
+                    }
+                    
+                    // Add small delay between individual user operations to prevent rate limiting
+                    if (batchIndex < batch.length - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay between users
+                    }
+                } catch (error) {
+                    this.logger.error(`[MODIFY] Unexpected error processing user ${user.username || user.email}:`, error.message);
+                    results.failed++;
+                    results.details.push({
+                        user,
+                        status: 'failed',
+                        error: error.message,
+                        reason: 'Unexpected error'
+                    });
+                }
+            }
             
             // Add delay between batches to avoid rate limiting
             if (i + batchSize < users.length && delayBetweenBatches > 0) {
@@ -1325,48 +1644,29 @@ export class PingOneClient {
         return results;
     }
 
-    /**
-     * Fetch all users in a specific population (paginated)
-     * @param {string} populationId - The population ID
-     * @returns {Promise<Array>} Array of user objects
-     */
     async getAllUsersInPopulation(populationId) {
         const settings = this.getSettings();
         const users = [];
         let page = 1;
         const pageSize = 100;
-        const maxPages = 1000; // Safety limit to prevent infinite loops
+        const maxPages = 1000;
         let fetched = 0;
-        
         do {
-            // Safety check to prevent infinite loops
-            if (page > maxPages) {
-                this.logger.warn(`[FETCH] Reached maximum page limit (${maxPages}) for population ${populationId}. Stopping fetch.`);
-                break;
-            }
-            
+            if (page > maxPages) break;
             try {
-                // Use the general users endpoint with proper population filter format instead of the non-existent populations/users endpoint
                 const resp = await this.request('GET', `/environments/${settings.environmentId}/users?limit=${pageSize}&page=${page}&filter=population.id eq "${populationId}"`);
-                
                 if (resp && resp._embedded && resp._embedded.users && Array.isArray(resp._embedded.users)) {
                     const pageUsers = resp._embedded.users;
                     fetched = pageUsers.length;
-                    
-                    if (fetched > 0) {
-                        users.push(...pageUsers);
-                    }
+                    if (fetched > 0) users.push(...pageUsers);
                 } else {
                     break;
                 }
             } catch (error) {
-                this.logger.error(`[FETCH] Error fetching page ${page} for population ${populationId}:`, error);
                 break;
             }
-            
             page++;
-        } while (fetched > 0 && page <= maxPages); // Continue until no more users are returned
-        
+        } while (fetched > 0 && page <= maxPages);
         return users;
     }
 
@@ -1707,5 +2007,27 @@ export class PingOneClient {
             page++;
         } while (users.length < total && fetched > 0);
         return users;
+    }
+
+    /**
+     * Helper to get a nested value from an object using dot notation (e.g., 'name.given')
+     */
+    getNestedValue(obj, path) {
+        if (!obj || !path) return undefined;
+        return path.split('.').reduce((acc, part) => (acc && acc[part] !== undefined ? acc[part] : undefined), obj);
+    }
+
+    /**
+     * Helper to set a nested value in an object using dot notation (e.g., 'name.given')
+     */
+    setNestedValue(obj, path, value) {
+        if (!obj || !path) return;
+        const parts = path.split('.');
+        let current = obj;
+        for (let i = 0; i < parts.length - 1; i++) {
+            if (!current[parts[i]]) current[parts[i]] = {};
+            current = current[parts[i]];
+        }
+        current[parts[parts.length - 1]] = value;
     }
 }

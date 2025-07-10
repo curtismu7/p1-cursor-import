@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PingOne User Import v4.3.1</title>
+    <title>PingOne User Import v4.5</title>
     <!-- Bootstrap CSS -->
     <link href="/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome -->
@@ -58,7 +58,7 @@
         <main class="main-content">
             <!-- Version Badge -->
             <div id="version-badge-top" class="version-badge-top">
-                                        <span id="version-text">v4.3.1</span>
+                                        <span id="version-text">v4.5</span>
             </div>
             
             <!-- Universal Disclaimer Banner -->
@@ -153,6 +153,27 @@
                         </div>
                     </div>
                 </div>
+                
+                <!-- Token Status Message -->
+                <div id="home-token-status" class="token-status-container" style="display: none; margin: 20px 0; padding: 15px; border-radius: 8px; background-color: #fff3cd; border: 1px solid #ffeaa7;">
+                    <div class="token-status-content">
+                        <div class="token-status-icon">
+                            <i class="fas fa-exclamation-triangle" style="color: #856404; font-size: 1.2em;"></i>
+                        </div>
+                        <div class="token-status-message">
+                            <h4 style="margin: 0 0 10px 0; color: #856404;">
+                                <i class="fas fa-key"></i> PingOne Token Required
+                            </h4>
+                            <p style="margin: 0 0 15px 0; color: #856404;">
+                                You need to configure your PingOne API credentials and get a token before using this tool.
+                            </p>
+                            <button id="go-to-settings-btn" class="btn btn-warning">
+                                <i class="fas fa-cog"></i> Go to Settings
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="feature-cards">
                     <div class="feature-card" data-view="import">
                         <i class="fas fa-upload fa-2x"></i>
@@ -192,6 +213,11 @@
                 <div class="import-header">
                     <h1>Import Users</h1>
                     <div class="import-actions">
+                        <div class="import-buttons">
+                            <button id="cancel-import-btn" class="btn btn-secondary" style="display: none;">
+                                <i class="fas fa-times"></i> Cancel Import
+                            </button>
+                        </div>
                         <div id="file-info" class="file-info">
                             <!-- File info will be displayed here -->
                         </div>
@@ -274,10 +300,13 @@
                                 </div>
                             </div>
                             <div class="progress-container">
-                                <div id="import-progress" class="progress-bar" role="progressbar" style="width: 0%" 
+                                <div id="import-progress-bar" class="progress-bar" role="progressbar" style="width: 0%" 
                                      aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
                                     <span id="import-progress-percent">0%</span>
                                 </div>
+                            </div>
+                            <div id="import-progress-stats" class="progress-stats" style="margin-top: 10px; font-size: 0.9em; color: #666;">
+                                <!-- Progress stats will be displayed here -->
                             </div>
                             <!-- Move Cancel Import button to bottom -->
                             <div id="import-cancel-actions" style="text-align:center; margin: 18px 0 0 0;">
@@ -336,7 +365,7 @@
                     <!-- Bottom Import Button -->
                     <div class="import-bottom-actions" style="margin-top: 30px; text-align: center; padding: 20px; border-top: 1px solid #ddd;">
                         <button id="start-import-btn-bottom" class="btn btn-primary btn-lg" disabled>
-                            <i class="fas fa-upload"></i> Import Users (v4.3.1)
+                            <i class="fas fa-upload"></i> Import Users (v4.5)
                         </button>
                         <button id="cancel-import-btn-bottom" class="btn btn-secondary btn-lg" style="display: none;">
                             <i class="fas fa-times"></i> Cancel Import
@@ -352,6 +381,15 @@
             <!-- Settings View -->
             <div id="settings-view" class="view">
                 <h1>Settings</h1>
+                <div id="pingone-warning" class="alert alert-warning" style="display: block; margin-bottom: 1rem;">
+  <strong>⚠️ PingOne Connection Required:</strong> To use PingOne features (import, export, modify, delete), you must enter your PingOne credentials below and click <strong>"Test Connection"</strong> to obtain a token. If you see a warning that you are not connected, please:
+  <ol style="margin-top: 0.5rem;">
+    <li>Fill in your <strong>Client ID</strong>, <strong>Client Secret</strong>, <strong>Environment ID</strong>, and <strong>Region</strong> below.</li>
+    <li>Click <strong>"Test Connection"</strong> to verify and obtain a token.</li>
+    <li>Wait for a success message. If you see an error, double-check your credentials and try again.</li>
+    <li>Once connected, you can use all PingOne features in the app.</li>
+  </ol>
+</div>
                 <form id="settings-form">
                     <div class="form-group">
                         <label for="environment-id">Environment ID</label>
@@ -364,15 +402,16 @@
                     <div class="form-group">
                         <label for="api-secret">API Secret</label>
                         <div class="input-group">
-                            <input type="password" id="api-secret" name="api-secret" class="form-control" autocomplete="current-password" required>
+                            <input type="password" id="api-secret" name="api-secret" class="form-control" autocomplete="current-password" required data-masked="true">
                             <button type="button" class="btn btn-outline-secondary" id="toggle-api-secret-visibility" tabindex="-1" style="border: 1px solid #ced4da; background: #fff;">
                                 <i class="fas fa-eye" id="api-secret-eye"></i>
                             </button>
                         </div>
+                        <!-- The field will show ******** if a secret is set, and blank if not. The real value is never shown here. -->
                     </div>
                     <div class="form-group">
                         <label for="population-id">Population ID</label>
-                        <input type="text" id="population-id" name="population-id" class="form-control">
+                        <input type="text" id="population-id" name="population-id" class="form-control" placeholder="Enter Population ID or leave blank">
                         <small class="form-text text-muted"><strong>(Optional)</strong> The ID of the population where users will be imported. If left blank, the default population will be used.</small>
                     </div>
                     <div class="form-group">
@@ -406,12 +445,6 @@
                         <div id="settings-connection-status" class="connection-status status-disconnected">
                             <span class="status-icon">⚠️</span>
                             <span class="status-message">Please save your API credentials and test the connection</span>
-                        </div>
-                        <div id="settings-save-status" class="settings-save-status" style="display: none;">
-                            <div class="status-details">
-                                <span class="status-icon">ℹ️</span>
-                                <span class="status-message">Settings save status will appear here</span>
-                            </div>
                         </div>
                     </div>
                 </form>
@@ -551,7 +584,10 @@
                     </div>
                     <div id="population-delete-status" class="import-status" style="display: none; margin-top: 20px;">
                         <div class="progress-header">
-                            <h3>Delete Progress (Population)</h3>
+                            <h3>
+                                <span id="population-delete-progress-icon" class="import-progress-icon"></span>
+                                Delete Progress (Population)
+                            </h3>
                             <button id="close-population-delete-status" class="close-progress-btn" type="button" aria-label="Close">
                                 <i class="fas fa-times"></i>
                             </button>
@@ -562,11 +598,14 @@
                                 <span id="population-delete-progress-percent">0%</span>
                             </div>
                         </div>
-                        <div class="progress-actions">
+                        <!-- Move Cancel Delete button to bottom -->
+                        <div id="population-delete-cancel-actions" style="text-align:center; margin: 18px 0 0 0;">
                             <button id="cancel-population-delete-progress" class="btn btn-danger btn-sm">
                                 <i class="fas fa-stop"></i> Cancel Delete
                             </button>
                         </div>
+                        <hr style="margin: 18px 0 6px 0; border: none; border-top: 2px solid #e0e0e0;">
+                        <hr style="margin: 0 0 18px 0; border: none; border-top: 2px solid #e0e0e0;">
                         <div id="population-delete-stats" class="import-stats">
                             <div class="stat-item">
                                 <span class="stat-label">Status:</span>
@@ -587,6 +626,19 @@
                             <div class="stat-item">
                                 <span class="stat-label">Skipped:</span>
                                 <span id="population-delete-skipped-count" class="stat-value warning">0</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Real-time Progress Log -->
+                        <div id="population-delete-progress-log" class="import-progress-log">
+                            <div class="progress-log-header">
+                                <h4><i class="fas fa-list"></i> Progress Updates</h4>
+                                <button id="clear-population-delete-progress-log" class="btn btn-sm btn-outline-secondary" title="Clear Progress Log">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                            <div id="population-delete-progress-log-entries" class="progress-log-entries">
+                                <!-- Progress log entries will be displayed here -->
                             </div>
                         </div>
                     </div>
@@ -669,7 +721,10 @@
                 <!-- CSV Delete Progress Section (moved to bottom) -->
                 <div id="delete-csv-status" class="import-status" style="display: none; margin-top: 30px; margin-bottom: 20px;">
                     <div class="progress-header">
-                        <h3>Delete Progress (CSV Safe)</h3>
+                        <h3>
+                            <span id="delete-csv-progress-icon" class="import-progress-icon"></span>
+                            Delete Progress (CSV Safe)
+                        </h3>
                         <button id="close-delete-csv-status" class="close-progress-btn" type="button" aria-label="Close">
                             <i class="fas fa-times"></i>
                         </button>
@@ -680,11 +735,14 @@
                             <span id="delete-csv-progress-percent">0%</span>
                         </div>
                     </div>
-                    <div class="progress-actions">
+                    <!-- Move Cancel Delete button to bottom -->
+                    <div id="delete-csv-cancel-actions" style="text-align:center; margin: 18px 0 0 0;">
                         <button id="cancel-delete-csv-progress" class="btn btn-danger btn-sm">
                             <i class="fas fa-stop"></i> Cancel Delete
                         </button>
                     </div>
+                    <hr style="margin: 18px 0 6px 0; border: none; border-top: 2px solid #e0e0e0;">
+                    <hr style="margin: 0 0 18px 0; border: none; border-top: 2px solid #e0e0e0;">
                     <div id="delete-csv-stats" class="import-stats">
                         <div class="stat-item">
                             <span class="stat-label">Status:</span>
@@ -705,6 +763,19 @@
                         <div class="stat-item">
                             <span class="stat-label">Skipped:</span>
                             <span id="delete-csv-skipped-count" class="stat-value warning">0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Real-time Progress Log -->
+                    <div id="delete-csv-progress-log" class="import-progress-log">
+                        <div class="progress-log-header">
+                            <h4><i class="fas fa-list"></i> Progress Updates</h4>
+                            <button id="clear-delete-csv-progress-log" class="btn btn-sm btn-outline-secondary" title="Clear Progress Log">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                        <div id="delete-csv-progress-log-entries" class="progress-log-entries">
+                            <!-- Progress log entries will be displayed here -->
                         </div>
                     </div>
                 </div>
@@ -1283,7 +1354,48 @@
         </div>
     </div>
 
+    <!-- Feature Flags Panel -->
+    <div id="feature-flags-panel" class="feature-flags-panel" style="display: none;">
+        <div class="feature-flags-header">
+            <h4><i class="fas fa-toggle-on"></i> Feature Flags</h4>
+            <button id="close-feature-flags" class="btn btn-sm btn-secondary">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="feature-flags-content">
+            <div class="feature-flag-item">
+                <label class="feature-flag-label">
+                    <input type="checkbox" id="flagA" class="feature-flag-checkbox">
+                    <span class="feature-flag-text">Feature Flag A</span>
+                </label>
+                <span class="feature-flag-description">Enable experimental feature A</span>
+            </div>
+            <div class="feature-flag-item">
+                <label class="feature-flag-label">
+                    <input type="checkbox" id="flagB" class="feature-flag-checkbox">
+                    <span class="feature-flag-text">Feature Flag B</span>
+                </label>
+                <span class="feature-flag-description">Enable experimental feature B</span>
+            </div>
+            <div class="feature-flag-item">
+                <label class="feature-flag-label">
+                    <input type="checkbox" id="flagC" class="feature-flag-checkbox">
+                    <span class="feature-flag-text">Feature Flag C</span>
+                </label>
+                <span class="feature-flag-description">Enable experimental feature C</span>
+            </div>
+            <div class="feature-flags-actions">
+                <button id="reset-feature-flags" class="btn btn-sm btn-warning">
+                    <i class="fas fa-undo"></i> Reset to Defaults
+                </button>
+            </div>
+        </div>
+    </div>
 
+    <!-- Feature Flags Toggle Button -->
+    <button id="feature-flags-toggle" class="feature-flags-toggle-btn" title="Feature Flags">
+        <i class="fas fa-toggle-on"></i>
+    </button>
 
     <script src="/js/bundle.js?v=3.7"></script>
     <script src="/setup-settings.js"></script>

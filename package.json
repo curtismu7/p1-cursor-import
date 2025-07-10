@@ -20,7 +20,11 @@
     "test:all": "NODE_ENV=test jest --config=jest.config.mjs",
     "setup": "cp .env.example .env",
     "postinstall": "npm run build:bundle",
-    "build": "npx browserify public/js/app.js -t [ babelify --global ] -o public/js/bundle.js"
+    "build": "npx browserify public/js/app.js -t [ babelify --global ] -o public/js/bundle.js",
+    "update:check": "node scripts/package-updater.cjs",
+    "update:auto": "node scripts/auto-update.cjs",
+    "update:conflicts": "node scripts/conflict-checker.cjs",
+    "update:safe": "npm run update:conflicts && npm run update:auto"
   },
   "keywords": [
     "pingone",

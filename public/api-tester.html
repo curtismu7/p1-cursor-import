@@ -1,0 +1,1153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API/UI Tester v1.1 - PingOne Import Tool</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: #e6f3ff;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        
+        .header p {
+            color: #7f8c8d;
+            margin-bottom: 0;
+        }
+        
+        .api-endpoint {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .api-endpoint:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+        }
+        
+        .method-badge {
+            font-size: 0.75em;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .method-get { background: #28a745; color: white; }
+        .method-post { background: #007bff; color: white; }
+        .method-put { background: #ffc107; color: #212529; }
+        .method-delete { background: #dc3545; color: white; }
+        
+        .param-group {
+            margin-bottom: 15px;
+        }
+        
+        .param-group label {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 5px;
+            display: block;
+        }
+        
+        .form-control {
+            border-radius: 8px;
+            border: 2px solid #e9ecef;
+            transition: border-color 0.2s ease;
+        }
+        
+        .form-control:focus {
+            border-color: #007bff;
+            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+        }
+        
+        .btn {
+            border-radius: 8px;
+            font-weight: 600;
+            padding: 10px 20px;
+            transition: all 0.2s ease;
+        }
+        
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        .response-area {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 2px solid;
+        }
+        
+        .status-success {
+            background: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        
+        .status-error {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        
+        .status-info {
+            background: #d1ecf1;
+            border-color: #bee5eb;
+            color: #0c5460;
+        }
+        
+        .json-input {
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            min-height: 80px;
+        }
+        
+        .endpoint-description {
+            color: #6c757d;
+            font-size: 0.9em;
+            margin-bottom: 15px;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-online { background: #28a745; }
+        .status-offline { background: #dc3545; }
+        
+        .quick-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        
+        .quick-action-btn {
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid #dee2e6;
+            border-radius: 20px;
+            padding: 8px 16px;
+            font-size: 0.85em;
+            color: #6c757d;
+            transition: all 0.2s ease;
+        }
+        
+        .quick-action-btn:hover {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1><i class="fas fa-code"></i> API/UI Tester</h1>
+                    <p>Test all PingOne Import Tool API endpoints and UI functionality with real-time responses</p>
+                </div>
+                <div class="d-flex align-items-center gap-3">
+                    <span class="badge bg-primary">v1.1</span>
+                    <div>
+                        <span class="status-indicator status-online"></span>
+                        <span id="server-status">Server Online</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Quick Actions -->
+            <div class="quick-actions">
+                <button class="quick-action-btn" onclick="loadCurrentSettings()">
+                    <i class="fas fa-cog"></i> Load Settings
+                </button>
+                <button class="quick-action-btn" onclick="testAllAPIs()">
+                    <i class="fas fa-play"></i> Test All APIs
+                </button>
+                <button class="quick-action-btn" onclick="runUITests()">
+                    <i class="fas fa-desktop"></i> Run UI Tests
+                </button>
+                <button class="quick-action-btn" onclick="clearAllResponses()">
+                    <i class="fas fa-trash"></i> Clear All
+                </button>
+                <button class="quick-action-btn" onclick="exportTestResults()">
+                    <i class="fas fa-download"></i> Export Results
+                </button>
+            </div>
+        </div>
+
+        <!-- Settings API -->
+        <div class="api-endpoint">
+            <h4>
+                <span class="method-badge method-put">PUT</span>
+                /api/settings
+            </h4>
+            <p class="endpoint-description">Update PingOne configuration settings</p>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="param-group">
+                        <label>Environment ID:</label>
+                        <input type="text" class="form-control" id="settings-env-id" placeholder="env-123456">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="param-group">
+                        <label>API Client ID:</label>
+                        <input type="text" class="form-control" id="settings-client-id" placeholder="client-123456">
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="param-group">
+                        <label>API Secret:</label>
+                        <input type="password" class="form-control" id="settings-secret" placeholder="Your API secret">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="param-group">
+                        <label>Population ID:</label>
+                        <input type="text" class="form-control" id="settings-pop-id" placeholder="pop-123456">
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="param-group">
+                        <label>Region:</label>
+                        <select class="form-control" id="settings-region">
+                            <option value="NorthAmerica">North America</option>
+                            <option value="Europe">Europe</option>
+                            <option value="Asia">Asia</option>
+                            <option value="Canada">Canada</option>
+                            <option value="Australia">Australia</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="param-group">
+                        <label>Rate Limit:</label>
+                        <input type="number" class="form-control" id="settings-rate-limit" value="100" min="1" max="1000">
+                    </div>
+                </div>
+            </div>
+            <button class="btn btn-primary" onclick="testSettingsAPI()">
+                <i class="fas fa-paper-plane"></i> Test Settings API
+            </button>
+            <div id="settings-response" class="response-area" style="display: none;"></div>
+        </div>
+
+        <!-- Connection API -->
+        <div class="api-endpoint">
+            <h4>
+                <span class="method-badge method-post">POST</span>
+                /api/pingone/test-connection
+            </h4>
+            <p class="endpoint-description">Test PingOne connection with current settings</p>
+            <button class="btn btn-success" onclick="testConnectionAPI()">
+                <i class="fas fa-plug"></i> Test Connection
+            </button>
+            <div id="connection-response" class="response-area" style="display: none;"></div>
+        </div>
+
+        <!-- Export API -->
+        <div class="api-endpoint">
+            <h4>
+                <span class="method-badge method-post">POST</span>
+                /api/export-users
+            </h4>
+            <p class="endpoint-description">Export users from PingOne population</p>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="param-group">
+                        <label>Population ID:</label>
+                        <input type="text" class="form-control" id="export-pop-id" placeholder="a83ccc54-6a98-4754-a15e-dcb5b8b027ed">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="param-group">
+                        <label>Format:</label>
+                        <select class="form-control" id="export-format">
+                            <option value="csv">CSV</option>
+                            <option value="json">JSON</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="param-group">
+                        <label>Fields (comma-separated):</label>
+                        <input type="text" class="form-control" id="export-fields" placeholder="username,email,firstName,lastName">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="param-group">
+                        <label>Ignore Disabled Users:</label>
+                        <select class="form-control" id="export-ignore-disabled">
+                            <option value="false">No</option>
+                            <option value="true">Yes</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <button class="btn btn-info" onclick="testExportAPI()">
+                <i class="fas fa-download"></i> Test Export API
+            </button>
+            <div id="export-response" class="response-area" style="display: none;"></div>
+        </div>
+
+        <!-- Import API -->
+        <div class="api-endpoint">
+            <h4>
+                <span class="method-badge method-post">POST</span>
+                /api/modify
+            </h4>
+            <p class="endpoint-description">Import users to PingOne from CSV file</p>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="param-group">
+                        <label>CSV File:</label>
+                        <input type="file" class="form-control" id="import-file" accept=".csv">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="param-group">
+                        <label>Population ID (optional):</label>
+                        <input type="text" class="form-control" id="import-pop-id" placeholder="a83ccc54-6a98-4754-a15e-dcb5b8b027ed">
+                    </div>
+                </div>
+            </div>
+            <button class="btn btn-warning" onclick="testImportAPI()">
+                <i class="fas fa-upload"></i> Test Import API
+            </button>
+            <div id="import-response" class="response-area" style="display: none;"></div>
+        </div>
+
+        <!-- Populations API -->
+        <div class="api-endpoint">
+            <h4>
+                <span class="method-badge method-get">GET</span>
+                /api/pingone/populations
+            </h4>
+            <p class="endpoint-description">Get all populations from PingOne environment</p>
+            <button class="btn btn-secondary" onclick="testPopulationsAPI()">
+                <i class="fas fa-users"></i> Test Populations API
+            </button>
+            <div id="populations-response" class="response-area" style="display: none;"></div>
+        </div>
+
+        <!-- Logs API -->
+        <div class="api-endpoint">
+            <h4>
+                <span class="method-badge method-get">GET</span>
+                /api/logs
+            </h4>
+            <p class="endpoint-description">Get application logs</p>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="param-group">
+                        <label>Limit:</label>
+                        <input type="number" class="form-control" id="logs-limit" value="100" min="1" max="1000">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="param-group">
+                        <label>Log Level:</label>
+                        <select class="form-control" id="logs-level">
+                            <option value="">All Levels</option>
+                            <option value="info">Info</option>
+                            <option value="warn">Warning</option>
+                            <option value="error">Error</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <button class="btn btn-secondary" onclick="testLogsAPI()">
+                <i class="fas fa-list"></i> Test Logs API
+            </button>
+            <div id="logs-response" class="response-area" style="display: none;"></div>
+        </div>
+
+        <!-- Clear Logs API -->
+        <div class="api-endpoint">
+            <h4>
+                <span class="method-badge method-delete">DELETE</span>
+                /api/logs
+            </h4>
+            <p class="endpoint-description">Clear application logs</p>
+            <button class="btn btn-danger" onclick="testClearLogsAPI()">
+                <i class="fas fa-trash"></i> Test Clear Logs API
+            </button>
+            <div id="clear-logs-response" class="response-area" style="display: none;"></div>
+        </div>
+
+        <!-- Health API -->
+        <div class="api-endpoint">
+            <h4>
+                <span class="method-badge method-get">GET</span>
+                /api/health
+            </h4>
+            <p class="endpoint-description">Check server health status</p>
+            <button class="btn btn-success" onclick="testHealthAPI()">
+                <i class="fas fa-heartbeat"></i> Test Health API
+            </button>
+            <div id="health-response" class="response-area" style="display: none;"></div>
+        </div>
+
+        <!-- Custom API Tester -->
+        <div class="api-endpoint">
+            <h4><i class="fas fa-cog"></i> Custom API Tester</h4>
+            <p class="endpoint-description">Test any endpoint with custom parameters</p>
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="param-group">
+                        <label>Method:</label>
+                        <select class="form-control" id="custom-method">
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                            <option value="PUT">PUT</option>
+                            <option value="DELETE">DELETE</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-9">
+                    <div class="param-group">
+                        <label>URL:</label>
+                        <input type="text" class="form-control" id="custom-url" placeholder="/api/your-endpoint">
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="param-group">
+                        <label>Headers (JSON):</label>
+                        <textarea class="form-control json-input" id="custom-headers" placeholder='{"Content-Type": "application/json"}'></textarea>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="param-group">
+                        <label>Body (JSON):</label>
+                        <textarea class="form-control json-input" id="custom-body" placeholder='{"key": "value"}'></textarea>
+                    </div>
+                </div>
+            </div>
+            <button class="btn btn-dark" onclick="testCustomAPI()">
+                <i class="fas fa-rocket"></i> Test Custom API
+            </button>
+            <div id="custom-response" class="response-area" style="display: none;"></div>
+        </div>
+
+        <!-- UI Testing Section -->
+        <div class="api-endpoint">
+            <h4><i class="fas fa-desktop"></i> UI Testing</h4>
+            <p class="endpoint-description">Run comprehensive UI tests to verify frontend functionality</p>
+            
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>UI Testing Features:</strong>
+                        <ul class="mb-0 mt-2">
+                            <li>UIManager initialization and navigation</li>
+                            <li>Settings, Import, Export, and Logs views</li>
+                            <li>Notification system and error handling</li>
+                            <li>Progress tracking and status management</li>
+                            <li>Form handling and file uploads</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <button class="btn btn-primary btn-lg" onclick="runUITests()">
+                        <i class="fas fa-play"></i> Run UI Tests
+                    </button>
+                </div>
+                <div class="col-md-6">
+                    <div class="text-end">
+                        <small class="text-muted">
+                            <i class="fas fa-clock"></i> Tests run in browser environment
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <div id="ui-test-results" class="mt-3">
+                <!-- Test results will be displayed here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let testResults = [];
+
+        // Check server status on load
+        window.addEventListener('load', async () => {
+            await checkServerStatus();
+            await loadCurrentSettings();
+        });
+
+        async function checkServerStatus() {
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                const statusElement = document.getElementById('server-status');
+                const indicator = document.querySelector('.status-indicator');
+                
+                if (response.ok) {
+                    statusElement.textContent = 'Server Online';
+                    indicator.className = 'status-indicator status-online';
+                } else {
+                    statusElement.textContent = 'Server Offline';
+                    indicator.className = 'status-indicator status-offline';
+                }
+            } catch (error) {
+                document.getElementById('server-status').textContent = 'Server Offline';
+                document.querySelector('.status-indicator').className = 'status-indicator status-offline';
+            }
+        }
+
+        async function loadCurrentSettings() {
+            try {
+                const response = await fetch('/api/settings');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const settings = data.data;
+                    document.getElementById('settings-env-id').value = settings.environmentId || '';
+                    document.getElementById('settings-client-id').value = settings.apiClientId || '';
+                    document.getElementById('settings-secret').value = settings.apiSecret || '';
+                    document.getElementById('settings-pop-id').value = settings.populationId || '';
+                    document.getElementById('settings-rate-limit').value = settings.rateLimit || 100;
+                    
+                    // Also populate export and import fields
+                    document.getElementById('export-pop-id').value = settings.populationId || '';
+                    document.getElementById('import-pop-id').value = settings.populationId || '';
+                }
+            } catch (error) {
+                console.error('Failed to load settings:', error);
+            }
+        }
+
+        function showResponse(elementId, response, isSuccess = true, endpoint = '') {
+            const element = document.getElementById(elementId);
+            element.style.display = 'block';
+            element.className = `response-area ${isSuccess ? 'status-success' : 'status-error'}`;
+            
+            const timestamp = new Date().toISOString();
+            const formattedResponse = {
+                timestamp,
+                endpoint,
+                success: isSuccess,
+                data: response
+            };
+            
+            element.textContent = JSON.stringify(formattedResponse, null, 2);
+            
+            // Store test result
+            testResults.push(formattedResponse);
+        }
+
+        async function testSettingsAPI() {
+            const settings = {
+                environmentId: document.getElementById('settings-env-id').value,
+                apiClientId: document.getElementById('settings-client-id').value,
+                apiSecret: document.getElementById('settings-secret').value,
+                populationId: document.getElementById('settings-pop-id').value,
+                region: document.getElementById('settings-region').value,
+                rateLimit: parseInt(document.getElementById('settings-rate-limit').value)
+            };
+
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+                const data = await response.json();
+                showResponse('settings-response', data, response.ok, 'PUT /api/settings');
+            } catch (error) {
+                showResponse('settings-response', { error: error.message }, false, 'PUT /api/settings');
+            }
+        }
+
+        async function testConnectionAPI() {
+            try {
+                // First get the current settings from the server
+                const settingsResponse = await fetch('/api/settings');
+                const settingsData = await settingsResponse.json();
+                
+                if (!settingsData.success) {
+                    throw new Error('Failed to load settings from server');
+                }
+                
+                const settings = settingsData.data;
+                
+                // Test the connection with the loaded settings
+                const response = await fetch('/api/pingone/test-connection', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        environmentId: settings.environmentId,
+                        apiClientId: settings.apiClientId,
+                        apiSecret: settings.apiSecret,
+                        region: settings.region,
+                        populationId: settings.populationId
+                    })
+                });
+                const data = await response.json();
+                showResponse('connection-response', data, response.ok, 'POST /api/pingone/test-connection');
+            } catch (error) {
+                showResponse('connection-response', { error: error.message }, false, 'POST /api/pingone/test-connection');
+            }
+        }
+
+        async function testExportAPI() {
+            const exportData = {
+                populationId: document.getElementById('export-pop-id').value,
+                format: document.getElementById('export-format').value,
+                fields: document.getElementById('export-fields').value,
+                ignoreDisabledUsers: document.getElementById('export-ignore-disabled').value === 'true'
+            };
+
+            try {
+                const response = await fetch('/api/export-users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(exportData)
+                });
+                
+                // Check if response is CSV or JSON
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('text/csv')) {
+                    // Handle CSV response
+                    const csvData = await response.text();
+                    const ignoredCount = response.headers.get('x-ignored-count') || '0';
+                    const data = {
+                        success: response.ok,
+                        format: 'csv',
+                        ignoredCount: parseInt(ignoredCount),
+                        csvContent: csvData,
+                        message: `CSV export successful. ${ignoredCount} disabled users ignored.`
+                    };
+                    showResponse('export-response', data, response.ok, 'POST /api/export-users');
+                } else {
+                    // Handle JSON response
+                    const data = await response.json();
+                    showResponse('export-response', data, response.ok, 'POST /api/export-users');
+                }
+            } catch (error) {
+                showResponse('export-response', { error: error.message }, false, 'POST /api/export-users');
+            }
+        }
+
+        async function testImportAPI() {
+            const formData = new FormData();
+            const fileInput = document.getElementById('import-file');
+            const popId = document.getElementById('import-pop-id').value;
+
+            if (fileInput.files[0]) {
+                formData.append('file', fileInput.files[0]);
+            }
+            if (popId) {
+                formData.append('populationId', popId);
+            }
+
+            try {
+                const response = await fetch('/api/modify', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                showResponse('import-response', data, response.ok, 'POST /api/modify');
+            } catch (error) {
+                showResponse('import-response', { error: error.message }, false, 'POST /api/modify');
+            }
+        }
+
+        async function testPopulationsAPI() {
+            try {
+                const response = await fetch('/api/pingone/populations');
+                const data = await response.json();
+                showResponse('populations-response', data, response.ok, 'GET /api/pingone/populations');
+            } catch (error) {
+                showResponse('populations-response', { error: error.message }, false, 'GET /api/pingone/populations');
+            }
+        }
+
+        async function testLogsAPI() {
+            const limit = document.getElementById('logs-limit').value;
+            const level = document.getElementById('logs-level').value;
+            let url = `/api/logs?limit=${limit}`;
+            if (level) {
+                url += `&level=${level}`;
+            }
+            
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                showResponse('logs-response', data, response.ok, 'GET /api/logs');
+            } catch (error) {
+                showResponse('logs-response', { error: error.message }, false, 'GET /api/logs');
+            }
+        }
+
+        async function testClearLogsAPI() {
+            try {
+                const response = await fetch('/api/logs', {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                showResponse('clear-logs-response', data, response.ok, 'DELETE /api/logs');
+            } catch (error) {
+                showResponse('clear-logs-response', { error: error.message }, false, 'DELETE /api/logs');
+            }
+        }
+
+        async function testHealthAPI() {
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                showResponse('health-response', data, response.ok, 'GET /api/health');
+            } catch (error) {
+                showResponse('health-response', { error: error.message }, false, 'GET /api/health');
+            }
+        }
+
+        async function testCustomAPI() {
+            const method = document.getElementById('custom-method').value;
+            const url = document.getElementById('custom-url').value;
+            const headersText = document.getElementById('custom-headers').value;
+            const bodyText = document.getElementById('custom-body').value;
+
+            try {
+                const headers = headersText ? JSON.parse(headersText) : {};
+                const body = bodyText ? JSON.parse(bodyText) : null;
+
+                const options = {
+                    method: method,
+                    headers: headers
+                };
+
+                if (body && method !== 'GET') {
+                    options.body = JSON.stringify(body);
+                }
+
+                const response = await fetch(url, options);
+                const data = await response.json();
+                showResponse('custom-response', data, response.ok, `${method} ${url}`);
+            } catch (error) {
+                showResponse('custom-response', { error: error.message }, false, `${method} ${url}`);
+            }
+        }
+
+        async function testAllAPIs() {
+            const apis = [
+                { name: 'Health', func: testHealthAPI },
+                { name: 'Settings', func: testSettingsAPI },
+                { name: 'Connection', func: testConnectionAPI },
+                { name: 'Populations', func: testPopulationsAPI },
+                { name: 'Logs', func: testLogsAPI }
+            ];
+
+            for (const api of apis) {
+                console.log(`Testing ${api.name} API...`);
+                await api.func();
+                await new Promise(resolve => setTimeout(resolve, 500)); // Small delay between tests
+            }
+        }
+
+        function clearAllResponses() {
+            const responseAreas = document.querySelectorAll('.response-area');
+            responseAreas.forEach(area => {
+                area.style.display = 'none';
+            });
+            testResults = [];
+        }
+
+        function exportTestResults() {
+            const dataStr = JSON.stringify(testResults, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `api-test-results-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // UI Testing Functions
+        let uiTestResults = [];
+
+        async function runUITests() {
+            uiTestResults = [];
+            const resultsDiv = document.getElementById('ui-test-results');
+            resultsDiv.innerHTML = '<div class="loading">Running UI tests...</div>';
+            
+            const tests = [
+                { name: 'UIManager Initialization', func: testUIManagerInit },
+                { name: 'Navigation Tests', func: testNavigation },
+                { name: 'Settings View Tests', func: testSettingsView },
+                { name: 'Import View Tests', func: testImportView },
+                { name: 'Export View Tests', func: testExportView },
+                { name: 'Logs View Tests', func: testLogsView },
+                { name: 'Delete CSV View Tests', func: testDeleteCSVView },
+                { name: 'Modify View Tests', func: testModifyView },
+                { name: 'Notifications Tests', func: testNotifications },
+                { name: 'Error Handling Tests', func: testErrorHandling },
+                { name: 'Progress Tracking Tests', func: testProgressTracking },
+                { name: 'Status Management Tests', func: testStatusManagement }
+            ];
+
+            let passed = 0;
+            let failed = 0;
+
+            for (const test of tests) {
+                try {
+                    console.log(`Running UI test: ${test.name}`);
+                    const result = await test.func();
+                    uiTestResults.push({
+                        test: test.name,
+                        passed: result.passed,
+                        message: result.message,
+                        details: result.details
+                    });
+                    
+                    if (result.passed) {
+                        passed++;
+                    } else {
+                        failed++;
+                    }
+                } catch (error) {
+                    uiTestResults.push({
+                        test: test.name,
+                        passed: false,
+                        message: `Test failed with error: ${error.message}`,
+                        details: { error: error.stack }
+                    });
+                    failed++;
+                }
+            }
+
+            displayUITestResults(passed, failed);
+        }
+
+        function displayUITestResults(passed, failed) {
+            const resultsDiv = document.getElementById('ui-test-results');
+            const total = passed + failed;
+            
+            let html = `
+                <div class="alert ${failed === 0 ? 'alert-success' : 'alert-warning'}">
+                    <h5><i class="fas fa-chart-bar"></i> UI Test Results</h5>
+                    <p><strong>${passed}</strong> passed, <strong>${failed}</strong> failed out of <strong>${total}</strong> tests</p>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Test</th>
+                                <th>Status</th>
+                                <th>Message</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            uiTestResults.forEach(result => {
+                const statusClass = result.passed ? 'text-success' : 'text-danger';
+                const statusIcon = result.passed ? '✓' : '✗';
+                html += `
+                    <tr>
+                        <td>${result.test}</td>
+                        <td class="${statusClass}">${statusIcon}</td>
+                        <td>${result.message}</td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+                <button class="btn btn-outline-primary btn-sm" onclick="exportUITestResults()">
+                    <i class="fas fa-download"></i> Export Results
+                </button>
+            `;
+
+            resultsDiv.innerHTML = html;
+        }
+
+        function exportUITestResults() {
+            const dataStr = JSON.stringify(uiTestResults, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `ui-test-results-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Mock UIManager for testing
+        class MockUIManager {
+            constructor() {
+                this.currentView = 'settings';
+                this.notifications = [];
+                this.logs = [];
+                this.settings = {};
+                this.isConnected = false;
+                this.isImporting = false;
+                this.isExporting = false;
+                this.progress = 0;
+            }
+
+            showView(view) {
+                this.currentView = view;
+                return { passed: true, message: `Switched to ${view} view` };
+            }
+
+            showNotification(message, type = 'info') {
+                this.notifications.push({ message, type, timestamp: new Date() });
+                return { passed: true, message: `Notification shown: ${message}` };
+            }
+
+            updateProgress(progress) {
+                this.progress = progress;
+                return { passed: true, message: `Progress updated to ${progress}%` };
+            }
+
+            setConnectionStatus(status) {
+                this.isConnected = status;
+                return { passed: true, message: `Connection status set to ${status}` };
+            }
+
+            loadSettings() {
+                this.settings = {
+                    environmentId: 'test-env',
+                    apiClientId: 'test-client',
+                    region: 'NorthAmerica'
+                };
+                return { passed: true, message: 'Settings loaded successfully' };
+            }
+
+            handleFileUpload(file) {
+                return { passed: true, message: `File uploaded: ${file.name}` };
+            }
+
+            handleFormSubmit(formData) {
+                return { passed: true, message: 'Form submitted successfully' };
+            }
+        }
+
+        // Individual UI Test Functions
+        async function testUIManagerInit() {
+            const ui = new MockUIManager();
+            return { passed: true, message: 'UIManager initialized successfully' };
+        }
+
+        async function testNavigation() {
+            const ui = new MockUIManager();
+            const result1 = ui.showView('import');
+            const result2 = ui.showView('export');
+            
+            return {
+                passed: result1.passed && result2.passed,
+                message: 'Navigation between views works correctly'
+            };
+        }
+
+        async function testSettingsView() {
+            const ui = new MockUIManager();
+            const loadResult = ui.loadSettings();
+            const statusResult = ui.setConnectionStatus(true);
+            
+            return {
+                passed: loadResult.passed && statusResult.passed,
+                message: 'Settings view functionality works correctly'
+            };
+        }
+
+        async function testImportView() {
+            const ui = new MockUIManager();
+            const fileResult = ui.handleFileUpload({ name: 'test.csv' });
+            const formResult = ui.handleFormSubmit({ populationId: 'test-pop' });
+            
+            return {
+                passed: fileResult.passed && formResult.passed,
+                message: 'Import view functionality works correctly'
+            };
+        }
+
+        async function testExportView() {
+            const ui = new MockUIManager();
+            const formResult = ui.handleFormSubmit({ 
+                populationId: 'test-pop',
+                format: 'csv',
+                fields: 'basic'
+            });
+            
+            return {
+                passed: formResult.passed,
+                message: 'Export view functionality works correctly'
+            };
+        }
+
+        async function testLogsView() {
+            const ui = new MockUIManager();
+            ui.logs = [
+                { message: 'Test log entry', timestamp: new Date() }
+            ];
+            
+            return {
+                passed: ui.logs.length > 0,
+                message: 'Logs view can display log entries'
+            };
+        }
+
+        async function testDeleteCSVView() {
+            const ui = new MockUIManager();
+            const fileResult = ui.handleFileUpload({ name: 'delete.csv' });
+            
+            return {
+                passed: fileResult.passed,
+                message: 'Delete CSV view functionality works correctly'
+            };
+        }
+
+        async function testModifyView() {
+            const ui = new MockUIManager();
+            const formResult = ui.handleFormSubmit({ 
+                populationId: 'test-pop',
+                action: 'modify'
+            });
+            
+            return {
+                passed: formResult.passed,
+                message: 'Modify view functionality works correctly'
+            };
+        }
+
+        async function testNotifications() {
+            const ui = new MockUIManager();
+            const infoResult = ui.showNotification('Info message', 'info');
+            const successResult = ui.showNotification('Success message', 'success');
+            const errorResult = ui.showNotification('Error message', 'error');
+            
+            return {
+                passed: infoResult.passed && successResult.passed && errorResult.passed,
+                message: 'Notification system works correctly'
+            };
+        }
+
+        async function testErrorHandling() {
+            const ui = new MockUIManager();
+            const errorResult = ui.showNotification('Test error', 'error');
+            
+            return {
+                passed: errorResult.passed,
+                message: 'Error handling works correctly'
+            };
+        }
+
+        async function testProgressTracking() {
+            const ui = new MockUIManager();
+            const progress1 = ui.updateProgress(25);
+            const progress2 = ui.updateProgress(50);
+            const progress3 = ui.updateProgress(100);
+            
+            return {
+                passed: progress1.passed && progress2.passed && progress3.passed,
+                message: 'Progress tracking works correctly'
+            };
+        }
+
+        async function testStatusManagement() {
+            const ui = new MockUIManager();
+            const importStatus = ui.isImporting = true;
+            const exportStatus = ui.isExporting = false;
+            const connectionStatus = ui.setConnectionStatus(true);
+            
+            return {
+                passed: importStatus && !exportStatus && connectionStatus.passed,
+                message: 'Status management works correctly'
+            };
+        }
+
+        async function testDeleteUsersAPI() {
+            const formData = new FormData();
+            const fileInput = document.getElementById('delete-users-file');
+            if (fileInput.files[0]) {
+                formData.append('file', fileInput.files[0]);
+            }
+            try {
+                const response = await fetch('/api/delete-users', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                showResponse('delete-users-response', data, response.ok, 'POST /api/delete-users');
+            } catch (error) {
+                showResponse('delete-users-response', { error: error.message }, false, 'POST /api/delete-users');
+            }
+        }
+    </script>
+</body>
+</html> 

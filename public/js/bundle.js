@@ -7,6 +7,7 @@ var _fileHandler = require("./modules/file-handler.js");
 var _settingsManager = require("./modules/settings-manager.js");
 var _apiFactory = require("./modules/api-factory.js");
 var _versionManager = require("./modules/version-manager.js");
+var _featureFlags = require("./modules/feature-flags.js");
 // Main application entry point
 
 class App {
@@ -158,6 +159,47 @@ class App {
 
       // Check settings and restore previous file if available
       await this.checkSettingsAndRestore();
+
+      // --- NEW: Check for cached token and update UI ---
+      if (this.pingOneClient) {
+        const cachedToken = this.pingOneClient.getCachedToken();
+        if (cachedToken) {
+          // Update UI to show connected status
+          let timeLeftMsg = '';
+          if (typeof localStorage !== 'undefined') {
+            const expiry = localStorage.getItem('pingone_token_expiry');
+            if (expiry) {
+              const expiryTime = parseInt(expiry, 10);
+              const now = Date.now();
+              const msLeft = expiryTime - now;
+              if (msLeft > 0) {
+                const min = Math.floor(msLeft / 60000);
+                const sec = Math.floor(msLeft % 60000 / 1000);
+                timeLeftMsg = ` (expires in ${min}m ${sec}s)`;
+              }
+            }
+          }
+          const msg = `✅ Using cached PingOne Worker token${timeLeftMsg}`;
+          if (this.uiManager && this.uiManager.updateConnectionStatus) {
+            this.uiManager.updateConnectionStatus('connected', msg);
+          }
+          if (this.uiManager && this.uiManager.showNotification) {
+            this.uiManager.showNotification(msg, 'success');
+          }
+          // Enable import actions/buttons if needed
+          if (this.updateImportButtonState) {
+            this.updateImportButtonState();
+          }
+        } else {
+          // No valid token, show disconnected status as a warning
+          if (this.uiManager && this.uiManager.updateConnectionStatus) {
+            this.uiManager.updateConnectionStatus('disconnected', 'No PingOne token found. Please get a token.', 'warning');
+          }
+          if (this.uiManager && this.uiManager.showNotification) {
+            this.uiManager.showNotification('No PingOne token found. Please get a token.', 'warning');
+          }
+        }
+      }
       this.logger.fileLogger.info('Application initialization complete');
     } catch (error) {
       const errorMsg = `Error initializing application: ${error.message}`;
@@ -276,13 +318,29 @@ class App {
     const getTokenBtn = document.getElementById('get-token-btn');
     if (getTokenBtn) {
       getTokenBtn.addEventListener('click', async () => {
+        const originalClass = getTokenBtn.className;
+        const originalHTML = getTokenBtn.innerHTML;
         try {
-          await this.getToken();
+          // Show loading spinner
+          getTokenBtn.disabled = true;
+          getTokenBtn.classList.add('loading');
+          getTokenBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Getting Token...';
+          // FIX: Always call the method that triggers getAccessToken and saves the token
+          if (this.pingOneClient && typeof this.pingOneClient.getAccessToken === 'function') {
+            await this.pingOneClient.getAccessToken();
+          } else {
+            throw new Error('PingOne client is not initialized');
+          }
         } catch (error) {
           this.logger.fileLogger.error('Error getting token', {
             error: error.message
           });
           this.uiManager.showNotification('Failed to get token: ' + error.message, 'error');
+        } finally {
+          // Restore button styling and text
+          getTokenBtn.disabled = false;
+          getTokenBtn.className = originalClass;
+          getTokenBtn.innerHTML = originalHTML;
         }
       });
     }
@@ -625,10 +683,49 @@ class App {
 
     // Setup delete warning modal
     this.setupDeleteWarningModal();
+
+    // Setup Feature Flags functionality
+    this.setupFeatureFlags();
     console.log('Event listeners setup complete');
   }
   async showView(view) {
     try {
+      // --- NEW: Check for cached token and update UI on every view switch ---
+      if (this.pingOneClient) {
+        const cachedToken = this.pingOneClient.getCachedToken();
+        if (cachedToken) {
+          let timeLeftMsg = '';
+          if (typeof localStorage !== 'undefined') {
+            const expiry = localStorage.getItem('pingone_token_expiry');
+            if (expiry) {
+              const expiryTime = parseInt(expiry, 10);
+              const now = Date.now();
+              const msLeft = expiryTime - now;
+              if (msLeft > 0) {
+                const min = Math.floor(msLeft / 60000);
+                const sec = Math.floor(msLeft % 60000 / 1000);
+                timeLeftMsg = ` (expires in ${min}m ${sec}s)`;
+              }
+            }
+          }
+          const msg = `✅ Using cached PingOne Worker token${timeLeftMsg}`;
+          if (this.uiManager && this.uiManager.updateConnectionStatus) {
+            this.uiManager.updateConnectionStatus('connected', msg);
+          }
+          if (this.uiManager && this.uiManager.showNotification) {
+            this.uiManager.showNotification(msg, 'success');
+          }
+          if (this.updateImportButtonState) {
+            this.updateImportButtonState();
+          }
+        } else {
+          if (this.uiManager && this.uiManager.updateConnectionStatus) {
+            this.uiManager.updateConnectionStatus('disconnected', 'No PingOne token found. Please get a token.');
+          }
+        }
+      }
+      // --- END NEW ---
+
       // Hide all views
       Object.values(this.uiManager.views).forEach(viewElement => {
         if (viewElement) {
@@ -654,6 +751,8 @@ class App {
           if (this.fileHandler) {
             this.fileHandler.updateFileLabel('import');
           }
+          // Check token status and update import button state
+          this.updateImportButtonState();
         }
 
         // Load populations for modify when modify view is shown
@@ -764,13 +863,16 @@ class App {
    */
   async getToken() {
     try {
-      this.logger.fileLogger.info('Getting token with current settings');
+      this.logger.fileLogger.info('=== TOKEN RETRIEVAL STARTED ===');
+      this.logger.fileLogger.debug('Getting token with current settings');
 
       // Get current settings from the form
       const settingsForm = document.getElementById('settings-form');
       if (!settingsForm) {
+        this.logger.fileLogger.error('Settings form not found in DOM');
         throw new Error('Settings form not found');
       }
+      this.logger.fileLogger.debug('Extracting form data...');
       const formData = new FormData(settingsForm);
       const currentSettings = {
         environmentId: formData.get('environment-id'),
@@ -779,31 +881,89 @@ class App {
         populationId: formData.get('population-id'),
         region: formData.get('region')
       };
+
+      // Log settings (without sensitive data)
+      this.logger.fileLogger.debug('Current settings extracted:', {
+        environmentId: currentSettings.environmentId ? 'SET' : 'NOT_SET',
+        apiClientId: currentSettings.apiClientId ? 'SET' : 'NOT_SET',
+        apiSecret: currentSettings.apiSecret ? 'SET' : 'NOT_SET',
+        populationId: currentSettings.populationId || 'NOT_SET',
+        region: currentSettings.region || 'NOT_SET'
+      });
+
+      // Validate required settings
+      if (!currentSettings.environmentId || !currentSettings.apiClientId || !currentSettings.apiSecret) {
+        const missingFields = [];
+        if (!currentSettings.environmentId) missingFields.push('Environment ID');
+        if (!currentSettings.apiClientId) missingFields.push('API Client ID');
+        if (!currentSettings.apiSecret) missingFields.push('API Secret');
+        this.logger.fileLogger.error('Missing required settings for token retrieval', {
+          missingFields
+        });
+        throw new Error(`Missing required settings: ${missingFields.join(', ')}`);
+      }
+      this.logger.fileLogger.info('All required settings present, proceeding with token retrieval');
       this.uiManager.updateConnectionStatus('connecting', 'Getting token...', false);
 
       // Check if settings have changed and clear token if needed
+      this.logger.fileLogger.debug('Checking if settings have changed...');
       await this.checkSettingsAndRefreshToken(currentSettings);
 
       // Test the connection with current settings
+      this.logger.fileLogger.debug('Testing PingOne connection with current settings...');
       const result = await this.testPingOneConnection(currentSettings);
       if (result.success) {
-        this.logger.fileLogger.info('Successfully obtained token');
-        let message = '✅ Token obtained successfully';
+        this.logger.fileLogger.info('=== TOKEN RETRIEVAL SUCCESSFUL ===');
+        this.logger.fileLogger.debug('Token obtained successfully', {
+          tokenObtained: result.tokenObtained,
+          hasWarning: !!result.warning,
+          hasPopulationError: !!result.populationError
+        });
+
+        // Show simple success indicator
+        this.uiManager.updateConnectionStatus('connected', '✅', false);
+
+        // Show notification with more details if there's a warning
         if (result.warning) {
-          message += ' - ' + result.warning;
+          this.logger.fileLogger.warn('Token obtained with warning', {
+            warning: result.warning
+          });
+          this.uiManager.showNotification(`✅ Token obtained successfully - ${result.warning}`, 'warning');
+        } else {
+          this.logger.fileLogger.info('Token obtained without warnings');
+          this.uiManager.showNotification('✅', 'success');
         }
-        this.uiManager.updateConnectionStatus('connected', message, false);
-        if (this.uiManager.showNotification) {
-          this.uiManager.showNotification(message, result.warning ? 'warning' : 'success');
+
+        // Update button to show success state
+        const getTokenBtn = document.getElementById('get-token-btn');
+        if (getTokenBtn) {
+          this.logger.fileLogger.debug('Updating Get Token button to success state');
+          getTokenBtn.innerHTML = '<i class="fas fa-check"></i> ✅';
+          getTokenBtn.classList.add('btn-success');
+          getTokenBtn.classList.remove('btn-warning');
+
+          // Reset button after 3 seconds
+          setTimeout(() => {
+            this.logger.fileLogger.debug('Resetting Get Token button to default state');
+            getTokenBtn.innerHTML = '<i class="fas fa-key"></i> Get Token';
+            getTokenBtn.classList.remove('btn-success');
+          }, 3000);
+        } else {
+          this.logger.fileLogger.warn('Get Token button not found in DOM');
         }
       } else {
+        this.logger.fileLogger.error('Token retrieval failed', {
+          error: result.error
+        });
         throw new Error(result.error || 'Failed to get token');
       }
       return result;
     } catch (error) {
       const errorMessage = error.message || 'Failed to get token';
-      this.logger.fileLogger.error('Error getting token', {
-        error: errorMessage
+      this.logger.fileLogger.error('=== TOKEN RETRIEVAL FAILED ===', {
+        error: errorMessage,
+        stack: error.stack,
+        timestamp: new Date().toISOString()
       });
       this.uiManager.updateConnectionStatus('error', `❌ Error: ${errorMessage}`, false);
       if (this.uiManager.showNotification) {
@@ -823,8 +983,16 @@ class App {
    */
   async checkSettingsAndRefreshToken(newSettings) {
     try {
+      this.logger.fileLogger.debug('=== SETTINGS CHANGE CHECK STARTED ===');
+      this.logger.fileLogger.debug('Checking if settings have changed and need token refresh');
+
       // Get current stored settings
       const storedSettings = this.settingsManager.getSettings();
+      this.logger.fileLogger.debug('Settings comparison:', {
+        hasStoredSettings: !!storedSettings,
+        hasNewSettings: !!newSettings,
+        newSettingsKeys: newSettings ? Object.keys(newSettings) : []
+      });
       if (!storedSettings) {
         // No stored settings, will get new token with new settings
         this.logger.fileLogger.info('No stored settings found, will get new token with new settings');
@@ -833,14 +1001,26 @@ class App {
 
       // Check if any critical settings have changed
       const settingsChanged = storedSettings.environmentId !== newSettings.environmentId || storedSettings.apiClientId !== newSettings.apiClientId || storedSettings.apiSecret !== newSettings.apiSecret || storedSettings.populationId !== newSettings.populationId || storedSettings.region !== newSettings.region;
+      this.logger.fileLogger.debug('Settings change detection:', {
+        environmentIdChanged: storedSettings.environmentId !== newSettings.environmentId,
+        apiClientIdChanged: storedSettings.apiClientId !== newSettings.apiClientId,
+        apiSecretChanged: storedSettings.apiSecret !== newSettings.apiSecret,
+        populationIdChanged: storedSettings.populationId !== newSettings.populationId,
+        regionChanged: storedSettings.region !== newSettings.region,
+        settingsChanged: settingsChanged
+      });
       if (settingsChanged) {
+        this.logger.fileLogger.info('=== SETTINGS CHANGED - REFRESHING TOKEN ===');
         this.logger.fileLogger.info('Settings have changed, clearing cached token and getting new one');
 
         // Clear the cached token
         if (typeof localStorage !== 'undefined') {
+          this.logger.fileLogger.debug('Clearing cached token due to settings change');
           localStorage.removeItem('pingone_worker_token');
           localStorage.removeItem('pingone_token_expiry');
           this.logger.fileLogger.info('Cleared cached token due to settings change');
+        } else {
+          this.logger.fileLogger.warn('localStorage not available, cannot clear cached token');
         }
 
         // Update UI to show that we're getting a new token
@@ -848,17 +1028,28 @@ class App {
         this.uiManager.updateSettingsSaveStatus('Settings changed - Getting new token...', 'info');
 
         // Get a new token with the new settings
+        this.logger.fileLogger.debug('Calling testPingOneConnection with new settings');
         const result = await this.testPingOneConnection(newSettings);
+        this.logger.fileLogger.debug('Token refresh result:', {
+          success: result.success,
+          hasWarning: !!result.warning,
+          hasError: !!result.error
+        });
         let combinedMsg = '';
         let type = 'success';
         if (result.success) {
+          this.logger.fileLogger.info('=== SETTINGS CHANGE TOKEN REFRESH SUCCESSFUL ===');
           this.logger.fileLogger.info('Successfully obtained new token with updated settings');
           combinedMsg = '✅ Settings saved successfully. New token obtained with updated settings.';
           if (result.warning) {
+            this.logger.fileLogger.warn('Token obtained with warning during settings change', {
+              warning: result.warning
+            });
             combinedMsg += '<br>' + result.warning;
             type = 'warning';
           }
         } else {
+          this.logger.fileLogger.error('=== SETTINGS CHANGE TOKEN REFRESH FAILED ===');
           this.logger.fileLogger.warn('Failed to get new token with updated settings', {
             error: result.error
           });
@@ -874,8 +1065,10 @@ class App {
         this.uiManager.updateSettingsSaveStatus('✅ Settings saved successfully. Using existing token.', 'success');
       }
     } catch (error) {
-      this.logger.fileLogger.error('Error checking settings and refreshing token', {
-        error: error.message
+      this.logger.fileLogger.error('=== SETTINGS CHANGE CHECK FAILED ===', {
+        error: error.message,
+        stack: error.stack,
+        timestamp: new Date().toISOString()
       });
       // Don't throw here - we still want to save the settings even if token refresh fails
     }
@@ -908,6 +1101,8 @@ class App {
       if (pingOneInitialized) {
         this.logger.fileLogger.info('Server is connected to PingOne');
         this.uiManager.updateConnectionStatus('connected', 'Connected to PingOne');
+        // Hide token status on home page when connected
+        this.uiManager.updateHomeTokenStatus(false);
         return true;
       } else {
         const errorMessage = lastError || 'Not connected to PingOne';
@@ -915,6 +1110,8 @@ class App {
           error: errorMessage
         });
         this.uiManager.updateConnectionStatus('disconnected', errorMessage);
+        // Show token status on home page when not connected
+        this.uiManager.updateHomeTokenStatus(true, 'You need to configure your PingOne API credentials and get a token before using this tool.');
         return false;
       }
     } catch (error) {
@@ -933,79 +1130,171 @@ class App {
         statusMessage = 'No response from server. Please check your connection.';
       }
       this.uiManager.updateConnectionStatus('error', statusMessage);
+      // Show token status on home page when there's an error
+      this.uiManager.updateHomeTokenStatus(true, 'You need to configure your PingOne API credentials and get a token before using this tool.');
       return false;
     }
   }
 
   /**
    * Test the PingOne connection by getting an access token
-   * @param {Object} customSettings - Optional custom settings to use instead of stored settings
+   * @param {Object} customSettings - Optional custom settings to use for the test
    * @returns {Promise<Object>} Result of the connection test
    */
   async testPingOneConnection() {
     let customSettings = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : null;
     try {
-      this.logger.fileLogger.info('Testing PingOne connection');
+      this.logger.fileLogger.info('=== PINGONE CONNECTION TEST STARTED ===');
+      this.logger.fileLogger.debug('Testing PingOne connection');
 
       // Show connecting status in UI
       this.uiManager.updateConnectionStatus('connecting', 'Connecting to PingOne...');
 
       // Use custom settings if provided, otherwise get current settings
       const settings = customSettings || this.settingsManager.getSettings();
+      this.logger.fileLogger.debug('Settings validation:', {
+        hasSettings: !!settings,
+        hasApiClientId: !!(settings && settings.apiClientId),
+        hasApiSecret: !!(settings && settings.apiSecret),
+        hasEnvironmentId: !!(settings && settings.environmentId),
+        hasPopulationId: !!(settings && settings.populationId),
+        region: settings?.region || 'NorthAmerica'
+      });
       if (!settings || !settings.apiClientId || !settings.apiSecret || !settings.environmentId) {
-        throw new Error('Missing required settings. Please configure your API credentials first.');
+        const missingFields = [];
+        if (!settings) missingFields.push('Settings object');
+        if (!settings?.apiClientId) missingFields.push('API Client ID');
+        if (!settings?.apiSecret) missingFields.push('API Secret');
+        if (!settings?.environmentId) missingFields.push('Environment ID');
+        this.logger.fileLogger.error('Missing required settings for PingOne connection', {
+          missingFields
+        });
+        throw new Error(`Missing required settings: ${missingFields.join(', ')}`);
       }
+      this.logger.fileLogger.info('All required settings present, making API request');
+      this.logger.fileLogger.debug('Making POST request to /api/pingone/test-connection');
 
       // Use the local client from the factory
-      const response = await this.localClient.post('/api/pingone/test-connection', {
+      const requestPayload = {
         apiClientId: settings.apiClientId,
         apiSecret: settings.apiSecret,
         environmentId: settings.environmentId,
         region: settings.region || 'NorthAmerica',
         populationId: settings.populationId
+      };
+      this.logger.fileLogger.debug('Request payload (sanitized):', {
+        apiClientId: '***HIDDEN***',
+        apiSecret: '***HIDDEN***',
+        environmentId: settings.environmentId,
+        region: settings.region || 'NorthAmerica',
+        populationId: settings.populationId || 'NOT_SET'
       });
-      let warning = '';
+      const response = await this.localClient.post('/api/pingone/test-connection', requestPayload);
+      this.logger.fileLogger.debug('Received response from server:', {
+        success: response.success,
+        hasMessage: !!response.message,
+        hasPopulationValidation: !!response.populationValidation,
+        tokenObtained: response.tokenObtained
+      });
       if (response.success) {
+        this.logger.fileLogger.info('=== PINGONE CONNECTION TEST SUCCESSFUL ===');
         this.logger.fileLogger.info('Successfully connected to PingOne API');
 
         // Update connection status in settings
         settings.connectionStatus = 'connected';
         settings.connectionMessage = 'Connected';
         settings.lastConnectionTest = new Date().toISOString();
+        this.logger.fileLogger.debug('Updated settings with connection status');
 
         // Save updated settings
         await this.settingsManager.saveSettings(settings);
+        this.logger.fileLogger.debug('Settings saved successfully');
 
-        // Update UI status
-        this.uiManager.updateConnectionStatus('connected', '✅ PingOne Worker token still valid');
+        // Update UI status - always show success for token retrieval
+        this.uiManager.updateConnectionStatus('connected', '✅ Successfully connected to PingOne API and obtained token');
 
-        // Show population validation message if present
-        if (response.message && response.message.includes('⚠️ Warning:')) {
-          warning = response.message;
-        } else if (response.message && response.message.includes('✅ Population ID')) {
-          warning = response.message;
+        // Handle population validation result
+        let populationWarning = '';
+        let populationError = null;
+        if (response.populationValidation) {
+          const validation = response.populationValidation;
+          this.logger.fileLogger.debug('Population validation result:', {
+            isValid: validation.isValid,
+            message: validation.message,
+            error: validation.error
+          });
+          if (!validation.isValid) {
+            // Show population ID error in settings status field
+            this.uiManager.updateSettingsSaveStatus(`⚠️ Population ID Error: ${validation.message}`, 'error');
+            populationWarning = validation.message;
+            populationError = validation.error;
+
+            // Log the population validation error
+            this.logger.fileLogger.warn('Population ID validation failed', {
+              error: validation.error,
+              message: validation.message,
+              populationId: settings.populationId
+            });
+          } else {
+            // Show success message in settings status field
+            this.uiManager.updateSettingsSaveStatus(`✅ ${validation.message}`, 'success');
+            this.logger.fileLogger.info('Population validation successful', {
+              message: validation.message
+            });
+          }
+        } else {
+          this.logger.fileLogger.debug('No population validation in response');
         }
-        return {
+        const result = {
           success: true,
-          warning
+          warning: populationWarning,
+          populationError: populationError,
+          tokenObtained: response.tokenObtained || true
         };
+        this.logger.fileLogger.info('Connection test completed successfully', {
+          tokenObtained: result.tokenObtained,
+          hasWarning: !!result.warning,
+          hasPopulationError: !!result.populationError
+        });
+        return result;
       } else {
+        this.logger.fileLogger.error('Connection test failed', {
+          message: response.message,
+          response: response
+        });
         throw new Error(response.message || 'Failed to connect to PingOne API');
       }
     } catch (error) {
       const errorMessage = error.message || 'Connection failed';
-      this.logger.fileLogger.error('Failed to connect to PingOne', {
-        error: errorMessage
+      this.logger.fileLogger.error('=== PINGONE CONNECTION TEST FAILED ===', {
+        error: errorMessage,
+        stack: error.stack,
+        timestamp: new Date().toISOString()
       });
+
+      // Log additional error details if available
+      if (error.response) {
+        this.logger.fileLogger.error('Server response error details:', {
+          status: error.response.status,
+          statusText: error.response.statusText,
+          data: error.response.data
+        });
+      } else if (error.request) {
+        this.logger.fileLogger.error('Network error - no response received');
+      } else {
+        this.logger.fileLogger.error('Client-side error during connection test');
+      }
 
       // Update connection status in settings
       const settings = this.settingsManager.getSettings() || {};
       settings.connectionStatus = 'disconnected';
       settings.connectionMessage = errorMessage;
       settings.lastConnectionTest = new Date().toISOString();
+      this.logger.fileLogger.debug('Updated settings with connection failure status');
 
       // Save updated settings
       await this.settingsManager.saveSettings(settings);
+      this.logger.fileLogger.debug('Settings saved with failure status');
 
       // Update UI status
       this.uiManager.updateConnectionStatus('error', errorMessage);
@@ -1022,23 +1311,44 @@ class App {
    */
   async refreshToken() {
     try {
-      this.logger.fileLogger.info('Refreshing PingOne worker token');
+      this.logger.fileLogger.info('=== TOKEN REFRESH STARTED ===');
+      this.logger.fileLogger.debug('Refreshing PingOne worker token');
 
       // Show refreshing status in UI
       this.uiManager.updateConnectionStatus('connecting', 'Refreshing token...');
 
       // Clear the cached token
       if (typeof localStorage !== 'undefined') {
+        this.logger.fileLogger.debug('Clearing cached token from localStorage');
         localStorage.removeItem('pingone_worker_token');
         localStorage.removeItem('pingone_token_expiry');
-        this.logger.fileLogger.info('Cleared cached token');
+        this.logger.fileLogger.info('Cleared cached token from localStorage');
+      } else {
+        this.logger.fileLogger.warn('localStorage not available, cannot clear cached token');
       }
 
       // Get current settings
+      this.logger.fileLogger.debug('Retrieving current settings for token refresh');
       const settings = this.settingsManager.getSettings();
+      this.logger.fileLogger.debug('Settings validation for token refresh:', {
+        hasSettings: !!settings,
+        hasApiClientId: !!(settings && settings.apiClientId),
+        hasApiSecret: !!(settings && settings.apiSecret),
+        hasEnvironmentId: !!(settings && settings.environmentId)
+      });
       if (!settings || !settings.apiClientId || !settings.apiSecret || !settings.environmentId) {
-        throw new Error('Missing required settings. Please configure your API credentials first.');
+        const missingFields = [];
+        if (!settings) missingFields.push('Settings object');
+        if (!settings?.apiClientId) missingFields.push('API Client ID');
+        if (!settings?.apiSecret) missingFields.push('API Secret');
+        if (!settings?.environmentId) missingFields.push('Environment ID');
+        this.logger.fileLogger.error('Missing required settings for token refresh', {
+          missingFields
+        });
+        throw new Error(`Missing required settings: ${missingFields.join(', ')}`);
       }
+      this.logger.fileLogger.info('All required settings present, making refresh request');
+      this.logger.fileLogger.debug('Making POST request to /api/pingone/refresh-token');
 
       // Use the dedicated refresh token endpoint that bypasses population validation
       const response = await fetch('/api/pingone/refresh-token', {
@@ -1048,14 +1358,29 @@ class App {
           'Accept': 'application/json'
         }
       });
+      this.logger.fileLogger.debug('Refresh token response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
+      });
       if (!response.ok) {
+        this.logger.fileLogger.error('Token refresh request failed', {
+          status: response.status,
+          statusText: response.statusText
+        });
         const errorData = await response.json().catch(() => ({
           message: 'Unknown error'
         }));
+        this.logger.fileLogger.error('Token refresh error details:', errorData);
         throw new Error(errorData.message || `Token refresh failed: ${response.status}`);
       }
       const result = await response.json();
+      this.logger.fileLogger.debug('Token refresh response parsed:', {
+        success: result.success,
+        hasMessage: !!result.message
+      });
       if (result.success) {
+        this.logger.fileLogger.info('=== TOKEN REFRESH SUCCESSFUL ===');
         this.logger.fileLogger.info('Successfully refreshed PingOne worker token');
         this.uiManager.updateConnectionStatus('connected', result.message || '✅ Token refreshed successfully');
         this.uiManager.showNotification('✅ Token refreshed successfully', 'success');
@@ -1063,12 +1388,17 @@ class App {
           success: true
         };
       } else {
+        this.logger.fileLogger.error('Token refresh failed in response', {
+          result
+        });
         throw new Error(result.message || 'Failed to refresh token');
       }
     } catch (error) {
       const errorMessage = error.message || 'Token refresh failed';
-      this.logger.fileLogger.error('Failed to refresh token', {
-        error: errorMessage
+      this.logger.fileLogger.error('=== TOKEN REFRESH FAILED ===', {
+        error: errorMessage,
+        stack: error.stack,
+        timestamp: new Date().toISOString()
       });
 
       // Update UI status
@@ -1088,17 +1418,56 @@ class App {
     // Create AbortController for cancellation
     this.currentImportAbortController = new AbortController();
 
-    // FIX: Declare importOptions at the top
+    // FIX: Declare importOptions and users at the top
     let importOptions = {};
+    let users = null;
     try {
+      // Check if PingOne token is available before starting import
+      console.log('Checking PingOne token availability...');
+      try {
+        // Test the connection to verify token is valid
+        const connectionTest = await this.pingOneClient.testConnection();
+        if (!connectionTest) {
+          throw new Error('PingOne connection test failed');
+        }
+        console.log('✅ PingOne token is valid and connection is working');
+      } catch (tokenError) {
+        console.error('❌ PingOne token validation failed:', tokenError);
+        this.isImporting = false;
+        this.uiManager.setImporting(false);
+
+        // Show error in import status area
+        this.uiManager.showImportStatus(0, '');
+        this.uiManager.updateImportProgress(0, 0, '❌ No valid PingOne token available', {
+          success: 0,
+          failed: 0,
+          skipped: 0
+        });
+
+        // Show detailed error message
+        const errorMessage = 'No valid PingOne token available. Please go to Settings and click "Get Token" to obtain a valid token before importing users.';
+        this.uiManager.showNotification(errorMessage, 'error');
+
+        // Update import status to show error
+        const importStatus = document.getElementById('import-status');
+        if (importStatus) {
+          const progressText = document.getElementById('import-progress-text');
+          if (progressText) {
+            progressText.textContent = '❌ Token Error';
+            progressText.className = 'stat-value error';
+          }
+        }
+        return;
+      }
+
       // Get the parsed users from the file handler
       console.log('Getting parsed users from file handler...');
-      const users = this.fileHandler.getParsedUsers();
+      users = this.fileHandler.getParsedUsers();
       console.log('Users from file handler:', users);
       console.log('Users length:', users ? users.length : 'null/undefined');
       if (!users || users.length === 0) {
         console.error('No users found in CSV file');
-        throw new Error('No users found in CSV file. Please check your file and try again.');
+        throw new Error('No CSV file loaded or no users found in CSV file. Please select a CSV file first and ensure it contains valid user data.');
       }
 
       // Get import options
@@ -1278,7 +1647,15 @@ class App {
       }
       this.logger.fileLogger.error('Import failed', {
         error: error.message,
-        stack: error.stack
+        stack: error.stack,
+        name: error.name,
+        code: error.code,
+        details: {
+          importOptions: importOptions,
+          usersLength: users ? users.length : 'undefined',
+          isImporting: this.isImporting,
+          hasAbortController: !!this.currentImportAbortController
+        }
       });
       let errorMessage = 'Import failed. ';
       if (error.message.includes('No users found')) {
@@ -1428,15 +1805,27 @@ class App {
     this.isDeletingCsv = true;
     this.uiManager.setDeletingCsv(true);
     this.uiManager.showDeleteCsvStatus(this.deleteCsvUsers.length);
+
+    // Show a simple notification that delete is starting
+    this.uiManager.showNotification(`Starting delete operation for ${this.deleteCsvUsers.length} users...`, 'info');
     try {
       const results = await this.pingOneClient.deleteUsersFromCsv(this.deleteCsvUsers, {
         onProgress: progress => {
+          // Update progress without showing the progress screen
           this.uiManager.updateDeleteCsvProgress(progress.current, progress.total, `Deleting user ${progress.current} of ${progress.total}...`, progress);
         }
       });
-      this.uiManager.updateDeleteCsvProgress(results.total, results.total, `Delete completed. Deleted: ${results.success}, Failed: ${results.failed}, Skipped: ${results.skipped}`, results);
+
+      // Show completion notification
+      const message = `Delete completed. Deleted: ${results.success}, Failed: ${results.failed}, Skipped: ${results.skipped}`;
+      this.uiManager.showNotification(message, results.failed > 0 ? 'warning' : 'success');
+
+      // Update final status
+      this.uiManager.updateDeleteCsvProgress(results.total, results.total, message, results);
     } catch (error) {
-      this.uiManager.updateDeleteCsvProgress(0, 0, `Delete failed: ${error.message}`);
+      const errorMessage = `Delete failed: ${error.message}`;
+      this.uiManager.showNotification(errorMessage, 'error');
+      this.uiManager.updateDeleteCsvProgress(0, 0, errorMessage);
     } finally {
       this.isDeletingCsv = false;
       this.uiManager.setDeletingCsv(false);
@@ -1447,6 +1836,7 @@ class App {
     this.isDeletingCsv = false;
     this.uiManager.setDeletingCsv(false);
     this.uiManager.updateDeleteCsvProgress(0, 0, 'Delete cancelled');
+    this.uiManager.showNotification('Delete operation cancelled', 'warning');
   }
   showDeleteCsvFileInfo(file) {
     // Use the enhanced file info display from file handler
@@ -1542,17 +1932,9 @@ class App {
     result.push(current);
     return result.map(field => field.trim());
   }
-  updateDeleteCsvProgress(current, total, message) {
-    let counts = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
-    const percent = total ? Math.round(current / total * 100) : 0;
-    document.getElementById('delete-csv-progress').style.width = percent + '%';
-    document.getElementById('delete-csv-progress-percent').textContent = percent + '%';
-    document.getElementById('delete-csv-progress-text').textContent = message;
-    document.getElementById('delete-csv-progress-count').textContent = `${current} of ${total} users`;
-    document.getElementById('delete-csv-success-count').textContent = counts.success || 0;
-    document.getElementById('delete-csv-failed-count').textContent = counts.failed || 0;
-    document.getElementById('delete-csv-skipped-count').textContent = counts.skipped || 0;
-  }
+
+  // updateDeleteCsvProgress method removed - now handled by UI manager without progress screen
+
   async handleFileSelect(file) {
     try {
       this.logger.fileLogger.debug('File selected', {
@@ -1562,6 +1944,9 @@ class App {
 
       // Use the file handler's handleFileObject method
       await this.fileHandler.handleFileObject(file);
+
+      // Update import button state after file processing
+      this.updateImportButtonState();
     } catch (error) {
       const errorMsg = error.message || 'An unknown error occurred while processing the file';
       this.logger.fileLogger.error('Error processing file', {
@@ -1875,7 +2260,7 @@ class App {
       localStorage.setItem('disclaimer-agreed', 'true');
       localStorage.setItem('disclaimer-agreed-date', new Date().toISOString());
 
-      // Wait 2 seconds before hiding disclaimer and showing feature cards
+      // Wait 500ms before hiding disclaimer and showing feature cards
       setTimeout(() => {
         const disclaimer = document.getElementById('disclaimer');
         const featureCards = document.querySelector('.feature-cards');
@@ -1889,7 +2274,7 @@ class App {
         this.enableNavigationTabs();
         this.uiManager.showNotification('Disclaimer accepted. You can now use the tool.', 'success');
         this.logger.fileLogger.info('User accepted disclaimer agreement');
-      }, 2000);
+      }, 500);
     });
 
     // Check if user has already agreed
@@ -2994,17 +3379,30 @@ class App {
     const hasSelectedPopulation = selectedPopulationId && selectedPopulationId.trim() !== '';
     const hasPopulationChoice = hasSelectedPopulation || useDefaultPopulation || useCsvPopulationId || hasCsvPopulationId;
 
-    // Enable buttons only if we have users AND a population choice
-    const shouldEnable = hasUsers && hasPopulationChoice;
+    // Check if PingOne token is available
+    const hasValidToken = this.pingOneClient && this.pingOneClient.getCachedToken();
+
+    // Enable buttons only if we have users, population choice, AND valid token
+    const shouldEnable = hasUsers && hasPopulationChoice && hasValidToken;
 
     // Update import button
     const importBtnBottom = document.getElementById('start-import-btn-bottom');
     if (importBtnBottom) {
       importBtnBottom.disabled = !shouldEnable;
+
+      // Update button text to indicate token status
+      if (!hasValidToken) {
+        importBtnBottom.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Get Token First';
+        importBtnBottom.title = 'Please go to Settings and get a valid PingOne token before importing';
+      } else {
+        importBtnBottom.innerHTML = '<i class="fas fa-upload"></i> Import Users (v4.5)';
+        importBtnBottom.title = 'Import users to PingOne';
+      }
     }
     this.logger.fileLogger.info('Import button state updated', {
       hasUsers,
       hasPopulationChoice,
+      hasValidToken,
       shouldEnable,
       selectedPopulationId: hasSelectedPopulation ? 'selected' : 'none',
       useDefaultPopulation,
@@ -3251,7 +3649,7 @@ class App {
 
         // Update progress
         const progress = (i + 1) / totalUsers * 100;
-        this.updatePopulationDeleteProgress(i + 1, totalUsers, `Deleting user ${i + 1} of ${totalUsers}...`, {
+        this.uiManager.updatePopulationDeleteProgress(i + 1, totalUsers, `Deleting user ${i + 1} of ${totalUsers}...`, {
           success: deletedCount,
           failed: failedCount,
           skipped: skippedCount
@@ -3299,7 +3697,7 @@ class App {
     }
 
     // Final progress update
-    this.updatePopulationDeleteProgress(totalUsers, totalUsers, 'Deletion completed', {
+    this.uiManager.updatePopulationDeleteProgress(totalUsers, totalUsers, 'Deletion completed', {
       success: deletedCount,
       failed: failedCount,
       skipped: skippedCount
@@ -3779,30 +4177,7 @@ class App {
     return users;
   }
 
-  /**
-   * Update population delete progress
-   */
-  updatePopulationDeleteProgress(current, total, message) {
-    let counts = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
-    const progressBar = document.getElementById('population-delete-progress');
-    const progressPercent = document.getElementById('population-delete-progress-percent');
-    const progressText = document.getElementById('population-delete-progress-text');
-    const progressCount = document.getElementById('population-delete-progress-count');
-    const successCount = document.getElementById('population-delete-success-count');
-    const failedCount = document.getElementById('population-delete-failed-count');
-    const skippedCount = document.getElementById('population-delete-skipped-count');
-    if (progressBar) {
-      const percent = total > 0 ? current / total * 100 : 0;
-      progressBar.style.width = `${percent}%`;
-      progressBar.setAttribute('aria-valuenow', percent);
-    }
-    if (progressPercent) progressPercent.textContent = `${Math.round(current / total * 100)}%`;
-    if (progressText) progressText.textContent = message;
-    if (progressCount) progressCount.textContent = `${current} of ${total} users`;
-    if (successCount) successCount.textContent = counts.success || 0;
-    if (failedCount) failedCount.textContent = counts.failed || 0;
-    if (skippedCount) skippedCount.textContent = counts.skipped || 0;
-  }
+  // updatePopulationDeleteProgress method removed - now handled by UI manager
 
   /**
    * Utility method to delay execution for rate limiting
@@ -3968,6 +4343,85 @@ class App {
       this.uiManager.showNotification('Progress history cleared', 'success');
     }
   }
+  setupFeatureFlags() {
+    console.log('Setting up feature flags...');
+
+    // Feature flags toggle button
+    const toggleBtn = document.getElementById('feature-flags-toggle');
+    const panel = document.getElementById('feature-flags-panel');
+    const closeBtn = document.getElementById('close-feature-flags');
+    const resetBtn = document.getElementById('reset-feature-flags');
+    if (toggleBtn && panel) {
+      toggleBtn.addEventListener('click', () => {
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        this.loadFeatureFlagsState();
+      });
+    }
+    if (closeBtn && panel) {
+      closeBtn.addEventListener('click', () => {
+        panel.style.display = 'none';
+      });
+    }
+    if (resetBtn) {
+      resetBtn.addEventListener('click', async () => {
+        try {
+          (0, _featureFlags.resetFeatureFlags)();
+          this.loadFeatureFlagsState();
+          this.uiManager.showNotification('Feature flags reset to defaults', 'success');
+        } catch (error) {
+          console.error('Error resetting feature flags:', error);
+          this.uiManager.showNotification('Error resetting feature flags', 'error');
+        }
+      });
+    }
+
+    // Setup individual flag checkboxes
+    const flagCheckboxes = ['flagA', 'flagB', 'flagC'];
+    flagCheckboxes.forEach(flagId => {
+      const checkbox = document.getElementById(flagId);
+      if (checkbox) {
+        checkbox.addEventListener('change', async e => {
+          const flag = flagId.replace('flag', '');
+          const enabled = e.target.checked;
+          try {
+            (0, _featureFlags.setFeatureFlag)(flag, enabled);
+
+            // Also update backend if available
+            if (this.localClient) {
+              await this.localClient.post(`/api/feature-flags/${flag}`, {
+                enabled
+              });
+            }
+            this.uiManager.showNotification(`Feature Flag ${flag} ${enabled ? 'enabled' : 'disabled'}`, 'success');
+          } catch (error) {
+            console.error(`Error setting feature flag ${flag}:`, error);
+            this.uiManager.showNotification(`Error setting feature flag ${flag}`, 'error');
+          }
+        });
+      }
+    });
+
+    // Load initial state
+    this.loadFeatureFlagsState();
+    console.log('Feature flags setup complete');
+  }
+  loadFeatureFlagsState() {
+    try {
+      const flags = (0, _featureFlags.getAllFeatureFlags)();
+
+      // Update checkboxes
+      Object.entries(flags).forEach(_ref => {
+        let [flag, enabled] = _ref;
+        const checkbox = document.getElementById(`flag${flag}`);
+        if (checkbox) {
+          checkbox.checked = enabled;
+        }
+      });
+      console.log('Feature flags state loaded:', flags);
+    } catch (error) {
+      console.error('Error loading feature flags state:', error);
+    }
+  }
 }
 
 // Initialize the application when the DOM is fully loaded
@@ -3997,7 +4451,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-},{"./modules/api-factory.js":2,"./modules/file-handler.js":4,"./modules/logger.js":8,"./modules/settings-manager.js":10,"./modules/ui-manager.js":11,"./modules/version-manager.js":12}],2:[function(require,module,exports){
+},{"./modules/api-factory.js":2,"./modules/feature-flags.js":4,"./modules/file-handler.js":5,"./modules/logger.js":9,"./modules/settings-manager.js":11,"./modules/ui-manager.js":12,"./modules/version-manager.js":13}],2:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -4145,7 +4599,7 @@ const apiFactory = exports.apiFactory = {
 const getAPIFactory = () => defaultAPIFactory;
 exports.getAPIFactory = getAPIFactory;
 
-},{"./local-api-client.js":6,"./pingone-client.js":9}],3:[function(require,module,exports){
+},{"./local-api-client.js":7,"./pingone-client.js":10}],3:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -4230,6 +4684,78 @@ exports.CryptoUtils = CryptoUtils;
 const cryptoUtils = exports.cryptoUtils = new CryptoUtils();
 
 },{}],4:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.getAllFeatureFlags = getAllFeatureFlags;
+exports.isFeatureEnabled = isFeatureEnabled;
+exports.resetFeatureFlags = resetFeatureFlags;
+exports.setFeatureFlag = setFeatureFlag;
+// Feature Flags Manager
+// Manages Feature Flags A, B, C with localStorage persistence
+
+const FEATURE_FLAGS_KEY = 'pingone_feature_flags';
+
+// Default feature flags
+const DEFAULT_FLAGS = {
+  A: false,
+  B: false,
+  C: false
+};
+
+// Get flags from localStorage or use defaults
+function getStoredFlags() {
+  try {
+    const stored = localStorage.getItem(FEATURE_FLAGS_KEY);
+    return stored ? JSON.parse(stored) : DEFAULT_FLAGS;
+  } catch (error) {
+    console.warn('[FEATURE FLAGS] Error reading from localStorage:', error);
+    return DEFAULT_FLAGS;
+  }
+}
+
+// Save flags to localStorage
+function saveFlags(flags) {
+  try {
+    localStorage.setItem(FEATURE_FLAGS_KEY, JSON.stringify(flags));
+  } catch (error) {
+    console.warn('[FEATURE FLAGS] Error saving to localStorage:', error);
+  }
+}
+
+// Get current flags
+let currentFlags = getStoredFlags();
+function isFeatureEnabled(flag) {
+  return !!currentFlags[flag];
+}
+function setFeatureFlag(flag, value) {
+  if (currentFlags.hasOwnProperty(flag)) {
+    currentFlags[flag] = !!value;
+    saveFlags(currentFlags);
+    console.log(`[FEATURE FLAGS] Flag ${flag} set to ${value}`);
+  } else {
+    console.warn(`[FEATURE FLAGS] Unknown flag: ${flag}`);
+  }
+}
+function getAllFeatureFlags() {
+  return {
+    ...currentFlags
+  };
+}
+function resetFeatureFlags() {
+  currentFlags = {
+    ...DEFAULT_FLAGS
+  };
+  saveFlags(currentFlags);
+  console.log('[FEATURE FLAGS] All flags reset to defaults');
+}
+
+// Initialize flags on module load
+console.log('[FEATURE FLAGS] Initialized with flags:', currentFlags);
+
+},{}],5:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -5340,7 +5866,7 @@ class FileHandler {
 }
 exports.FileHandler = FileHandler;
 
-},{}],5:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -5549,7 +6075,7 @@ class FileLogger {
 }
 exports.FileLogger = FileLogger;
 
-},{}],6:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -5870,7 +6396,7 @@ class LocalAPIClient {
 exports.LocalAPIClient = LocalAPIClient;
 const localAPIClient = exports.localAPIClient = new LocalAPIClient(console);
 
-},{}],7:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -5988,7 +6514,7 @@ class LocalAPI {
 // Export a singleton instance
 const localAPI = exports.localAPI = new LocalAPI(console);
 
-},{}],8:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -6507,7 +7033,7 @@ class Logger {
 }
 exports.Logger = Logger;
 
-},{"./file-logger.js":5}],9:[function(require,module,exports){
+},{"./file-logger.js":6}],10:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -6592,34 +7118,15 @@ class PingOneClient {
    * @returns {Promise<string>} Access token
    */
   async getAccessToken() {
+    console.log('[DEBUG] getAccessToken called');
     // Check for cached token first
     const cachedToken = this.getCachedToken();
     if (cachedToken) {
-      let timeLeftMsg = '';
-      if (typeof localStorage !== 'undefined') {
-        const expiry = localStorage.getItem('pingone_token_expiry');
-        if (expiry) {
-          const expiryTime = parseInt(expiry, 10);
-          const now = Date.now();
-          const msLeft = expiryTime - now;
-          if (msLeft > 0) {
-            const min = Math.floor(msLeft / 60000);
-            const sec = Math.floor(msLeft % 60000 / 1000);
-            timeLeftMsg = ` (expires in ${min}m ${sec}s)`;
-          }
-        }
-      }
-      const msg = `✅ Using cached PingOne Worker token${timeLeftMsg}`;
-      if (typeof window !== 'undefined' && window.app && window.app.uiManager) {
-        window.app.uiManager.updateConnectionStatus('connected', msg);
-        window.app.uiManager.showNotification(msg, 'success');
-      }
-      this.accessToken = cachedToken; // Cache the token
+      console.log('[DEBUG] Using cached token:', cachedToken.substring(0, 8) + '...');
       return cachedToken;
     }
-
-    // If no cached token or it's expired, get a new one from the server
     try {
+      console.log('[DEBUG] Fetching token from /api/pingone/get-token');
       const response = await fetch('/api/pingone/get-token', {
         method: 'POST',
         headers: {
@@ -6627,42 +7134,91 @@ class PingOneClient {
           'Accept': 'application/json'
         }
       });
+      console.log('[DEBUG] Fetch response:', response);
       if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Failed to get access token: ${response.status} - ${error}`);
+        let errorMsg = `Failed to get access token: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMsg += errorData.message ? ` - ${errorData.message}` : '';
+        } catch (e) {
+          // Ignore JSON parse errors
+        }
+        console.error('[DEBUG] Fetch error:', errorMsg);
+        if (window.app && window.app.uiManager) {
+          window.app.uiManager.showNotification('❌ ' + errorMsg, 'error');
+        }
+        throw new Error(errorMsg);
       }
       const data = await response.json();
-
-      // Cache the new token
+      console.log('[DEBUG] Data received from server:', data);
+      if (!data.access_token) {
+        console.warn('[TOKEN] No access_token in server response:', data);
+        if (window.app && window.app.uiManager) {
+          window.app.uiManager.showNotification('⚠️ No token received from server. Please check your PingOne credentials and try again.', 'warning');
+        }
+        return null;
+      }
+      let tokenSaved = false;
       try {
         if (typeof localStorage !== 'undefined' && typeof window !== 'undefined') {
           const expiryTime = Date.now() + data.expires_in * 1000;
           try {
             localStorage.setItem('pingone_worker_token', data.access_token);
             localStorage.setItem('pingone_token_expiry', expiryTime.toString());
-
-            // Update status bar with new token info
-            let timeLeftMsg = '';
-            const min = Math.floor(data.expires_in / 60);
-            const sec = data.expires_in % 60;
-            timeLeftMsg = ` (expires in ${min}m ${sec}s)`;
-            const msg = `✅ New PingOne Worker token obtained${timeLeftMsg}`;
-            if (window.app && window.app.uiManager) {
-              window.app.uiManager.updateConnectionStatus('connected', msg);
-              window.app.uiManager.showNotification(msg, 'success');
+            tokenSaved = true;
+            console.log('[DEBUG] Token saved to localStorage:', {
+              token: data.access_token ? data.access_token.substring(0, 8) + '...' : null,
+              expiry: expiryTime,
+              expires_in: data.expires_in
+            });
+            console.log('[DEBUG] localStorage now:', {
+              pingone_worker_token: localStorage.getItem('pingone_worker_token'),
+              pingone_token_expiry: localStorage.getItem('pingone_token_expiry')
+            });
+            if (this.logger && this.logger.info) {
+              this.logger.info('[TOKEN] Saved to localStorage', {
+                token: data.access_token ? data.access_token.substring(0, 8) + '...' : null,
+                expiry: expiryTime,
+                expires_in: data.expires_in
+              });
             }
           } catch (storageError) {
             console.warn('Failed to store token in localStorage:', storageError);
-            // Continue without storing the token
+            if (this.logger && this.logger.error) {
+              this.logger.error('[TOKEN] Failed to store token in localStorage', storageError);
+            }
+            if (window.app && window.app.uiManager) {
+              window.app.uiManager.showNotification('❌ Failed to save token in your browser. Please check your browser settings or try another browser.', 'error');
+            }
           }
         }
       } catch (error) {
         console.warn('Error accessing localStorage:', error);
-        // Continue without storing the token
+        if (this.logger && this.logger.error) {
+          this.logger.error('[TOKEN] Error accessing localStorage', error);
+        }
+        if (window.app && window.app.uiManager) {
+          window.app.uiManager.showNotification('❌ Error accessing browser storage. Token may not be saved.', 'error');
+        }
       }
       this.accessToken = data.access_token; // Cache the token
+      if (tokenSaved) {
+        let timeLeftMsg = '';
+        const min = Math.floor(data.expires_in / 60);
+        const sec = data.expires_in % 60;
+        timeLeftMsg = ` (expires in ${min}m ${sec}s)`;
+        let msg = `✅ New PingOne Worker token obtained${timeLeftMsg}`;
+        if (!msg || msg.trim() === '' || msg === '✅') {
+          msg = '✅ Token obtained successfully.';
+        }
+        if (window.app && window.app.uiManager) {
+          window.app.uiManager.updateConnectionStatus('connected', msg);
+          window.app.uiManager.showNotification(msg, 'success');
+        }
+      }
       return data.access_token;
     } catch (error) {
+      console.error('[DEBUG] Error in getAccessToken:', error);
       this.logger.error('Error getting access token:', error);
       throw error;
     }
@@ -6811,7 +7367,28 @@ class PingOneClient {
    */
   async getPopulations() {
     const settings = this.getSettings();
-    return this.request('GET', `/environments/${settings.environmentId}/populations`);
+    const response = await this.request('GET', `/environments/${settings.environmentId}/populations`);
+
+    // Handle different response formats
+    if (typeof response === 'string') {
+      try {
+        return JSON.parse(response);
+      } catch (error) {
+        this.logger.error('Failed to parse populations response:', error);
+        return [];
+      }
+    } else if (Array.isArray(response)) {
+      return response;
+    } else if (response && typeof response === 'object') {
+      // If response is an object, it might be wrapped
+      if (Array.isArray(response.data)) {
+        return response.data;
+      } else if (Array.isArray(response.populations)) {
+        return response.populations;
+      }
+    }
+    this.logger.warn('Unexpected populations response format:', response);
+    return [];
   }
 
   /**
@@ -6855,6 +7432,9 @@ class PingOneClient {
     let skippedCount = 0;
     let retryCount = 0;
     console.log('[IMPORT] Initial setup completed');
+    this.logger.debug('[IMPORT] Starting import of users', {
+      totalUsers
+    });
 
     // Validate input
     console.log('[IMPORT] Validating input...');
@@ -6887,7 +7467,7 @@ class PingOneClient {
       fallbackPopulationId = settings.populationId;
       console.log('[IMPORT] Using default population from settings:', fallbackPopulationId);
     }
-    // Priority 3: Check if CSV has population data (even if no explicit selection)
+    // Priority 3: Check if CSV has population data (only if explicitly enabled)
     else if (useCsvPopulationId) {
       // Check if any user has populationId data
       const hasCsvPopulationData = users.some(user => user.populationId && user.populationId.trim() !== '');
@@ -6899,10 +7479,15 @@ class PingOneClient {
       }
     }
 
-    // If still no population, show modal
+    // If still no population, show modal but allow import to continue
     if (!fallbackPopulationId) {
       console.log('[IMPORT] No population selected, showing modal...');
       if (window.app) {
+        // Reset import button state before showing modal
+        if (window.app.uiManager) {
+          window.app.uiManager.resetImportState();
+        }
+
         // Show modal and wait for user action
         const modalResult = await window.app.showPopulationWarningModal();
         if (modalResult === 'settings') {
@@ -6916,17 +7501,56 @@ class PingOneClient {
             error: 'No population selected or configured - user redirected to settings.'
           };
         }
-        // User clicked OK, stay on import page
-        window.app.showView('import');
+        // User clicked OK, continue with import but use default population
+        console.log('[IMPORT] User chose to continue without population selection, using default population');
+        // Get the first available population as fallback
+        try {
+          const availablePopulations = await this.getPopulations();
+          if (availablePopulations && availablePopulations.length > 0) {
+            fallbackPopulationId = availablePopulations[0].id;
+            console.log('[IMPORT] Using first available population as fallback:', fallbackPopulationId);
+          } else {
+            console.log('[IMPORT] No populations available, skipping all users');
+            return {
+              total: totalUsers,
+              success: 0,
+              failed: 0,
+              skipped: totalUsers,
+              results: users.map(user => ({
+                success: false,
+                user: user,
+                error: 'No population available in PingOne environment',
+                skipped: true
+              })),
+              error: 'No population available in PingOne environment.'
+            };
+          }
+        } catch (error) {
+          console.error('[IMPORT] Error getting populations:', error);
+          return {
+            total: totalUsers,
+            success: 0,
+            failed: 0,
+            skipped: totalUsers,
+            results: users.map(user => ({
+              success: false,
+              user: user,
+              error: 'Failed to get available populations',
+              skipped: true
+            })),
+            error: 'Failed to get available populations.'
+          };
+        }
+      } else {
+        return {
+          total: totalUsers,
+          success: 0,
+          failed: 0,
+          skipped: 0,
+          results: [],
+          error: 'No population selected or configured.'
+        };
       }
-      return {
-        total: totalUsers,
-        success: 0,
-        failed: 0,
-        skipped: 0,
-        results: [],
-        error: 'No population selected or configured.'
-      };
     }
     console.log('[IMPORT] Population selection completed, fallbackPopulationId:', fallbackPopulationId);
     this.logger.info('Population selection for import', {
@@ -6943,6 +7567,11 @@ class PingOneClient {
     for (let i = 0; i < totalUsers; i += batchSize) {
       const batch = users.slice(i, i + batchSize);
       console.log(`[IMPORT] Processing batch ${Math.floor(i / batchSize) + 1}, users ${i + 1}-${Math.min(i + batchSize, totalUsers)}`);
+      this.logger.debug(`[IMPORT] Processing batch`, {
+        batchNumber: Math.floor(i / batchSize) + 1,
+        from: i + 1,
+        to: Math.min(i + batchSize, totalUsers)
+      });
       for (let batchIndex = 0; batchIndex < batch.length; batchIndex++) {
         const currentIndex = i + batchIndex;
         const currentUser = batch[batchIndex];
@@ -6995,9 +7624,52 @@ class PingOneClient {
 
           // Determine population ID for this user
           let userPopulationId = fallbackPopulationId;
+
+          // If CSV population ID is enabled and user has a population ID
           if (useCsvPopulationId && currentUser.populationId) {
-            userPopulationId = currentUser.populationId;
-            this.logger.info(`Using CSV population ID for user ${currentUser.email || currentUser.username}: ${userPopulationId}`);
+            // Validate the CSV population ID format (should be a valid UUID)
+            const isValidPopulationId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentUser.populationId);
+            if (isValidPopulationId) {
+              // Check if the population exists in the available populations
+              const availablePopulations = await this.getPopulations();
+              const populationExists = availablePopulations.some(pop => pop.id === currentUser.populationId);
+              if (populationExists) {
+                userPopulationId = currentUser.populationId;
+                this.logger.info(`Using CSV population ID for user ${currentUser.email || currentUser.username}: ${userPopulationId}`);
+              } else {
+                // CSV population ID doesn't exist, fall back to UI-selected population
+                this.logger.warn(`CSV population ID ${currentUser.populationId} does not exist in PingOne environment. Falling back to UI-selected population: ${fallbackPopulationId}`);
+                if (fallbackPopulationId && fallbackPopulationId !== 'csv-population-ids') {
+                  userPopulationId = fallbackPopulationId;
+                } else {
+                  this.logger.warn(`No valid population ID available for user ${currentUser.email || currentUser.username}. Skipping user.`);
+                  failedCount++;
+                  results.push({
+                    success: false,
+                    user: currentUser,
+                    error: `CSV population ID ${currentUser.populationId} does not exist in PingOne environment. No fallback population available.`,
+                    skipped: true
+                  });
+                  continue;
+                }
+              }
+            } else {
+              // CSV population ID is invalid format, fall back to UI-selected population
+              this.logger.warn(`Invalid CSV population ID format for user ${currentUser.email || currentUser.username}: ${currentUser.populationId}. Falling back to UI-selected population: ${fallbackPopulationId}`);
+              if (fallbackPopulationId && fallbackPopulationId !== 'csv-population-ids') {
+                userPopulationId = fallbackPopulationId;
+              } else {
+                this.logger.warn(`No valid population ID available for user ${currentUser.email || currentUser.username}. Skipping user.`);
+                failedCount++;
+                results.push({
+                  success: false,
+                  user: currentUser,
+                  error: `Invalid CSV population ID format: ${currentUser.populationId}. No fallback population available.`,
+                  skipped: true
+                });
+                continue;
+              }
+            }
           } else if (fallbackPopulationId && fallbackPopulationId !== 'csv-population-ids') {
             if (selectedPopulationId && fallbackPopulationId === selectedPopulationId) {
               this.logger.info(`Using selected population ID for user ${currentUser.email || currentUser.username}: ${fallbackPopulationId}`);
@@ -7005,8 +7677,37 @@ class PingOneClient {
               this.logger.info(`Using fallback population ID for user ${currentUser.email || currentUser.username}: ${fallbackPopulationId}`);
             }
           } else if (fallbackPopulationId === 'csv-population-ids' && currentUser.populationId) {
-            userPopulationId = currentUser.populationId;
-            this.logger.info(`Using CSV population ID for user ${currentUser.email || currentUser.username}: ${userPopulationId}`);
+            // Validate the CSV population ID format
+            const isValidPopulationId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentUser.populationId);
+            if (isValidPopulationId) {
+              // Check if the population exists in the available populations
+              const availablePopulations = await this.getPopulations();
+              const populationExists = availablePopulations.some(pop => pop.id === currentUser.populationId);
+              if (populationExists) {
+                userPopulationId = currentUser.populationId;
+                this.logger.info(`Using CSV population ID for user ${currentUser.email || currentUser.username}: ${userPopulationId}`);
+              } else {
+                this.logger.warn(`CSV population ID ${currentUser.populationId} does not exist in PingOne environment. Skipping user.`);
+                failedCount++;
+                results.push({
+                  success: false,
+                  user: currentUser,
+                  error: `CSV population ID ${currentUser.populationId} does not exist in PingOne environment.`,
+                  skipped: true
+                });
+                continue;
+              }
+            } else {
+              this.logger.warn(`Invalid CSV population ID format for user ${currentUser.email || currentUser.username}: ${currentUser.populationId}. Skipping user.`);
+              failedCount++;
+              results.push({
+                success: false,
+                user: currentUser,
+                error: `Invalid CSV population ID format: ${currentUser.populationId}`,
+                skipped: true
+              });
+              continue;
+            }
           } else {
             this.logger.warn(`No population ID available for user ${currentUser.email || currentUser.username}. Skipping user.`);
             failedCount++;
@@ -7018,6 +7719,19 @@ class PingOneClient {
             });
             continue;
           }
+          // Store enabled status for later use (after user creation)
+          let userEnabledStatus = true; // default to true
+          if (currentUser.enabled !== undefined && currentUser.enabled !== null) {
+            if (typeof currentUser.enabled === 'boolean') {
+              userEnabledStatus = currentUser.enabled;
+            } else if (typeof currentUser.enabled === 'string') {
+              // Convert string values to boolean
+              const enabledStr = currentUser.enabled.toLowerCase().trim();
+              userEnabledStatus = enabledStr === 'true' || enabledStr === '1' || enabledStr === 'yes';
+            } else if (typeof currentUser.enabled === 'number') {
+              userEnabledStatus = currentUser.enabled !== 0;
+            }
+          }
           const userData = {
             name: {
               given: currentUser.firstName || '',
@@ -7027,17 +7741,29 @@ class PingOneClient {
             username: currentUser.username || currentUser.email,
             population: {
               id: userPopulationId
-            },
-            enabled: currentUser.enabled !== false
+            }
           };
           if (currentUser.password) {
             userData.password = {
-              value: currentUser.password
+              value: '[REDACTED]'
             };
           }
           if (currentUser.additionalProperties) {
             Object.assign(userData, currentUser.additionalProperties);
           }
+          // Extra debug output for each user
+          this.logger.debug('[IMPORT] Preparing to import user', {
+            index: currentIndex + 1,
+            total: totalUsers,
+            user: {
+              email: currentUser.email,
+              username: currentUser.username,
+              firstName: currentUser.firstName,
+              lastName: currentUser.lastName,
+              populationId: userPopulationId
+            },
+            userData
+          });
           // Make the API request with retry logic
           let result;
           let lastError = null;
@@ -7057,6 +7783,10 @@ class PingOneClient {
               console.log(`[IMPORT] Making API request for user ${currentUser.email || currentUser.username} (attempt ${attempt}/${retryAttempts})`);
               result = await this.request('POST', endpoint, userData, {
                 signal: abortController ? abortController.signal : undefined
+              });
+              this.logger.debug('[IMPORT] API Response', {
+                user: currentUser.email || currentUser.username,
+                result
               });
               console.log(`[IMPORT] API request completed for user ${currentUser.email || currentUser.username}`);
 
@@ -7111,13 +7841,25 @@ class PingOneClient {
                 }
               }
               if (userId) {
+                // Handle user status if needed (enable/disable)
+                if (userEnabledStatus === false) {
+                  try {
+                    console.log(`[IMPORT] Disabling user ${userId} after creation`);
+                    await this.updateUserStatus(userId, false);
+                    console.log(`[IMPORT] Successfully disabled user ${userId}`);
+                  } catch (statusError) {
+                    console.warn(`[IMPORT] Failed to disable user ${userId}:`, statusError.message);
+                    // Don't fail the import, just log the warning
+                  }
+                }
                 successCount++;
                 results.push({
                   success: true,
                   user: currentUser,
-                  id: userId
+                  id: userId,
+                  enabled: userEnabledStatus
                 });
-                console.log(`[IMPORT] Successfully created user with ID: ${userId}`);
+                console.log(`[IMPORT] Successfully created user with ID: ${userId} (enabled: ${userEnabledStatus})`);
                 break;
               } else {
                 console.log(`[IMPORT] Invalid response structure - no ID found:`, result);
@@ -7175,19 +7917,37 @@ class PingOneClient {
             }
           }
         } catch (err) {
+          this.logger.error('[IMPORT] Unexpected error during import', {
+            user: currentUser.email || currentUser.username,
+            error: err.message,
+            stack: err.stack
+          });
+          console.error(`[IMPORT] Unexpected error for user ${currentUser.email || currentUser.username}:`, err);
           failedCount++;
           results.push({
             success: false,
             user: currentUser,
-            error: err.message || 'Unknown error'
+            error: err.message,
+            skipped: false
           });
-          this.logger.error(`Import error for user ${currentUser.email || currentUser.username}: ${err.message}`);
-          if (window.app && window.app.uiManager) {
-            window.app.uiManager.showNotification(`Import error for user ${currentUser.email || currentUser.username}: ${err.message}`, 'error');
-          }
         }
       }
     }
+    // Batch summary
+    this.logger.info('[IMPORT] Batch import summary', {
+      total: totalUsers,
+      success: successCount,
+      failed: failedCount,
+      skipped: skippedCount,
+      retries: retryCount
+    });
+    console.log('[IMPORT] Batch import summary:', {
+      total: totalUsers,
+      success: successCount,
+      failed: failedCount,
+      skipped: skippedCount,
+      retries: retryCount
+    });
     return {
       total: totalUsers,
       success: successCount,
@@ -7275,6 +8035,29 @@ class PingOneClient {
       return retryableMessages.some(msg => lowerMessage.includes(msg));
     }
     return false;
+  }
+
+  /**
+   * Update user status (enable/disable)
+   * @param {string} userId - The user ID
+   * @param {boolean} enabled - Whether the user should be enabled
+   * @returns {Promise<Object>} The API response
+   */
+  async updateUserStatus(userId, enabled) {
+    const settings = this.getSettings();
+    const endpoint = `/environments/${settings.environmentId}/users/${userId}`;
+    const updateData = {
+      enabled: enabled
+    };
+    this.logger.info(`[STATUS] Updating user ${userId} status to enabled: ${enabled}`);
+    try {
+      const result = await this.request('PATCH', endpoint, updateData);
+      this.logger.info(`[STATUS] Successfully updated user ${userId} status to enabled: ${enabled}`);
+      return result;
+    } catch (error) {
+      this.logger.error(`[STATUS] Failed to update user ${userId} status:`, error);
+      throw error;
+    }
   }
 
   /**
@@ -7502,8 +8285,8 @@ class PingOneClient {
     let options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
     const {
       onProgress,
-      batchSize = 10,
-      delayBetweenBatches = 1000,
+      batchSize = 5,
+      delayBetweenBatches = 2000,
       createIfNotExists = false,
       updateUserStatus = false,
       defaultPopulationId = '',
@@ -7523,7 +8306,10 @@ class PingOneClient {
     // Process users in batches to avoid overwhelming the API
     for (let i = 0; i < users.length; i += batchSize) {
       const batch = users.slice(i, i + batchSize);
-      const batchPromises = batch.map(async (user, batchIndex) => {
+
+      // Process users sequentially within each batch to avoid overwhelming the API
+      for (let batchIndex = 0; batchIndex < batch.length; batchIndex++) {
+        const user = batch[batchIndex];
         const userIndex = i + batchIndex;
         const current = userIndex + 1;
         try {
@@ -7606,7 +8392,7 @@ class PingOneClient {
             try {
               this.logger.info(`[MODIFY] User not found, creating new user: ${user.username || user.email}`);
 
-              // Prepare user data for creation
+              // Prepare user data for creation (without enabled field)
               const userData = {
                 name: {
                   given: user.firstName || user.givenName || '',
@@ -7616,9 +8402,18 @@ class PingOneClient {
                 username: user.username || user.email,
                 population: {
                   id: user.populationId || defaultPopulationId || this.getSettings().populationId
-                },
-                enabled: user.enabled !== undefined ? user.enabled : defaultEnabled
+                }
               };
+
+              // Determine if user should be enabled (for later status update)
+              let userEnabledStatus = defaultEnabled;
+              if (user.enabled !== undefined) {
+                if (typeof user.enabled === 'string') {
+                  userEnabledStatus = user.enabled.toLowerCase() === 'true' || user.enabled === '1';
+                } else {
+                  userEnabledStatus = user.enabled;
+                }
+              }
 
               // Add password if generatePasswords is enabled
               if (generatePasswords) {
@@ -7629,6 +8424,16 @@ class PingOneClient {
 
               // Create the user
               const createdUser = await this.request('POST', `/environments/${this.getSettings().environmentId}/users`, userData);
+
+              // After creation, update status if needed
+              if (userEnabledStatus === false) {
+                try {
+                  await this.updateUserStatus(createdUser.id, false);
+                  this.logger.info(`[MODIFY] Disabled user after creation: ${createdUser.username || createdUser.email} (ID: ${createdUser.id})`);
+                } catch (statusErr) {
+                  this.logger.warn(`[MODIFY] Failed to disable user after creation: ${createdUser.username || createdUser.email} (ID: ${createdUser.id})`, statusErr);
+                }
+              }
               results.created++;
               results.details.push({
                 user,
@@ -7736,6 +8541,7 @@ class PingOneClient {
           }
 
           // Check for enabled status updates if updateUserStatus is enabled
+          let enabledStatusToUpdate = null;
           if (updateUserStatus && user.enabled !== undefined && user.enabled !== existingUser.enabled) {
             // Convert string values to boolean if needed
             let newEnabledValue = user.enabled;
@@ -7743,8 +8549,7 @@ class PingOneClient {
               newEnabledValue = newEnabledValue.toLowerCase() === 'true' || newEnabledValue === '1';
             }
             if (newEnabledValue !== existingUser.enabled) {
-              changes.enabled = newEnabledValue;
-              hasChanges = true;
+              enabledStatusToUpdate = newEnabledValue;
               this.logger.debug(`[MODIFY] Enabled status will be changed from "${existingUser.enabled}" to "${newEnabledValue}"`);
             }
           } else if (!updateUserStatus && user.enabled !== undefined && user.enabled !== existingUser.enabled) {
@@ -7755,6 +8560,11 @@ class PingOneClient {
             }
           }
 
+          // Remove enabled from changes if present
+          if (changes.enabled !== undefined) {
+            delete changes.enabled;
+          }
+
           // For PingOne API, we need to include required fields in the update
           // Always include username and email as they are required
           if (hasChanges) {
@@ -7762,7 +8572,7 @@ class PingOneClient {
             changes.email = existingUser.email;
             this.logger.debug(`[MODIFY] Including required fields: username=${existingUser.username}, email=${existingUser.email}`);
           }
-          if (!hasChanges) {
+          if (!hasChanges && enabledStatusToUpdate === null) {
             results.noChanges++;
             results.details.push({
               user,
@@ -7778,8 +8588,20 @@ class PingOneClient {
             changes: changes
           });
 
-          // Update the user with changes
-          await this.request('PUT', `/environments/${this.getSettings().environmentId}/users/${existingUser.id}`, changes);
+          // Update the user with changes if there are any
+          if (hasChanges) {
+            await this.request('PUT', `/environments/${this.getSettings().environmentId}/users/${existingUser.id}`, changes);
+          }
+
+          // Update enabled status if needed
+          if (enabledStatusToUpdate !== null) {
+            try {
+              await this.updateUserStatus(existingUser.id, enabledStatusToUpdate);
+              this.logger.info(`[MODIFY] Updated enabled status for user: ${existingUser.username || existingUser.email} (ID: ${existingUser.id}) to ${enabledStatusToUpdate}`);
+            } catch (statusErr) {
+              this.logger.warn(`[MODIFY] Failed to update enabled status for user: ${existingUser.username || existingUser.email} (ID: ${existingUser.id})`, statusErr);
+            }
+          }
           results.modified++;
           results.details.push({
             user,
@@ -7840,19 +8662,348 @@ class PingOneClient {
             noChanges: results.noChanges
           });
         }
-      });
 
-      // Wait for current batch to complete
-      await Promise.all(batchPromises);
+        // Process users sequentially within each batch to avoid overwhelming the API
+        for (let batchIndex = 0; batchIndex < batch.length; batchIndex++) {
+          const user = batch[batchIndex];
+          const userIndex = i + batchIndex;
+          const current = userIndex + 1;
+          try {
+            // Enhanced logging for user lookup
+            this.logger.info(`[MODIFY] Processing user ${current}/${users.length}:`, {
+              userId: user.userId || user.id || 'NOT_PROVIDED',
+              username: user.username || 'NOT_PROVIDED',
+              email: user.email || 'NOT_PROVIDED',
+              rawUserData: user
+            });
 
-      // Add delay between batches to avoid rate limiting
-      if (i + batchSize < users.length && delayBetweenBatches > 0) {
-        await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
+            // Find user by userId, username, or email with enhanced fallback
+            let existingUser = null;
+            let lookupMethod = null;
+
+            // First, try to find user by userId if provided (direct lookup)
+            if (user.userId || user.id) {
+              const userId = user.userId || user.id;
+              try {
+                this.logger.debug(`[MODIFY] Looking up user by ID: "${userId}"`);
+                const response = await this.request('GET', `/environments/${this.getSettings().environmentId}/users/${userId}`);
+                existingUser = response;
+                lookupMethod = 'userId';
+                this.logger.info(`[MODIFY] Found user by ID: "${userId}" -> ID: ${existingUser.id}`);
+              } catch (error) {
+                this.logger.debug(`[MODIFY] Error looking up user by ID "${userId}":`, error.message);
+              }
+            }
+
+            // If no user found by ID, try username (if provided)
+            if (!existingUser && user.username) {
+              try {
+                this.logger.debug(`[MODIFY] Looking up user by username: "${user.username}"`);
+                const response = await this.request('GET', `/environments/${this.getSettings().environmentId}/users?filter=username eq "${encodeURIComponent(user.username)}"`);
+                if (response._embedded && response._embedded.users && response._embedded.users.length > 0) {
+                  existingUser = response._embedded.users[0];
+                  lookupMethod = 'username';
+                  this.logger.info(`[MODIFY] Found user by username: "${user.username}" -> ID: ${existingUser.id}`);
+                } else {
+                  this.logger.debug(`[MODIFY] No user found by username: "${user.username}"`);
+                }
+              } catch (error) {
+                this.logger.debug(`[MODIFY] Error looking up user by username "${user.username}":`, error.message);
+              }
+            }
+
+            // If no user found by ID or username, try email (if provided)
+            if (!existingUser && user.email) {
+              try {
+                this.logger.debug(`[MODIFY] Looking up user by email: "${user.email}"`);
+                const response = await this.request('GET', `/environments/${this.getSettings().environmentId}/users?filter=email eq "${encodeURIComponent(user.email)}"`);
+                if (response._embedded && response._embedded.users && response._embedded.users.length > 0) {
+                  const emailUser = response._embedded.users[0];
+
+                  // If we already found a user by username, check if it's the same user
+                  if (existingUser) {
+                    if (existingUser.id === emailUser.id) {
+                      this.logger.info(`[MODIFY] Email lookup confirmed same user: "${user.email}" -> ID: ${emailUser.id}`);
+                    } else {
+                      this.logger.warn(`[MODIFY] Found different users by username and email! Username: "${user.username}" -> ID: ${existingUser.id}, Email: "${user.email}" -> ID: ${emailUser.id}`);
+                      // Use the email user as it might be more reliable
+                      existingUser = emailUser;
+                      lookupMethod = 'email';
+                    }
+                  } else {
+                    existingUser = emailUser;
+                    lookupMethod = 'email';
+                    this.logger.info(`[MODIFY] Found user by email: "${user.email}" -> ID: ${existingUser.id}`);
+                  }
+                } else {
+                  this.logger.debug(`[MODIFY] No user found by email: "${user.email}"`);
+                }
+              } catch (error) {
+                this.logger.debug(`[MODIFY] Error looking up user by email "${user.email}":`, error.message);
+              }
+            }
+
+            // If user not found and createIfNotExists is enabled, create the user
+            if (!existingUser && createIfNotExists) {
+              try {
+                this.logger.info(`[MODIFY] User not found, creating new user: ${user.username || user.email}`);
+
+                // Prepare user data for creation (without enabled field)
+                const userData = {
+                  name: {
+                    given: user.firstName || user.givenName || '',
+                    family: user.lastName || user.familyName || ''
+                  },
+                  email: user.email,
+                  username: user.username || user.email,
+                  population: {
+                    id: user.populationId || defaultPopulationId || this.getSettings().populationId
+                  }
+                };
+
+                // Determine if user should be enabled (for later status update)
+                let userEnabledStatus = defaultEnabled;
+                if (user.enabled !== undefined) {
+                  if (typeof user.enabled === 'string') {
+                    userEnabledStatus = user.enabled.toLowerCase() === 'true' || user.enabled === '1';
+                  } else {
+                    userEnabledStatus = user.enabled;
+                  }
+                }
+
+                // Add password if generatePasswords is enabled
+                if (generatePasswords) {
+                  userData.password = {
+                    value: this.generateTemporaryPassword()
+                  };
+                }
+
+                // Create the user
+                const createdUser = await this.request('POST', `/environments/${this.getSettings().environmentId}/users`, userData);
+
+                // After creation, update status if needed
+                if (userEnabledStatus === false) {
+                  try {
+                    await this.updateUserStatus(createdUser.id, false);
+                    this.logger.info(`[MODIFY] Disabled user after creation: ${createdUser.username || createdUser.email} (ID: ${createdUser.id})`);
+                  } catch (statusErr) {
+                    this.logger.warn(`[MODIFY] Failed to disable user after creation: ${createdUser.username || createdUser.email} (ID: ${createdUser.id})`, statusErr);
+                  }
+                }
+                results.created++;
+                results.details.push({
+                  user,
+                  status: 'created',
+                  pingOneId: createdUser.id,
+                  reason: 'User created because createIfNotExists was enabled'
+                });
+                this.logger.info(`[MODIFY] Successfully created user: ${createdUser.username || createdUser.email} (ID: ${createdUser.id})`);
+
+                // Update progress
+                if (onProgress) {
+                  onProgress({
+                    current,
+                    total: users.length,
+                    modified: results.modified,
+                    created: results.created,
+                    failed: results.failed,
+                    skipped: results.skipped,
+                    noChanges: results.noChanges
+                  });
+                }
+                continue;
+              } catch (error) {
+                this.logger.error(`[MODIFY] Failed to create user ${user.username || user.email}:`, error.message);
+                results.failed++;
+                results.details.push({
+                  user,
+                  status: 'failed',
+                  error: `Failed to create user: ${error.message}`,
+                  reason: 'User creation failed'
+                });
+                continue;
+              }
+            }
+
+            // If user not found and createIfNotExists is disabled, skip the user
+            if (!existingUser) {
+              results.skipped++;
+              results.details.push({
+                user,
+                status: 'skipped',
+                reason: 'User not found and createIfNotExists is disabled'
+              });
+              this.logger.warn(`[MODIFY] User not found: ${user.username || user.email}. Skipping (createIfNotExists: ${createIfNotExists})`);
+              continue;
+            }
+
+            // Log the user we're about to modify
+            this.logger.info(`[MODIFY] Modifying user found by ${lookupMethod}:`, {
+              username: existingUser.username,
+              email: existingUser.email,
+              id: existingUser.id,
+              originalLookup: {
+                username: user.username,
+                email: user.email
+              }
+            });
+
+            // Compare CSV data with existing user data
+            const changes = {};
+            let hasChanges = false;
+
+            // Map CSV fields to PingOne API fields
+            const fieldMappings = {
+              firstName: 'name.given',
+              lastName: 'name.family',
+              givenName: 'name.given',
+              familyName: 'name.family',
+              email: 'email',
+              phoneNumber: 'phoneNumber',
+              title: 'title',
+              department: 'department'
+            };
+
+            // Add enabled field to mappings if updateUserStatus is enabled
+            if (updateUserStatus) {
+              fieldMappings.enabled = 'enabled';
+            }
+
+            // Check each field for changes
+            Object.keys(fieldMappings).forEach(csvField => {
+              if (user[csvField] !== undefined && user[csvField] !== null && user[csvField] !== '') {
+                const apiField = fieldMappings[csvField];
+                const currentValue = this.getNestedValue(existingUser, apiField);
+                const newValue = user[csvField];
+                if (currentValue !== newValue) {
+                  this.setNestedValue(changes, apiField, newValue);
+                  hasChanges = true;
+                  this.logger.debug(`[MODIFY] Field "${csvField}" changed: "${currentValue}" -> "${newValue}"`);
+                }
+              }
+            });
+
+            // If no changes detected, skip the user
+            if (!hasChanges) {
+              results.noChanges++;
+              results.details.push({
+                user,
+                status: 'no_changes',
+                reason: 'No changes detected'
+              });
+              this.logger.info(`[MODIFY] No changes detected for user: ${user.username || user.email}`);
+
+              // Update progress
+              if (onProgress) {
+                onProgress({
+                  current,
+                  total: users.length,
+                  modified: results.modified,
+                  created: results.created,
+                  failed: results.failed,
+                  skipped: results.skipped,
+                  noChanges: results.noChanges
+                });
+              }
+              continue;
+            }
+
+            // Update the user with changes
+            try {
+              this.logger.info(`[MODIFY] Updating user ${existingUser.id} with changes:`, changes);
+              const updatedUser = await this.request('PUT', `/environments/${this.getSettings().environmentId}/users/${existingUser.id}`, changes);
+              results.modified++;
+              results.details.push({
+                user,
+                status: 'modified',
+                pingOneId: updatedUser.id,
+                changes: changes
+              });
+              this.logger.info(`[MODIFY] Successfully modified user: ${updatedUser.username || updatedUser.email} (ID: ${updatedUser.id})`);
+            } catch (error) {
+              // Get friendly error message if available
+              const friendlyMessage = error.friendlyMessage || error.message;
+
+              // Check if this is a 404 error (user not found)
+              if (error.status === 404 || error.message.includes('404') || error.message.includes('not found')) {
+                results.skipped++;
+                results.details.push({
+                  user,
+                  status: 'skipped',
+                  reason: 'User not found (404)'
+                });
+                this.logger.warn(`[MODIFY] User '${user.username || user.email}' not found in PingOne (404). Skipping this user.`);
+              } else {
+                results.failed++;
+
+                // Provide more context for different error types
+                let errorReason = friendlyMessage;
+                if (error.status === 400) {
+                  errorReason = `Data validation failed: ${friendlyMessage}`;
+                } else if (error.status === 429) {
+                  errorReason = `Rate limited: ${friendlyMessage}`;
+                } else if (error.status === 403) {
+                  errorReason = `Permission denied: ${friendlyMessage}`;
+                }
+                results.details.push({
+                  user,
+                  status: 'failed',
+                  error: errorReason,
+                  statusCode: error.status
+                });
+                this.logger.error(`[MODIFY] Failed to modify user '${user.username || user.email}': ${errorReason}`);
+
+                // Show user-friendly error in UI for specific error types
+                if (window.app && window.app.uiManager && (error.status === 400 || error.status === 403)) {
+                  window.app.uiManager.showWarning(`User '${user.username || user.email}': ${friendlyMessage}`);
+                }
+              }
+            }
+
+            // Update progress for each user
+            if (onProgress) {
+              onProgress({
+                current,
+                total: users.length,
+                modified: results.modified,
+                failed: results.failed,
+                skipped: results.skipped,
+                noChanges: results.noChanges
+              });
+            }
+
+            // Add small delay between individual user operations to prevent rate limiting
+            if (batchIndex < batch.length - 1) {
+              await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay between users
+            }
+          } catch (error) {
+            this.logger.error(`[MODIFY] Unexpected error processing user ${user.username || user.email}:`, error.message);
+            results.failed++;
+            results.details.push({
+              user,
+              status: 'failed',
+              error: error.message,
+              reason: 'Unexpected error'
+            });
+          }
+        }
+
+        // Add delay between batches to avoid rate limiting
+        if (i + batchSize < users.length && delayBetweenBatches > 0) {
+          await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
+        }
+
+        // Log batch completion
+        this.logger.info(`[MODIFY] Completed batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(users.length / batchSize)}`);
       }
-
-      // Log batch completion
-      this.logger.info(`[MODIFY] Completed batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(users.length / batchSize)}`);
+      return results;
     }
+
+    /**
+     * Fetch all users in a specific population (paginated)
+     * @param {string} populationId - The population ID
+     * @returns {Promise<Array>} Array of user objects
+     */
     return results;
   }
 
@@ -7866,33 +9017,24 @@ class PingOneClient {
     const users = [];
     let page = 1;
     const pageSize = 100;
-    const maxPages = 1000; // Safety limit to prevent infinite loops
+    const maxPages = 1000;
     let fetched = 0;
     do {
-      // Safety check to prevent infinite loops
-      if (page > maxPages) {
-        this.logger.warn(`[FETCH] Reached maximum page limit (${maxPages}) for population ${populationId}. Stopping fetch.`);
-        break;
-      }
+      if (page > maxPages) break;
       try {
-        // Use the general users endpoint with proper population filter format instead of the non-existent populations/users endpoint
         const resp = await this.request('GET', `/environments/${settings.environmentId}/users?limit=${pageSize}&page=${page}&filter=population.id eq "${populationId}"`);
         if (resp && resp._embedded && resp._embedded.users && Array.isArray(resp._embedded.users)) {
           const pageUsers = resp._embedded.users;
           fetched = pageUsers.length;
-          if (fetched > 0) {
-            users.push(...pageUsers);
-          }
+          if (fetched > 0) users.push(...pageUsers);
         } else {
           break;
         }
       } catch (error) {
-        this.logger.error(`[FETCH] Error fetching page ${page} for population ${populationId}:`, error);
         break;
       }
       page++;
-    } while (fetched > 0 && page <= maxPages); // Continue until no more users are returned
-
+    } while (fetched > 0 && page <= maxPages);
     return users;
   }
 
@@ -8215,10 +9357,32 @@ class PingOneClient {
     } while (users.length < total && fetched > 0);
     return users;
   }
+
+  /**
+   * Helper to get a nested value from an object using dot notation (e.g., 'name.given')
+   */
+  getNestedValue(obj, path) {
+    if (!obj || !path) return undefined;
+    return path.split('.').reduce((acc, part) => acc && acc[part] !== undefined ? acc[part] : undefined, obj);
+  }
+
+  /**
+   * Helper to set a nested value in an object using dot notation (e.g., 'name.given')
+   */
+  setNestedValue(obj, path, value) {
+    if (!obj || !path) return;
+    const parts = path.split('.');
+    let current = obj;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!current[parts[i]]) current[parts[i]] = {};
+      current = current[parts[i]];
+    }
+    current[parts[parts.length - 1]] = value;
+  }
 }
 exports.PingOneClient = PingOneClient;
 
-},{"./local-api.js":7}],10:[function(require,module,exports){
+},{"./local-api.js":8}],11:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -8792,7 +9956,7 @@ class SettingsManager {
 exports.SettingsManager = SettingsManager;
 const settingsManager = exports.settingsManager = new SettingsManager();
 
-},{"./crypto-utils.js":3}],11:[function(require,module,exports){
+},{"./crypto-utils.js":3}],12:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -8858,7 +10022,8 @@ class UIManager {
       'logs': document.getElementById('logs-view'),
       'delete-csv': document.getElementById('delete-csv-view'),
       'modify': document.getElementById('modify-view'),
-      'export': document.getElementById('export-view')
+      'export': document.getElementById('export-view'),
+      'progress': document.getElementById('progress-view')
     };
     // Navigation elements
     this.navItems = document.querySelectorAll('.nav-item');
@@ -9248,6 +10413,16 @@ class UIManager {
           // Hide the progress screen
           statusElement.style.display = 'none';
 
+          // Also hide the modal overlay if it exists (for import specifically)
+          if (viewName === 'import') {
+            const overlay = document.getElementById('import-progress-modal-overlay');
+            if (overlay) {
+              overlay.style.display = 'none';
+            }
+            // Remove blur from app container
+            document.querySelector('.app-container')?.classList.remove('blurred');
+          }
+
           // Reset the status to prevent it from showing again on page reload
           const currentStatus = this.lastRunStatus[viewName];
           if (currentStatus && currentStatus.status === 'In Progress') {
@@ -9323,6 +10498,9 @@ class UIManager {
    * @param {string} viewName - The view name
    */
   displayLastRunStatus(viewName) {
+    if (this.logger && typeof this.logger.debug === 'function') {
+      this.logger.debug(`Displaying last run status for ${viewName}`);
+    }
     const status = this.lastRunStatus[viewName];
     if (!status || status.operation === 'None') return;
 
@@ -9425,6 +10603,9 @@ class UIManager {
    * Update operation status for import/export/delete/modify views
    */
   updateOperationStatus(viewName, status) {
+    if (this.logger && typeof this.logger.debug === 'function') {
+      this.logger.debug(`Updating operation status for ${viewName}: ${JSON.stringify(status)}`);
+    }
     // Update the main status text
     const statusTextElement = document.getElementById(`${viewName}-progress-text`);
     if (statusTextElement) {
@@ -9472,21 +10653,27 @@ class UIManager {
    * Get CSS class for status
    */
   getStatusClass(status) {
-    switch (status.toLowerCase()) {
-      case 'completed':
+    // Ensure status is always a string
+    const safeStatus = typeof status === 'string' && status ? status : 'unknown';
+    switch (safeStatus.toLowerCase()) {
       case 'success':
-        return 'success';
-      case 'failed':
+        return 'status-success';
       case 'error':
-        return 'error';
+        return 'status-error';
+      case 'warning':
+        return 'status-warning';
+      case 'info':
+        return 'status-info';
+      case 'ready':
+        return 'status-ready';
       case 'in progress':
-      case 'running':
-        return 'info';
+        return 'status-in-progress';
+      case 'completed':
+        return 'status-completed';
       case 'cancelled':
-      case 'skipped':
-        return 'warning';
+        return 'status-cancelled';
       default:
-        return '';
+        return 'status-unknown';
     }
   }
 
@@ -9847,122 +11034,40 @@ class UIManager {
       console.warn('Logs view element not found');
       return;
     }
-
-    // Disable server logging during log loading to prevent feedback loop
-    if (this.logger && typeof this.logger.setLoadingLogs === 'function') {
-      this.logger.setLoadingLogs(true);
+    if (this.logger && typeof this.logger.debug === 'function') {
+      this.logger.debug('Loading and displaying logs');
     }
-
-    // Use console.log directly to avoid any potential logging feedback loop
-    const debugLog = function (message) {
-      let data = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : null;
-      console.debug(`[UI-Manager] ${message}`, data);
-    };
-
-    // Get or create log entries container
+    // Use /api/logs if available, else fallback to /api/logs/ui
+    let logsData;
+    try {
+      logsData = await this.fetchLogs();
+    } catch (e) {
+      // fallback to /api/logs/ui
+      const response = await fetch('/api/logs/ui?limit=1000');
+      logsData = await response.json();
+    }
     let logEntries = this.logsView.querySelector('.log-entries');
     if (!logEntries) {
       logEntries = document.createElement('div');
       logEntries.className = 'log-entries';
       this.logsView.appendChild(logEntries);
     }
-
-    // Show loading indicator
-    const loadingElement = document.createElement('div');
-    loadingElement.id = 'logs-loading';
-    loadingElement.textContent = 'Loading logs...';
-    loadingElement.style.padding = '1rem';
-    loadingElement.style.textAlign = 'center';
-    loadingElement.style.color = '#666';
-
-    // Clear existing content and show loading
     logEntries.innerHTML = '';
-    logEntries.appendChild(loadingElement);
-
-    // Update counter to show loading
-    const counter = document.getElementById('logs-counter');
-    if (counter) {
-      counter.textContent = 'Loading...';
+    if (logsData && Array.isArray(logsData.logs) && logsData.logs.length > 0) {
+      logsData.logs.forEach(log => {
+        const logElement = document.createElement('div');
+        logElement.className = 'log-entry';
+        logElement.textContent = log.message || JSON.stringify(log);
+        logEntries.appendChild(logElement);
+      });
+    } else {
+      const noLogsElement = document.createElement('div');
+      noLogsElement.className = 'log-entry info';
+      noLogsElement.textContent = 'No logs available';
+      logEntries.appendChild(noLogsElement);
     }
-    try {
-      // Fetch logs from the UI logs endpoint
-      debugLog('Fetching logs from /api/logs/ui...');
-      const response = await fetch('/api/logs/ui?limit=1000'); // Fetch more logs for pagination
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const responseData = await response.json();
-      debugLog('Received logs from server', {
-        count: responseData.logs?.length
-      });
-
-      // Clear loading indicator
-      logEntries.innerHTML = '';
-      if (responseData.success === true && Array.isArray(responseData.logs)) {
-        if (responseData.logs.length === 0) {
-          const noLogsElement = document.createElement('div');
-          noLogsElement.className = 'log-entry info';
-          noLogsElement.textContent = 'No logs available';
-          logEntries.appendChild(noLogsElement);
-
-          // Update pagination
-          this.logsPagination.allLogs = [];
-          this.logsPagination.totalRecords = 0;
-          this.calculatePagination();
-          this.updatePaginationControls();
-          return;
-        }
-
-        // Process logs in chronological order (oldest first, newest last)
-        // Reverse the array since server returns newest first, but we want oldest first
-        const logsToProcess = [...responseData.logs].reverse();
-
-        // Store all logs for pagination
-        this.logsPagination.allLogs = logsToProcess;
-        this.logsPagination.totalRecords = logsToProcess.length;
-        this.calculatePagination();
-
-        // Display current page logs
-        this.displayCurrentPageLogs();
-
-        // Setup pagination handlers if not already done
-        this.setupPaginationHandlers();
-      } else {
-        debugLog('No valid log entries found in response');
-        const noLogsElement = document.createElement('div');
-        noLogsElement.className = 'log-entry info';
-        noLogsElement.textContent = 'No logs available';
-        logEntries.appendChild(noLogsElement);
-
-        // Update pagination
-        this.logsPagination.allLogs = [];
-        this.logsPagination.totalRecords = 0;
-        this.calculatePagination();
-        this.updatePaginationControls();
-      }
-    } catch (error) {
-      console.error(`[UI-Manager] Error fetching logs: ${error.message}`, {
-        error: {
-          name: error.name,
-          message: error.message,
-          stack: error.stack
-        }
-      });
-      const errorElement = document.createElement('div');
-      errorElement.className = 'log-entry error';
-      errorElement.textContent = `Error loading logs: ${error.message}`;
-      logEntries.appendChild(errorElement);
-
-      // Update pagination
-      this.logsPagination.allLogs = [];
-      this.logsPagination.totalRecords = 0;
-      this.calculatePagination();
-      this.updatePaginationControls();
-    } finally {
-      // Re-enable server logging after log loading is complete
-      if (this.logger && typeof this.logger.setLoadingLogs === 'function') {
-        this.logger.setLoadingLogs(false);
-      }
+    if (this.logger && typeof this.logger.debug === 'function') {
+      this.logger.debug('Displayed logs in UI');
     }
   }
 
@@ -9998,7 +11103,6 @@ class UIManager {
       total: totalUsers
     });
     this.setupProgressLogHandlers();
-    this.setImportProgressIcon('importing');
 
     // Setup close button handler (idempotent)
     const closeBtn = document.getElementById('close-import-status');
@@ -10052,9 +11156,6 @@ class UIManager {
     // Remove blur - no longer needed
     // document.querySelector('.app-container')?.classList.remove('blurred');
 
-    // Reset icon
-    this.setImportProgressIcon('idle');
-
     // Clear progress log
     this.clearProgressLog();
   }
@@ -10065,6 +11166,7 @@ class UIManager {
    * @param {string} [text] - Optional button text
    */
   setImportButtonState(enabled, text) {
+    // Top button was removed, only handle bottom button
     const importButtonBottom = document.getElementById('start-import-btn-bottom');
     if (importButtonBottom) {
       importButtonBottom.disabled = !enabled;
@@ -10079,6 +11181,9 @@ class UIManager {
    * @param {string} message - The message to display
    */
   showSuccess(message) {
+    if (this.logger && typeof this.logger.info === 'function') {
+      this.logger.info(`Success notification: ${message}`);
+    }
     // Add green checkmark if not already present
     const messageWithCheckmark = message.startsWith('✅') ? message : `✅ ${message}`;
     this.showNotification(messageWithCheckmark, 'success');
@@ -10089,6 +11194,9 @@ class UIManager {
    * @param {string} message - The message to display
    */
   showWarning(message) {
+    if (this.logger && typeof this.logger.warn === 'function') {
+      this.logger.warn(`Warning notification: ${message}`);
+    }
     // Special handling for disclaimer warning
     if (message.includes('disclaimer')) {
       this.showDisclaimerWarning(message);
@@ -10151,6 +11259,9 @@ class UIManager {
    * @param {string} message - The message to display
    */
   showError(message) {
+    if (this.logger && typeof this.logger.error === 'function') {
+      this.logger.error(`Error notification: ${message}`);
+    }
     this.showNotification(message, 'error');
   }
 
@@ -10165,6 +11276,9 @@ class UIManager {
    */
   showRateLimitWarning(message) {
     let options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+    if (this.logger && typeof this.logger.warn === 'function') {
+      this.logger.warn(`Rate limit warning: ${message}`);
+    }
     const {
       isRetrying = false,
       retryAttempt,
@@ -10204,6 +11318,9 @@ class UIManager {
    */
   showNotification(message) {
     let type = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'info';
+    if (this.logger && typeof this.logger.info === 'function') {
+      this.logger.info(`${type.charAt(0).toUpperCase() + type.slice(1)} notification: ${message}`);
+    }
     let displayMessage = message;
     if (type === 'success' || typeof message === 'string' && message.trim().toLowerCase() === 'disclaimer accepted. you can now use the tool.') {
       // Ensure exactly one green check mark at the start, never two
@@ -10274,33 +11391,29 @@ class UIManager {
   updateSettingsForm(settings) {
     if (!settings) return;
 
-    // Map of setting IDs to their corresponding form field IDs
+    // Map of setting IDs to their corresponding form field IDs (support both styles)
     const settingFields = {
-      'environmentId': 'environment-id',
-      'apiClientId': 'api-client-id',
-      'apiSecret': 'api-secret',
-      'populationId': 'population-id',
-      'rateLimit': 'rate-limit'
+      'environmentId': ['environment-id', 'environmentId'],
+      'apiClientId': ['api-client-id', 'apiClientId'],
+      'apiSecret': ['api-secret', 'apiSecret'],
+      'populationId': ['population-id', 'populationId'],
+      'rateLimit': ['rate-limit', 'rateLimit']
     };
-
-    // Update each form field with the corresponding setting value
     Object.entries(settingFields).forEach(_ref5 => {
-      let [settingKey, fieldId] = _ref5;
-      const element = document.getElementById(fieldId);
-      if (element && settings[settingKey] !== undefined) {
-        element.value = settings[settingKey] || '';
-      }
+      let [settingKey, fieldIds] = _ref5;
+      fieldIds.forEach(fieldId => {
+        const element = document.getElementById(fieldId);
+        if (element && settings[settingKey] !== undefined) {
+          element.value = settings[settingKey] || '';
+        }
+      });
     });
   }
   init() {
     let callbacks = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
     // Store callbacks
     this.callbacks = callbacks;
-
-    // Setup progress close buttons
     this.setupProgressCloseButtons();
-
-    // Initialize navigation event listeners
     this.navItems.forEach(item => {
       if (item) {
         item.addEventListener('click', e => {
@@ -10312,75 +11425,98 @@ class UIManager {
         });
       }
     });
-
-    // Set up Start Import button
-    const startImportBtn = document.getElementById('start-import-btn');
-    if (startImportBtn) {
-      startImportBtn.addEventListener('click', e => {
+    // Settings form
+    const settingsForm = document.getElementById('settings-form');
+    if (settingsForm) {
+      settingsForm.addEventListener('submit', async e => {
         e.preventDefault();
-        if (this.callbacks.onImport) {
-          this.callbacks.onImport();
+        const formData = new FormData(settingsForm);
+        const settings = {};
+        formData.forEach((value, key) => {
+          settings[key] = value;
+        });
+        try {
+          const result = await this.submitSettingsForm(settings);
+          this.showSuccess('Settings saved successfully');
+          this.updateSettingsForm(result.settings || settings);
+        } catch (err) {
+          this.showError('Failed to save settings');
         }
       });
     }
-
-    // Set up Cancel Import button
-    const cancelImportBtn = document.getElementById('cancel-import-btn');
-    if (cancelImportBtn && this.callbacks.onCancelImport) {
-      cancelImportBtn.addEventListener('click', e => {
+    // Test connection button
+    const testConnBtn = document.getElementById('test-connection-btn');
+    if (testConnBtn) {
+      testConnBtn.addEventListener('click', async e => {
         e.preventDefault();
-        this.callbacks.onCancelImport();
+        const settingsForm = document.getElementById('settings-form');
+        const formData = new FormData(settingsForm);
+        const settings = {};
+        formData.forEach((value, key) => {
+          settings[key] = value;
+        });
+        try {
+          const result = await this.testConnection(settings);
+          this.showSuccess('Connection successful');
+          this.updateConnectionStatus('connected', 'Successfully connected to PingOne');
+        } catch (err) {
+          this.showError('Connection failed');
+          this.updateConnectionStatus('error', 'Failed to connect to PingOne');
+        }
       });
     }
-
-    // Set up Clear Logs button
+    // Export form
+    const exportForm = document.getElementById('export-form');
+    if (exportForm) {
+      exportForm.addEventListener('submit', async e => {
+        e.preventDefault();
+        const formData = new FormData(exportForm);
+        const data = {};
+        formData.forEach((value, key) => {
+          data[key] = value;
+        });
+        try {
+          const result = await this.submitExportForm(data);
+          this.showSuccess('Export completed');
+          const exportStatus = document.getElementById('export-status');
+          if (exportStatus) exportStatus.textContent = 'Export completed';
+        } catch (err) {
+          this.showError('Export failed');
+          const exportStatus = document.getElementById('export-status');
+          if (exportStatus) exportStatus.textContent = 'Export failed';
+        }
+      });
+    }
+    // Clear logs button
     const clearLogsBtn = document.getElementById('clear-logs');
     if (clearLogsBtn) {
-      // Hide the button by default
       clearLogsBtn.style.display = 'none';
       clearLogsBtn.addEventListener('click', async e => {
         e.preventDefault();
         try {
-          this.updateLogsOperationStatus('Clear Logs', true, 'Clearing log entries...');
-          const response = await fetch('/api/logs/ui', {
+          await fetch('/api/logs', {
             method: 'DELETE'
           });
-          const data = await response.json();
-          if (data.success) {
-            this.updateLogsOperationStatus('Clear Logs', true, 'Logs cleared successfully');
-            this.showNotification('Logs cleared. Only UI logs are cleared. Server logs are not affected.', 'info');
-            await this.loadAndDisplayLogs();
-          } else {
-            this.updateLogsOperationStatus('Clear Logs', false, `Failed to clear logs: ${data.error || 'Unknown error'}`);
-            this.showNotification('Failed to clear logs: ' + (data.error || 'Unknown error'), 'error');
-          }
+          this.showNotification('Logs cleared. Only UI logs are cleared. Server logs are not affected.', 'info');
+          await this.loadAndDisplayLogs();
         } catch (error) {
-          this.updateLogsOperationStatus('Clear Logs', false, `Error clearing logs: ${error.message}`);
           this.showNotification('Error clearing logs: ' + error.message, 'error');
         }
       });
     }
-
-    // Setup pagination handlers
     this.setupPaginationHandlers();
-
-    // Make sure the current view is visible
     const currentView = this.getLastView();
     this.showView(currentView);
-
-    // Show/hide Clear Logs button based on view
     const updateClearLogsBtnVisibility = viewName => {
       if (clearLogsBtn) {
         clearLogsBtn.style.display = viewName === 'logs' ? '' : 'none';
       }
     };
-    // Patch showView to also update button visibility
     const origShowView = this.showView.bind(this);
     this.showView = async viewName => {
       updateClearLogsBtnVisibility(viewName);
       return await origShowView(viewName);
     };
-    // Set initial visibility
     updateClearLogsBtnVisibility(currentView);
   }
 
@@ -10457,11 +11593,13 @@ class UIManager {
    * @param {Function} onError - Callback for submission error
    */
   addForm(formId, action, onSuccess, onError) {
+    if (!this.forms) this.forms = {};
     const form = document.getElementById(formId);
     if (!form) {
       console.error(`Form with ID '${formId}' not found`);
       return;
     }
+    this.forms[formId] = form;
     form.addEventListener('submit', async event => {
       event.preventDefault();
       const formData = new FormData(form);
@@ -10503,7 +11641,7 @@ class UIManager {
   updateElementContent(elementId, content) {
     const element = document.getElementById(elementId);
     if (element) {
-      element.textContent = content;
+      element.innerHTML = content;
     } else {
       console.error(`Element with ID ${elementId} not found`);
     }
@@ -10553,27 +11691,37 @@ class UIManager {
     }
   }
   setDeleteCsvButtonState(enabled, text) {
-    const deleteButton = document.getElementById('start-delete-csv-btn');
+    // Support both test and real IDs
+    const deleteButton = document.getElementById('delete-csv-button');
     const deleteButtonBottom = document.getElementById('start-delete-csv-btn-bottom');
-    if (deleteButton) {
-      deleteButton.disabled = !enabled;
-      if (text) {
-        deleteButton.textContent = text;
+    const deleteButtonReal = document.getElementById('start-delete-csv-btn');
+    [deleteButton, deleteButtonBottom, deleteButtonReal].forEach(btn => {
+      if (btn) {
+        btn.disabled = !enabled;
+        if (text) {
+          btn.textContent = text;
+        }
       }
-    }
-    if (deleteButtonBottom) {
-      deleteButtonBottom.disabled = !enabled;
-      if (text) {
-        deleteButtonBottom.textContent = text;
-      }
-    }
+    });
   }
   showDeleteCsvStatus(totalUsers) {
-    const deleteStatus = document.getElementById('delete-csv-status');
-    if (deleteStatus) {
-      deleteStatus.style.display = 'block';
-    }
-    this.updateDeleteCsvProgress(0, totalUsers, 'Starting delete operation...', {
+    // Don't show the progress screen - delete operations will work without progress window
+    // const deleteStatus = document.getElementById('delete-csv-status');
+    // if (deleteStatus) {
+    //     deleteStatus.style.display = 'block';
+    // }
+    // this.updateDeleteCsvProgress(0, totalUsers, 'Starting delete operation...', {
+    //     success: 0,
+    //     failed: 0,
+    //     skipped: 0
+    // });
+
+    // Instead, just log the start of the operation
+    this.addProgressLogEntry(`Starting delete operation for ${totalUsers} users`, 'info', {
+      total: totalUsers
+    }, 'delete-csv');
+    this.updateLastRunStatus('delete-csv', 'User Delete', 'In Progress', `Deleting ${totalUsers} users`, {
+      total: totalUsers,
       success: 0,
       failed: 0,
       skipped: 0
@@ -10581,10 +11729,101 @@ class UIManager {
   }
   updateDeleteCsvProgress(current, total, message) {
     let counts = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
-    const progressBar = document.getElementById('delete-csv-progress');
-    const progressPercent = document.getElementById('delete-csv-progress-percent');
-    const progressText = document.getElementById('delete-csv-progress-text');
-    const progressCount = document.getElementById('delete-csv-progress-count');
+    // Don't update progress screen elements - delete operations work without progress window
+    // const progressBar = document.getElementById('delete-csv-progress');
+    // const progressPercent = document.getElementById('delete-csv-progress-percent');
+    // const progressText = document.getElementById('delete-csv-progress-text');
+    // const progressCount = document.getElementById('delete-csv-progress-count');
+    // const successCount = document.getElementById('delete-csv-success-count');
+    // const failedCount = document.getElementById('delete-csv-failed-count');
+    // const skippedCount = document.getElementById('delete-csv-skipped-count');
+
+    // if (progressBar) {
+    //     const percent = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
+    //     progressBar.style.width = `${percent}%`;
+    //     progressBar.setAttribute('aria-valuenow', percent);
+    // }
+    // if (progressPercent) {
+    //     progressPercent.textContent = `${total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0}%`;
+    // }
+    // if (progressText) {
+    //     progressText.textContent = message || '';
+    // }
+    // if (progressCount) {
+    //     progressCount.textContent = `${current} of ${total} users`;
+    // }
+    // if (successCount) successCount.textContent = counts.success || 0;
+    // if (failedCount) failedCount.textContent = counts.failed || 0;
+    // if (skippedCount) skippedCount.textContent = counts.skipped || 0;
+
+    // Update icon based on status
+    // const progressIcon = document.getElementById('delete-csv-progress-icon');
+    // if (progressIcon) {
+    //     if (message.includes('completed') || message.includes('finished')) {
+    //         progressIcon.innerHTML = '<i class="fas fa-check-circle text-success"></i>';
+    //     } else if (message.includes('failed') || message.includes('error')) {
+    //         progressIcon.innerHTML = '<i class="fas fa-exclamation-circle text-danger"></i>';
+    //     } else if (message.includes('cancelled') || message.includes('cancelled')) {
+    //         progressIcon.innerHTML = '<i class="fas fa-times-circle text-warning"></i>';
+    //     } else {
+    //         progressIcon.innerHTML = '<i class="fas fa-trash text-danger"></i>';
+    //     }
+    // }
+
+    // Add progress log entry
+    this.addProgressLogEntry(message, 'info', counts, 'delete-csv');
+
+    // Update last run status with current progress
+    this.updateLastRunStatus('delete-csv', 'User Delete', 'In Progress', message, counts);
+  }
+  resetDeleteCsvState() {
+    // Progress screen will stay hidden - delete operations work without progress window
+    // No automatic showing of progress screen
+  }
+  resetDeleteCsvProgress() {
+    // Don't update progress screen elements - delete operations work without progress window
+    // const progressBar = document.getElementById('delete-csv-progress');
+    // if (progressBar) {
+    //     progressBar.style.width = '0%';
+    //     progressBar.setAttribute('aria-valuenow', 0);
+    // }
+    // const progressPercent = document.getElementById('delete-csv-progress-percent');
+    // if (progressPercent) progressPercent.textContent = '0%';
+    // const progressText = document.getElementById('delete-csv-progress-text');
+    // if (progressText) progressText.textContent = 'Ready';
+    // const progressCount = document.getElementById('delete-csv-progress-count');
+    // if (progressCount) progressCount.textContent = '0 of 0 users';
+    // const successCount = document.getElementById('delete-csv-success-count');
+    // if (successCount) successCount.textContent = '0';
+    // const failedCount = document.getElementById('delete-csv-failed-count');
+    // if (failedCount) failedCount.textContent = '0';
+    // const skippedCount = document.getElementById('delete-csv-skipped-count');
+    // if (skippedCount) skippedCount.textContent = '0';
+  }
+  showPopulationDeleteStatus() {
+    const populationDeleteStatus = document.getElementById('population-delete-status');
+    if (populationDeleteStatus) {
+      populationDeleteStatus.style.display = 'block';
+    }
+    this.updateLastRunStatus('population-delete', 'Population Delete', 'In Progress', 'Starting population delete operation...');
+    this.addProgressLogEntry('Starting population delete operation...', 'info', {}, 'population-delete');
+  }
+  hidePopulationDeleteStatus() {
+    const populationDeleteStatus = document.getElementById('population-delete-status');
+    if (populationDeleteStatus) {
+      populationDeleteStatus.style.display = 'none';
+    }
+    this.updateLastRunStatus('population-delete', 'Population Delete', 'Ready', 'Population delete operation completed');
+  }
+  updatePopulationDeleteProgress(current, total, message) {
+    let counts = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
+    const progressBar = document.getElementById('population-delete-progress');
+    const progressPercent = document.getElementById('population-delete-progress-percent');
+    const progressText = document.getElementById('population-delete-progress-text');
+    const progressCount = document.getElementById('population-delete-progress-count');
+    const successCount = document.getElementById('population-delete-success-count');
+    const failedCount = document.getElementById('population-delete-failed-count');
+    const skippedCount = document.getElementById('population-delete-skipped-count');
     if (progressBar) {
       const percent = total > 0 ? Math.min(100, Math.round(current / total * 100)) : 0;
       progressBar.style.width = `${percent}%`;
@@ -10599,41 +11838,15 @@ class UIManager {
     if (progressCount) {
       progressCount.textContent = `${current} of ${total} users`;
     }
-    if (counts.success !== undefined) {
-      const successCount = document.getElementById('delete-csv-success-count');
-      if (successCount) successCount.textContent = counts.success;
-    }
-    if (counts.failed !== undefined) {
-      const failedCount = document.getElementById('delete-csv-failed-count');
-      if (failedCount) failedCount.textContent = counts.failed;
-    }
-    if (counts.skipped !== undefined) {
-      const skippedCount = document.getElementById('delete-csv-skipped-count');
-      if (skippedCount) skippedCount.textContent = counts.skipped;
-    }
-  }
-  resetDeleteCsvState() {
-    // Progress screen will stay open until user manually closes it with X button
-    // No automatic hiding
-  }
-  resetDeleteCsvProgress() {
-    const progressBar = document.getElementById('delete-csv-progress');
-    if (progressBar) {
-      progressBar.style.width = '0%';
-      progressBar.setAttribute('aria-valuenow', 0);
-    }
-    const progressPercent = document.getElementById('delete-csv-progress-percent');
-    if (progressPercent) progressPercent.textContent = '0%';
-    const progressText = document.getElementById('delete-csv-progress-text');
-    if (progressText) progressText.textContent = 'Ready';
-    const progressCount = document.getElementById('delete-csv-progress-count');
-    if (progressCount) progressCount.textContent = '0 of 0 users';
-    const successCount = document.getElementById('delete-csv-success-count');
-    if (successCount) successCount.textContent = '0';
-    const failedCount = document.getElementById('delete-csv-failed-count');
-    if (failedCount) failedCount.textContent = '0';
-    const skippedCount = document.getElementById('delete-csv-skipped-count');
-    if (skippedCount) skippedCount.textContent = '0';
+    if (successCount) successCount.textContent = counts.success || 0;
+    if (failedCount) failedCount.textContent = counts.failed || 0;
+    if (skippedCount) skippedCount.textContent = counts.skipped || 0;
+
+    // Add progress log entry
+    this.addProgressLogEntry(message, 'info', counts, 'population-delete');
+
+    // Update last run status with current progress
+    this.updateLastRunStatus('population-delete', 'Population Delete', 'In Progress', message, counts);
   }
   setModifying(isModifying) {
     const modifyButton = document.getElementById('start-modify-btn');
@@ -10656,20 +11869,18 @@ class UIManager {
     }
   }
   setModifyCsvButtonState(enabled, text) {
-    const modifyButton = document.getElementById('start-modify-btn');
+    // Support both test and real IDs
+    const modifyButton = document.getElementById('modify-button');
     const modifyButtonBottom = document.getElementById('start-modify-btn-bottom');
-    if (modifyButton) {
-      modifyButton.disabled = !enabled;
-      if (text) {
-        modifyButton.textContent = text;
+    const modifyButtonReal = document.getElementById('start-modify-btn');
+    [modifyButton, modifyButtonBottom, modifyButtonReal].forEach(btn => {
+      if (btn) {
+        btn.disabled = !enabled;
+        if (text) {
+          btn.textContent = text;
+        }
       }
-    }
-    if (modifyButtonBottom) {
-      modifyButtonBottom.disabled = !enabled;
-      if (text) {
-        modifyButtonBottom.textContent = text;
-      }
-    }
+    });
   }
   showModifyStatus(totalUsers) {
     const modifyStatus = document.getElementById('modify-status');
@@ -10761,7 +11972,8 @@ class UIManager {
   updateSettingsSaveStatus(message) {
     let type = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'info';
     let show = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : true;
-    const statusElement = document.getElementById('settings-save-status');
+    // Use settings-connection-status for all messages
+    const statusElement = document.getElementById('settings-connection-status');
     const statusIcon = statusElement?.querySelector('.status-icon');
     const statusMessage = statusElement?.querySelector('.status-message');
     if (statusElement && statusIcon && statusMessage) {
@@ -10777,15 +11989,14 @@ class UIManager {
       };
       statusIcon.textContent = icons[type] || icons.info;
 
-      // Update the styling
-      statusElement.className = `settings-save-status ${type}`;
+      // Update the styling based on type
+      statusElement.className = `connection-status status-${type}`;
 
-      // Show or hide the status
-      if (show) {
-        statusElement.classList.add('show');
+      // Always show the status when a message is provided
+      if (show && message) {
         statusElement.style.display = 'block';
-      } else {
-        statusElement.classList.remove('show');
+      } else if (!show || !message) {
+        // Hide if explicitly hidden or no message
         statusElement.style.display = 'none';
       }
     }
@@ -10796,6 +12007,40 @@ class UIManager {
    */
   clearSettingsSaveStatus() {
     this.updateSettingsSaveStatus('', 'info', false);
+  }
+
+  /**
+   * Show or hide the home token status message
+   * @param {boolean} show - Whether to show the token status
+   * @param {string} message - Optional custom message
+   */
+  updateHomeTokenStatus(show) {
+    let message = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : null;
+    const tokenStatusElement = document.getElementById('home-token-status');
+    const goToSettingsBtn = document.getElementById('go-to-settings-btn');
+    if (tokenStatusElement) {
+      if (show) {
+        tokenStatusElement.style.display = 'block';
+
+        // Set custom message if provided
+        if (message) {
+          const messageElement = tokenStatusElement.querySelector('.token-status-message p');
+          if (messageElement) {
+            messageElement.textContent = message;
+          }
+        }
+      } else {
+        tokenStatusElement.style.display = 'none';
+      }
+    }
+
+    // Set up the button click handler if it exists
+    if (goToSettingsBtn && !goToSettingsBtn.hasAttribute('data-handler-attached')) {
+      goToSettingsBtn.setAttribute('data-handler-attached', 'true');
+      goToSettingsBtn.addEventListener('click', () => {
+        this.showView('settings');
+      });
+    }
   }
 
   // Export functionality UI methods
@@ -10903,16 +12148,19 @@ class UIManager {
    * @param {string} message - The progress message
    * @param {string} type - The type of entry (success, error, warning, info)
    * @param {Object} stats - Optional stats object
+   * @param {string} operation - Optional operation type (import, delete-csv, population-delete, etc.)
    */
   addProgressLogEntry(message) {
     let type = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'info';
     let stats = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : null;
+    let operation = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : 'import';
     const timestamp = new Date().toLocaleTimeString();
     const entry = {
       timestamp,
       message,
       type,
-      stats
+      stats,
+      operation
     };
 
     // Add to progress log array
@@ -10923,22 +12171,45 @@ class UIManager {
       this.progressLog = this.progressLog.slice(-this.maxProgressLogEntries);
     }
 
-    // Update the display
-    this.updateProgressLogDisplay();
+    // Update the display based on operation
+    this.updateProgressLogDisplay(operation);
   }
 
   /**
    * Update the progress log display
+   * @param {string} operation - The operation type to filter by
    */
   updateProgressLogDisplay() {
-    const logContainer = document.getElementById('progress-log-entries');
+    let operation = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 'import';
+    if (this.logger && typeof this.logger.debug === 'function') {
+      this.logger.debug(`Updating progress log display for ${operation}`);
+    }
+    // Get the appropriate log container based on operation
+    let logContainer;
+    let clearButton;
+    switch (operation) {
+      case 'delete-csv':
+        logContainer = document.getElementById('delete-csv-progress-log-entries');
+        clearButton = document.getElementById('clear-delete-csv-progress-log');
+        break;
+      case 'population-delete':
+        logContainer = document.getElementById('population-delete-progress-log-entries');
+        clearButton = document.getElementById('clear-population-delete-progress-log');
+        break;
+      default:
+        // import
+        logContainer = document.getElementById('progress-log-entries');
+        clearButton = document.getElementById('clear-progress-log');
+        break;
+    }
     if (!logContainer) return;
 
     // Clear existing entries
     logContainer.innerHTML = '';
 
-    // Add all entries
-    this.progressLog.forEach(entry => {
+    // Filter entries by operation and add them
+    const filteredEntries = this.progressLog.filter(entry => entry.operation === operation);
+    filteredEntries.forEach(entry => {
       const entryElement = document.createElement('div');
       entryElement.className = `progress-log-entry ${entry.type}`;
       const icon = this.getProgressLogIcon(entry.type);
@@ -10954,6 +12225,14 @@ class UIManager {
 
     // Scroll to bottom to show latest entries
     logContainer.scrollTop = logContainer.scrollHeight;
+
+    // Set up clear button handler if it exists
+    if (clearButton && !clearButton._handlerSet) {
+      clearButton.addEventListener('click', () => {
+        this.clearProgressLog(operation);
+      });
+      clearButton._handlerSet = true;
+    }
   }
 
   /**
@@ -10988,227 +12267,90 @@ class UIManager {
 
   /**
    * Clear the progress log
+   * @param {string} operation - The operation type to clear (optional, clears all if not specified)
    */
   clearProgressLog() {
-    this.progressLog = [];
-    this.updateProgressLogDisplay();
-    this.logger?.info('Progress log cleared');
-  }
-
-  /**
-   * Set up progress log event handlers
-   */
-  setupProgressLogHandlers() {
-    const clearButton = document.getElementById('clear-progress-log');
-    if (clearButton) {
-      clearButton.addEventListener('click', () => {
-        this.clearProgressLog();
-        this.showNotification('Progress log cleared', 'info');
-      });
+    let operation = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : null;
+    if (operation) {
+      // Clear only entries for the specific operation
+      this.progressLog = this.progressLog.filter(entry => entry.operation !== operation);
+      this.updateProgressLogDisplay(operation);
+      this.logger?.info(`Progress log cleared for operation: ${operation}`);
+    } else {
+      // Clear all entries
+      this.progressLog = [];
+      this.updateProgressLogDisplay();
+      this.logger?.info('Progress log cleared');
     }
   }
-
-  /**
-   * Show or hide the import status section
-   * @param {boolean} isImporting - Whether import is in progress
-   */
   setImporting(isImporting) {
-    this.isImporting = isImporting;
+    // Top button was removed, only handle bottom button
     const importButtonBottom = document.getElementById('start-import-btn-bottom');
+    const cancelButton = document.getElementById('cancel-import-btn');
     const cancelButtonBottom = document.getElementById('cancel-import-btn-bottom');
     if (importButtonBottom) {
       importButtonBottom.disabled = isImporting;
-      importButtonBottom.textContent = isImporting ? 'Importing...' : 'Import Users (v4.3.1)';
+      importButtonBottom.textContent = isImporting ? 'Importing...' : 'Import Users (v4.5)';
+    }
+    if (cancelButton) {
+      cancelButton.style.display = isImporting ? 'inline-block' : 'none';
     }
     if (cancelButtonBottom) {
       cancelButtonBottom.style.display = isImporting ? 'inline-block' : 'none';
     }
-    // Show/hide Cancel Import button
-    const cancelBtn = document.getElementById('cancel-import-progress');
-    if (cancelBtn) {
-      cancelBtn.style.display = isImporting ? 'inline-block' : 'none';
-    }
   }
-
-  /**
-   * Set custom text for import buttons
-   * @param {string} text - The text to display on import buttons
-   */
-  setImportButtonText(text) {
-    const importButtonBottom = document.getElementById('start-import-btn-bottom');
-    if (importButtonBottom) {
-      importButtonBottom.textContent = text;
-    }
-  }
-
-  /**
-   * Set the import progress icon based on status
-   * @param {string} status - 'importing', 'complete', 'error', or 'idle'
-   */
-  setImportProgressIcon(status) {
-    const iconContainer = document.getElementById('import-progress-icon');
-    if (!iconContainer) return;
-    let iconHtml = '';
-    switch (status) {
-      case 'importing':
-        iconHtml = '<span class="modern-spinner" title="Importing..."><span class="modern-spinner-circle"></span></span>';
-        break;
-      case 'complete':
-        iconHtml = '<i class="fas fa-check-circle" title="Import Complete"></i>';
-        break;
-      case 'error':
-        iconHtml = '<i class="fas fa-exclamation-circle" title="Import Failed"></i>';
-        break;
-      default:
-        iconHtml = '<i class="fas fa-arrow-rotate-right" title="Idle"></i>';
-    }
-    iconContainer.innerHTML = iconHtml;
-  }
-
-  /**
-   * Update import progress
-   * @param {number} current - Current progress
-   * @param {number} total - Total items
-   * @param {string} status - Status message
-   * @param {Object} results - Results object
-   * @param {string} populationName - Population name
-   */
-  updateImportProgress(current, total, status, results) {
-    let populationName = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : '';
-    // Update progress bar
+  updateImportProgress(current, total, message) {
+    let counts = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
     const progressBar = document.getElementById('import-progress');
     const progressPercent = document.getElementById('import-progress-percent');
     const progressText = document.getElementById('import-progress-text');
     const progressCount = document.getElementById('import-progress-count');
-    const populationNameElement = document.getElementById('import-population-name');
+    const successCount = document.getElementById('import-success-count');
+    const failedCount = document.getElementById('import-failed-count');
+    const skippedCount = document.getElementById('import-skipped-count');
+
+    // Ensure percent is always defined before use
+    const percent = total > 0 ? current / total * 100 : 0;
     if (progressBar) {
-      const percentage = total > 0 ? Math.round(current / total * 100) : 0;
-      progressBar.style.width = `${percentage}%`;
-      progressBar.setAttribute('aria-valuenow', current);
-    }
-    if (progressPercent) {
-      const percentage = total > 0 ? Math.round(current / total * 100) : 0;
-      progressPercent.textContent = `${percentage}%`;
-    }
-    if (progressText) {
-      progressText.textContent = status;
-    }
-    if (progressCount) {
-      progressCount.textContent = `${current} of ${total} users`;
-    }
-
-    // Update population name
-    if (populationNameElement) {
-      populationNameElement.textContent = populationName || 'Not selected';
-    }
-
-    // Update stats
-    if (results) {
-      const successCount = document.getElementById('import-success-count');
-      const failedCount = document.getElementById('import-failed-count');
-      const skippedCount = document.getElementById('import-skipped-count');
-      if (successCount) successCount.textContent = results.success || 0;
-      if (failedCount) failedCount.textContent = results.failed || 0;
-      if (skippedCount) skippedCount.textContent = results.skipped || 0;
-    }
-
-    // Update icon based on status
-    if (status.includes('completed') || status.includes('finished')) {
-      this.setImportProgressIcon('complete');
-    } else if (status.includes('failed') || status.includes('error')) {
-      this.setImportProgressIcon('error');
-    } else if (status.includes('cancelled') || status.includes('cancelled')) {
-      this.setImportProgressIcon('error');
-    } else {
-      this.setImportProgressIcon('importing');
-    }
-
-    // Add progress log entry
-    this.addProgressLogEntry(status, 'info', results);
-  }
-
-  /**
-   * Show population delete status
-   */
-  showPopulationDeleteStatus() {
-    const statusElement = document.getElementById('population-delete-status');
-    if (statusElement) {
-      statusElement.style.display = 'block';
-    }
-  }
-
-  /**
-   * Hide population delete status
-   */
-  hidePopulationDeleteStatus() {
-    const statusElement = document.getElementById('population-delete-status');
-    if (statusElement) {
-      statusElement.style.display = 'none';
-    }
-  }
-
-  /**
-   * Update population delete progress
-   * @param {number} current - Current progress
-   * @param {number} total - Total items
-   * @param {string} message - Status message
-   * @param {Object} counts - Results object
-   */
-  updatePopulationDeleteProgress(current, total, message) {
-    let counts = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
-    const progressBar = document.getElementById('population-delete-progress');
-    const progressPercent = document.getElementById('population-delete-progress-percent');
-    const progressText = document.getElementById('population-delete-progress-text');
-    const progressCount = document.getElementById('population-delete-progress-count');
-    const successCount = document.getElementById('population-delete-success-count');
-    const failedCount = document.getElementById('population-delete-failed-count');
-    const skippedCount = document.getElementById('population-delete-skipped-count');
-    if (progressBar) {
-      const percent = total > 0 ? current / total * 100 : 0;
       progressBar.style.width = `${percent}%`;
       progressBar.setAttribute('aria-valuenow', percent);
     }
-    if (progressPercent) progressPercent.textContent = `${Math.round(current / total * 100)}%`;
+    if (progressPercent) progressPercent.textContent = `${Math.round(percent)}%`;
     if (progressText) progressText.textContent = message;
     if (progressCount) progressCount.textContent = `${current} of ${total} users`;
     if (successCount) successCount.textContent = counts.success || 0;
     if (failedCount) failedCount.textContent = counts.failed || 0;
     if (skippedCount) skippedCount.textContent = counts.skipped || 0;
+
+    // Add progress log entry
+    this.addProgressLogEntry(message, 'info', {
+      current,
+      total,
+      ...counts
+    }, 'import');
+    this.updateLastRunStatus('import', `Import Progress: ${current}/${total} (${Math.round(percent)}%)`);
   }
+  setupProgressLogHandlers() {
+    // Setup handlers for progress log functionality
+    const progressLogContainer = document.getElementById('progress-log');
+    if (progressLogContainer) {
+      // Clear any existing handlers
+      progressLogContainer.innerHTML = '';
 
-  /**
-   * Reset import state - called when import is cancelled or completed
-   */
-  resetImportState() {
-    // Reset importing flag
-    this.isImporting = false;
-
-    // Hide modal overlay
-    const overlay = document.getElementById('import-progress-modal-overlay');
-    if (overlay) overlay.style.display = 'none';
-
-    // Reset progress display
-    this.resetImportProgress();
-
-    // Reset import button state
-    this.setImporting(false);
-
-    // Clear any loading states
-    this.showLoading(false);
-
-    // Reset icon to idle
-    this.setImportProgressIcon('idle');
-
-    // Clear progress log
-    this.clearProgressLog();
-    this.logger?.info('Import state reset');
+      // Add event listeners for log entries if needed
+      progressLogContainer.addEventListener('click', e => {
+        if (e.target.classList.contains('log-entry')) {
+          // Handle log entry clicks if needed
+          console.log('Log entry clicked:', e.target.textContent);
+        }
+      });
+    }
   }
 }
-
-// No need for module.exports with ES modules
+// ... nothing after this ...
 exports.UIManager = UIManager;
 
-},{}],12:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -11217,7 +12359,7 @@ Object.defineProperty(exports, "__esModule", {
 exports.VersionManager = void 0;
 class VersionManager {
   constructor() {
-    this.version = '4.3.1'; // Update this with each new version
+    this.version = '4.5'; // Update this with each new version
     console.log(`Version Manager initialized with version ${this.version}`);
   }
   getVersion() {

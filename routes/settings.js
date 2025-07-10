@@ -90,176 +90,6 @@ async function updateEnvironmentVariables(settings) {
     }
 }
 
-// Helper function to update .env file
-async function updateEnvFile(settings) {
-    try {
-        let envContent = '';
-        
-        // Read existing .env file if it exists
-        try {
-            envContent = await fs.readFile(ENV_FILE_PATH, 'utf8');
-        } catch (error) {
-            if (error.code !== 'ENOENT') {
-                throw error;
-            }
-            // File doesn't exist, start with empty content
-        }
-        
-        // Parse existing content
-        const envLines = envContent.split('\n');
-        const envMap = new Map();
-        
-        // Parse existing environment variables
-        for (const line of envLines) {
-            const trimmed = line.trim();
-            if (trimmed && !trimmed.startsWith('#')) {
-                const equalIndex = trimmed.indexOf('=');
-                if (equalIndex > 0) {
-                    const key = trimmed.substring(0, equalIndex);
-                    const value = trimmed.substring(equalIndex + 1);
-                    envMap.set(key, value);
-                }
-            }
-        }
-        
-        // Update with new settings
-        if (settings.environmentId) {
-            envMap.set('PINGONE_ENVIRONMENT_ID', settings.environmentId);
-        }
-        if (settings.apiClientId) {
-            envMap.set('PINGONE_CLIENT_ID', settings.apiClientId);
-        }
-        if (settings.apiSecret) {
-            // For .env file, we want to store the original unencrypted value
-            // The frontend sends encrypted values, but we should store the original
-            // Check if this is a new API secret (not encrypted) or if we need to handle it differently
-            if (settings.apiSecret.startsWith('enc:')) {
-                // This is an encrypted value from the frontend
-                // We can't decrypt it without the encryption key, so we'll skip updating the .env file
-                // The .env file will keep its current value
-                logger.info('Skipping encrypted API secret for .env file (keeping existing value)');
-            } else {
-                // This is an unencrypted value, store it directly
-                envMap.set('PINGONE_CLIENT_SECRET', settings.apiSecret);
-                logger.info('Stored unencrypted API secret in .env file');
-            }
-        }
-        if (settings.populationId) {
-            envMap.set('PINGONE_POPULATION_ID', settings.populationId);
-        }
-        if (settings.region) {
-            envMap.set('PINGONE_REGION', settings.region);
-        }
-        if (settings.rateLimit) {
-            envMap.set('RATE_LIMIT', settings.rateLimit.toString());
-        }
-        
-        // Write back to .env file
-        const newEnvContent = Array.from(envMap.entries())
-            .map(([key, value]) => `${key}=${value}`)
-            .join('\n') + '\n';
-        
-        await fs.writeFile(ENV_FILE_PATH, newEnvContent, 'utf8');
-        logger.info('Updated .env file with new settings');
-        
-    } catch (error) {
-        logger.warn('Failed to update .env file', { error: error.message });
-        // Don't fail the entire operation if .env update fails
-    }
-}
-
-// Helper function to fetch default population from PingOne
-async function fetchDefaultPopulation(environmentId, clientId, clientSecret) {
-    try {
-        const https = await import('https');
-        const { URLSearchParams } = await import('url');
-        
-        // Get access token
-        const tokenUrl = `https://auth.pingone.com/${environmentId}/as/token`;
-        const postData = new URLSearchParams({
-            'grant_type': 'client_credentials'
-        }).toString();
-        
-        const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-        
-        const token = await new Promise((resolve, reject) => {
-            const options = {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'Authorization': `Basic ${credentials}`,
-                    'Content-Length': Buffer.byteLength(postData)
-                }
-            };
-
-            const req = https.request(tokenUrl, options, (res) => {
-                let data = '';
-                res.on('data', (chunk) => data += chunk);
-                res.on('end', () => {
-                    try {
-                        const response = JSON.parse(data);
-                        if (response.access_token) {
-                            resolve(response.access_token);
-                        } else {
-                            reject(new Error(`Token request failed: ${data}`));
-                        }
-                    } catch (error) {
-                        reject(new Error(`Invalid JSON response: ${data}`));
-                    }
-                });
-            });
-
-            req.on('error', reject);
-            req.write(postData);
-            req.end();
-        });
-
-        // Get populations
-        const apiUrl = `https://api.pingone.com/v1/environments/${environmentId}/populations`;
-        
-        const populations = await new Promise((resolve, reject) => {
-            const options = {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            };
-
-            const req = https.request(apiUrl, options, (res) => {
-                let data = '';
-                res.on('data', (chunk) => data += chunk);
-                res.on('end', () => {
-                    try {
-                        const response = JSON.parse(data);
-                        resolve(response);
-                    } catch (error) {
-                        reject(new Error(`Invalid JSON response: ${data}`));
-                    }
-                });
-            });
-
-            req.on('error', reject);
-            req.end();
-        });
-
-        if (populations._embedded && populations._embedded.populations && populations._embedded.populations.length > 0) {
-            const defaultPopulation = populations._embedded.populations[0];
-            logger.info('Auto-detected default population', {
-                populationId: '***' + defaultPopulation.id.slice(-4),
-                name: defaultPopulation.name,
-                userCount: defaultPopulation.userCount || 0
-            });
-            return defaultPopulation.id;
-        }
-        
-        return null;
-    } catch (error) {
-        logger.warn('Failed to fetch default population', { error: error.message });
-        return null;
-    }
-}
-
 // Helper function to read settings
 async function readSettings() {
     // First, check environment variables
@@ -306,11 +136,96 @@ async function readSettings() {
         
         return settings;
     } catch (error) {
-        if (error.code === "ENOENT") {
-            // Return environment-based settings if file doesn't exist
+        if (error.code === 'ENOENT') {
+            // Settings file doesn't exist, return environment settings
+            logger.info('Settings file not found, using environment variables only');
             return envSettings;
         }
-        throw error;
+        logger.error('Error reading settings file', { error: error.message });
+        return envSettings;
+    }
+}
+
+// Helper function to fetch default population
+async function fetchDefaultPopulation(environmentId, clientId, clientSecret) {
+    try {
+        const https = await import('https');
+        
+        // Get access token first
+        const tokenUrl = 'https://auth.pingone.com/as/token.oauth2';
+        const tokenData = new URLSearchParams({
+            grant_type: 'client_credentials',
+            client_id: clientId,
+            client_secret: clientSecret
+        });
+
+        const token = await new Promise((resolve, reject) => {
+            const req = https.request(tokenUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                }
+            }, (res) => {
+                let data = '';
+                res.on('data', (chunk) => data += chunk);
+                res.on('end', () => {
+                    try {
+                        const response = JSON.parse(data);
+                        resolve(response.access_token);
+                    } catch (error) {
+                        reject(new Error(`Invalid token response: ${data}`));
+                    }
+                });
+            });
+
+            req.on('error', reject);
+            req.write(tokenData.toString());
+            req.end();
+        });
+
+        // Fetch populations
+        const apiUrl = `https://api.pingone.com/v1/environments/${environmentId}/populations`;
+        
+        const populations = await new Promise((resolve, reject) => {
+            const options = {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            };
+
+            const req = https.request(apiUrl, options, (res) => {
+                let data = '';
+                res.on('data', (chunk) => data += chunk);
+                res.on('end', () => {
+                    try {
+                        const response = JSON.parse(data);
+                        resolve(response);
+                    } catch (error) {
+                        reject(new Error(`Invalid JSON response: ${data}`));
+                    }
+                });
+            });
+
+            req.on('error', reject);
+            req.end();
+        });
+
+        if (populations._embedded && populations._embedded.populations && populations._embedded.populations.length > 0) {
+            const defaultPopulation = populations._embedded.populations[0];
+            logger.info('Auto-detected default population', {
+                populationId: '***' + defaultPopulation.id.slice(-4),
+                name: defaultPopulation.name,
+                userCount: defaultPopulation.userCount || 0
+            });
+            return defaultPopulation.id;
+        }
+        
+        return null;
+    } catch (error) {
+        logger.warn('Failed to fetch default population', { error: error.message });
+        return null;
     }
 }
 
@@ -319,40 +234,145 @@ router.get("/", async (req, res) => {
     try {
         const settings = await readSettings();
         
-        // Check if apiSecret is encrypted and clear it if it might cause decryption issues
-        if (settings.apiSecret && settings.apiSecret.startsWith('enc:')) {
-            // For now, we'll return the encrypted value and let the frontend handle decryption
-            // The frontend will clear it if decryption fails
-        }
+        // Convert kebab-case to camelCase for frontend compatibility
+        const frontendSettings = {
+            environmentId: settings['environment-id'] || settings.environmentId || '',
+            apiClientId: settings['api-client-id'] || settings.apiClientId || '',
+            apiSecret: settings['api-secret'] || settings.apiSecret || '',
+            populationId: settings['population-id'] || settings.populationId || '',
+            region: settings.region || 'NorthAmerica',
+            rateLimit: parseInt(settings['rate-limit'] || settings.rateLimit || '100')
+        };
         
-        // Log the settings being returned (without sensitive data)
-        const logSettings = { ...settings };
-        if (logSettings.apiSecret) {
-            logSettings.apiSecret = '***';
-        }
-        logger.info('Settings requested and returned', {
-            environmentId: logSettings.environmentId ? '***' + logSettings.environmentId.slice(-4) : 'not set',
-            region: logSettings.region,
-            apiClientId: logSettings.apiClientId ? '***' + logSettings.apiClientId.slice(-4) : 'not set',
-            populationId: logSettings.populationId ? '***' + logSettings.populationId.slice(-4) : 'not set'
-        });
-        
-        // Return all settings including apiSecret (it's already encrypted)
-        res.json({
-            success: true,
-            data: settings
-        });
+        res.json({ success: true, data: frontendSettings });
     } catch (error) {
-        logger.error("Error reading settings", { error: error.message });
-        res.status(500).json({
-            success: false,
-            error: "Failed to load settings"
+        logger.error('Error getting settings', { error: error.message });
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to get settings',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
 });
 
 // Update settings
 router.post("/", express.json(), async (req, res) => {
+    try {
+        const newSettings = { ...req.body };
+        
+        // Convert camelCase to kebab-case for file storage
+        const fileSettings = {
+            'environment-id': newSettings.environmentId || newSettings['environment-id'] || '',
+            'api-client-id': newSettings.apiClientId || newSettings['api-client-id'] || '',
+            'api-secret': newSettings.apiSecret || newSettings['api-secret'] || '',
+            'population-id': newSettings.populationId || newSettings['population-id'] || '',
+            region: newSettings.region || 'NorthAmerica',
+            'rate-limit': (newSettings.rateLimit || newSettings['rate-limit'] || 100).toString()
+        };
+        
+        // Clean up environment ID - remove any surrounding quotes or backticks
+        if (fileSettings['environment-id']) {
+            fileSettings['environment-id'] = fileSettings['environment-id']
+                .replace(/^[`'"]+/, '')  // Remove leading quotes/backticks
+                .replace(/[`'"]+$/, ''); // Remove trailing quotes/backticks
+            
+            logger.info('Processing environment ID for save', { 
+                environmentId: fileSettings['environment-id'] ? '***' + fileSettings['environment-id'].slice(-4) : 'not set' 
+            });
+        }
+        
+        // Only validate required fields if they are provided in the request
+        // This allows the frontend to save partial settings
+        if (fileSettings['environment-id'] !== undefined && !fileSettings['environment-id']) {
+            return res.status(400).json({
+                success: false,
+                error: "Environment ID cannot be empty if provided"
+            });
+        }
+        
+        if (fileSettings['api-client-id'] !== undefined && !fileSettings['api-client-id']) {
+            return res.status(400).json({
+                success: false,
+                error: "API Client ID cannot be empty if provided"
+            });
+        }
+        
+        // Ensure we're not saving any placeholder values
+        if (fileSettings['environment-id'] === 'updated-env') {
+            return res.status(400).json({
+                success: false,
+                error: "Please enter a valid environment ID"
+            });
+        }
+
+        // Read existing settings to preserve the API secret if not provided in the update
+        try {
+            const existingSettings = await readSettings();
+            // Only update api-secret if a new value is provided and not masked
+            if (
+              !('api-secret' in fileSettings) ||
+              fileSettings['api-secret'] === '' ||
+              fileSettings['api-secret'] === '********'
+            ) {
+              fileSettings['api-secret'] = existingSettings['api-secret'] || existingSettings.apiSecret || '';
+              logger.info('Preserved existing API secret (not overwritten)');
+            } else {
+              logger.info('API secret will be updated with new value');
+            }
+        } catch (error) {
+            logger.warn('Could not read existing settings to preserve API secret', { error: error.message });
+        }
+
+        // Ensure settings directory exists
+        const settingsDir = dirname(SETTINGS_PATH);
+        await fs.mkdir(settingsDir, { recursive: true });
+
+        // Write settings to file
+        await fs.writeFile(SETTINGS_PATH, JSON.stringify(fileSettings, null, 2), "utf8");
+        
+        // Update environment variables
+        await updateEnvironmentVariables({
+            environmentId: fileSettings['environment-id'],
+            apiClientId: fileSettings['api-client-id'],
+            apiSecret: fileSettings['api-secret'],
+            populationId: fileSettings['population-id'],
+            region: fileSettings.region,
+            rateLimit: parseInt(fileSettings['rate-limit'])
+        });
+        
+        logger.info('Settings updated successfully', {
+            hasEnvironmentId: !!fileSettings['environment-id'],
+            hasApiClientId: !!fileSettings['api-client-id'],
+            hasApiSecret: !!fileSettings['api-secret'],
+            hasPopulationId: !!fileSettings['population-id'],
+            region: fileSettings.region
+        });
+        
+        res.json({ 
+            success: true, 
+            message: 'Settings updated successfully',
+            settings: {
+                environmentId: fileSettings['environment-id'] ? '***' + fileSettings['environment-id'].slice(-4) : 'not set',
+                apiClientId: fileSettings['api-client-id'] ? '***' + fileSettings['api-client-id'].slice(-4) : 'not set',
+                apiSecret: fileSettings['api-secret'] ? '***' + fileSettings['api-secret'].slice(-4) : 'not set',
+                populationId: fileSettings['population-id'] ? '***' + fileSettings['population-id'].slice(-4) : 'not set',
+                region: fileSettings.region
+            }
+        });
+        
+    } catch (error) {
+        logger.error('Error updating settings', { error: error.message });
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to update settings',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+});
+
+// PUT endpoint for settings (same as POST for compatibility)
+router.put("/", express.json(), async (req, res) => {
+    // Delegate to POST handler by calling the same logic
     try {
         const newSettings = { ...req.body };
         
@@ -399,111 +419,57 @@ router.post("/", express.json(), async (req, res) => {
         // Read existing settings to preserve the API secret if not provided in the update
         try {
             const existingSettings = await readSettings();
-            // If apiSecret exists in existing settings but not in the update, preserve it
-            if (existingSettings.apiSecret && !newSettings.apiSecret) {
-                newSettings.apiSecret = existingSettings.apiSecret;
+            // Only update apiSecret if a new value is provided and not masked
+            if (
+              !('apiSecret' in newSettings) ||
+              newSettings.apiSecret === '' ||
+              newSettings.apiSecret === '********'
+            ) {
+              newSettings.apiSecret = existingSettings.apiSecret;
+              logger.info('Preserved existing API secret (not overwritten)');
+            } else {
+              logger.info('API secret will be updated with new value');
             }
-            
-            // Merge with existing settings to preserve any missing fields
-            const mergedSettings = { ...existingSettings, ...newSettings };
-            
-            // Ensure directory exists
-            const settingsDir = dirname(SETTINGS_PATH);
-            await fs.mkdir(settingsDir, { recursive: true });
-            
-            // Save merged settings to file
-            await fs.writeFile(SETTINGS_PATH, JSON.stringify(mergedSettings, null, 2), "utf8");
-            
-            // Update environment variables (but skip encrypted API secret)
-            await updateEnvironmentVariables(mergedSettings);
-
-            // Update .env file
-            await updateEnvFile(mergedSettings);
-            
-            // Update rate limiter if rate limit changed
-            if (mergedSettings.rateLimit) {
-                // Get the app instance to call updateRateLimiter
-                const app = req.app;
-                if (app && typeof app.get === 'function') {
-                    const updateRateLimiter = app.get('updateRateLimiter');
-                    if (updateRateLimiter && typeof updateRateLimiter === 'function') {
-                        updateRateLimiter(mergedSettings.rateLimit);
-                    }
-                }
-            }
-            
-            // Log successful settings save
-            logger.info('Settings saved successfully', {
-                environmentId: mergedSettings.environmentId ? '***' + mergedSettings.environmentId.slice(-4) : 'not set',
-                region: mergedSettings.region,
-                apiClientId: mergedSettings.apiClientId ? '***' + mergedSettings.apiClientId.slice(-4) : 'not set',
-                populationId: mergedSettings.populationId ? '***' + mergedSettings.populationId.slice(-4) : 'not set',
-                hasApiSecret: !!mergedSettings.apiSecret,
-                apiSecretEncrypted: mergedSettings.apiSecret ? mergedSettings.apiSecret.startsWith('enc:') : false
-            });
-            
-            // Don't send the API secret back in the response
-            const { apiSecret, ...responseSettings } = mergedSettings;
-            
-            res.json({
-                success: true,
-                message: "Settings saved successfully",
-                data: responseSettings
-            });
         } catch (error) {
-            // If we can't read existing settings, continue with the new settings as-is
-            logger.warn("Could not read existing settings", { error: error.message });
-            
-            // Ensure directory exists
-            const settingsDir = dirname(SETTINGS_PATH);
-            await fs.mkdir(settingsDir, { recursive: true });
-            
-            // Save new settings to file
-            await fs.writeFile(SETTINGS_PATH, JSON.stringify(newSettings, null, 2), "utf8");
-            
-            // Update environment variables (but skip encrypted API secret)
-            await updateEnvironmentVariables(newSettings);
-
-            // Update .env file
-            await updateEnvFile(newSettings);
-            
-            // Update rate limiter if rate limit changed
-            if (newSettings.rateLimit) {
-                // Get the app instance to call updateRateLimiter
-                const app = req.app;
-                if (app && typeof app.get === 'function') {
-                    const updateRateLimiter = app.get('updateRateLimiter');
-                    if (updateRateLimiter && typeof updateRateLimiter === 'function') {
-                        updateRateLimiter(newSettings.rateLimit);
-                    }
-                }
-            }
-            
-            // Log successful settings save
-            logger.info('Settings saved successfully', {
-                environmentId: newSettings.environmentId ? '***' + newSettings.environmentId.slice(-4) : 'not set',
-                region: newSettings.region,
-                apiClientId: newSettings.apiClientId ? '***' + newSettings.apiClientId.slice(-4) : 'not set',
-                populationId: newSettings.populationId ? '***' + newSettings.populationId.slice(-4) : 'not set',
-                hasApiSecret: !!newSettings.apiSecret,
-                apiSecretEncrypted: newSettings.apiSecret ? newSettings.apiSecret.startsWith('enc:') : false
-            });
-            
-            // Don't send the API secret back in the response
-            const { apiSecret, ...responseSettings } = newSettings;
-            
-            res.json({
-                success: true,
-                message: "Settings saved successfully",
-                data: responseSettings
-            });
+            logger.warn('Could not read existing settings to preserve API secret', { error: error.message });
         }
+
+        // Ensure settings directory exists
+        const settingsDir = dirname(SETTINGS_PATH);
+        await fs.mkdir(settingsDir, { recursive: true });
+
+        // Write settings to file
+        await fs.writeFile(SETTINGS_PATH, JSON.stringify(newSettings, null, 2), "utf8");
+        
+        // Update environment variables
+        await updateEnvironmentVariables(newSettings);
+        
+        logger.info('Settings updated successfully', {
+            hasEnvironmentId: !!newSettings.environmentId,
+            hasApiClientId: !!newSettings.apiClientId,
+            hasApiSecret: !!newSettings.apiSecret,
+            hasPopulationId: !!newSettings.populationId,
+            region: newSettings.region
+        });
+        
+        res.json({ 
+            success: true, 
+            message: 'Settings updated successfully',
+            settings: {
+                environmentId: newSettings.environmentId ? '***' + newSettings.environmentId.slice(-4) : 'not set',
+                apiClientId: newSettings.apiClientId ? '***' + newSettings.apiClientId.slice(-4) : 'not set',
+                apiSecret: newSettings.apiSecret ? '***' + newSettings.apiSecret.slice(-4) : 'not set',
+                populationId: newSettings.populationId ? '***' + newSettings.populationId.slice(-4) : 'not set',
+                region: newSettings.region
+            }
+        });
+        
     } catch (error) {
-        logger.error("Error saving settings", { error: error.message });
-        res.status(500).json({
-            success: false,
-            error: "Failed to save settings",
-            details: error.message
+        logger.error('Error updating settings', { error: error.message });
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to update settings',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
 });

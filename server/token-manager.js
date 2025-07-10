@@ -19,9 +19,9 @@ class TokenManager {
         this.isRefreshing = false;
         this.refreshQueue = [];
         
-        // Rate limiting for token requests
+        // Rate limiting for token requests - FIXED to 50ms
         this.lastTokenRequest = 0;
-        this.minRequestInterval = 500; // Minimum 500ms between token requests (2 requests per second max)
+        this.minRequestInterval = 50; // Minimum 50ms between token requests (20/sec)
     }
 
     /**
@@ -30,7 +30,8 @@ class TokenManager {
      */
     async readSettingsFromFile() {
         try {
-            const settingsPath = path.join(__dirname, '../data/settings.json');
+            // Use process.cwd() for a consistent, project-root-relative path
+            const settingsPath = path.join(process.cwd(), 'data', 'settings.json');
             const data = await fs.readFile(settingsPath, 'utf8');
             return JSON.parse(data);
         } catch (error) {
@@ -44,28 +45,54 @@ class TokenManager {
      * @private
      */
     async getCredentials() {
+        // Helper to get a setting by multiple possible keys
+        const getSetting = (obj, ...keys) => {
+            for (const key of keys) {
+                if (obj && typeof obj === 'object' && obj[key]) return obj[key];
+            }
+            return undefined;
+        };
+
         // First try environment variables
         let clientId = process.env.PINGONE_CLIENT_ID;
         let clientSecret = process.env.PINGONE_CLIENT_SECRET;
         let environmentId = process.env.PINGONE_ENVIRONMENT_ID;
         let region = process.env.PINGONE_REGION || 'NorthAmerica';
 
-        // If environment variables are missing, try settings file
-        if (!clientId || !clientSecret || !environmentId) {
-            this.logger.info('Environment variables missing, reading from settings file');
+        // Check if environment variables are actually set (not just empty strings)
+        const hasEnvVars = clientId && clientSecret && environmentId;
+        
+        if (!hasEnvVars) {
+            this.logger.info('Environment variables missing or incomplete, reading from settings file');
             const settings = await this.readSettingsFromFile();
             
             if (settings) {
-                clientId = clientId || settings.apiClientId;
-                environmentId = environmentId || settings.environmentId;
-                region = region || settings.region || 'NorthAmerica';
+                this.logger.debug('Settings loaded from file:', Object.keys(settings));
                 
-                // Handle API secret from settings file
-                if (!clientSecret && settings.apiSecret) {
-                    if (settings.apiSecret.startsWith('enc:')) {
+                // Debug: Check what we're actually getting
+                this.logger.debug('Raw settings:', {
+                    'api-client-id': settings['api-client-id'],
+                    'environment-id': settings['environment-id'],
+                    'api-secret': settings['api-secret'],
+                    'apiClientId': settings.apiClientId,
+                    'environmentId': settings.environmentId,
+                    'apiSecret': settings.apiSecret
+                });
+                
+                // Accept both camelCase and kebab-case
+                clientId = clientId || getSetting(settings, 'apiClientId', 'api-client-id');
+                environmentId = environmentId || getSetting(settings, 'environmentId', 'environment-id');
+                region = region || getSetting(settings, 'region') || 'NorthAmerica';
+
+                // Prefer plain api-secret if both exist
+                let apiSecret = getSetting(settings, 'api-secret', 'apiSecret');
+                
+                this.logger.debug('API secret selected:', apiSecret ? (apiSecret.startsWith('enc:') ? '[ENCRYPTED]' : '[PLAIN]') : 'not found');
+                if (!clientSecret && apiSecret) {
+                    if (apiSecret.startsWith('enc:')) {
                         // This is an encrypted value, try to decrypt it
                         try {
-                            clientSecret = await this.decryptApiSecret(settings.apiSecret);
+                            clientSecret = await this.decryptApiSecret(apiSecret);
                             if (clientSecret) {
                                 this.logger.info('Successfully decrypted API secret from settings file');
                             } else {
@@ -78,11 +105,26 @@ class TokenManager {
                             return null;
                         }
                     } else {
-                        // This is an unencrypted value
-                        clientSecret = settings.apiSecret;
+                        // This is an unencrypted value - use it directly
+                        clientSecret = apiSecret;
+                        this.logger.info('Using plain text API secret from settings file');
                     }
                 }
+                
+                this.logger.debug('Final credentials check:', {
+                    clientId: clientId ? '***' + clientId.slice(-4) : 'missing',
+                    environmentId: environmentId ? '***' + environmentId.slice(-4) : 'missing',
+                    clientSecret: clientSecret ? '***' + clientSecret.slice(-4) : 'missing',
+                    region: region
+                });
             }
+        }
+
+
+        // Final check: all required credentials must be present
+        if (!clientId || !clientSecret || !environmentId) {
+            this.logger.error('Missing PingOne credentials: clientId, clientSecret, or environmentId');
+            return null;
         }
 
         return { clientId, clientSecret, environmentId, region };
@@ -122,6 +164,7 @@ class TokenManager {
     canMakeTokenRequest() {
         const now = Date.now();
         if (now - this.lastTokenRequest < this.minRequestInterval) {
+            // Instead of throwing, just return false and let the caller handle it
             return false;
         }
         this.lastTokenRequest = now;
@@ -157,13 +200,15 @@ class TokenManager {
             }
         }
 
-        // Rate limiting check for new token requests
+        // Rate limiting check for new token requests - MORE FORGIVING
         if (!this.canMakeTokenRequest()) {
             this.logger.warn('Token request rate limited, using cached token if available');
             if (this.token) {
                 return this.token;
             }
-            throw new Error('Rate limit exceeded for token requests. Please wait before trying again.');
+            // Instead of throwing, wait a bit and try again
+            await new Promise(resolve => setTimeout(resolve, 100));
+            return this.getAccessToken(customSettings);
         }
 
         // Get credentials from settings file or environment variables

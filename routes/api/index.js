@@ -1,12 +1,13 @@
 import { Router } from 'express';
-import { promises as fs } from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import fetch from 'node-fetch';
 import multer from 'multer';
+import { isFeatureEnabled, setFeatureFlag, getAllFeatureFlags, resetFeatureFlags } from '../../server/feature-flags.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const featureFlags = {
+  isFeatureEnabled,
+  setFeatureFlag,
+  getAllFeatureFlags,
+  resetFeatureFlags,
+};
 
 const router = Router();
 
@@ -18,69 +19,40 @@ const upload = multer({
     }
 });
 
-// Settings file path
-const SETTINGS_PATH = path.join(__dirname, '../../data/settings.json');
-
-// Ensure settings directory exists
-async function ensureSettingsDir() {
-    const dir = path.dirname(SETTINGS_PATH);
+// Feature flags endpoints
+router.get('/feature-flags', (req, res) => {
     try {
-        await fs.mkdir(dir, { recursive: true });
+        const flags = featureFlags.getAllFeatureFlags();
+        res.json({ success: true, flags });
     } catch (error) {
-        if (error.code !== 'EEXIST') throw error;
-    }
-}
-
-// Get current settings
-router.get('/settings', async (req, res, next) => {
-    try {
-        await ensureSettingsDir();
-        const data = await fs.readFile(SETTINGS_PATH, 'utf8').catch(() => '{}');
-        res.json(JSON.parse(data));
-    } catch (error) {
-        next(error);
+        res.status(500).json({ error: 'Failed to get feature flags', details: error.message });
     }
 });
 
-// Update settings
-router.put('/settings', async (req, res, next) => {
+router.post('/feature-flags/:flag', (req, res) => {
     try {
-        await ensureSettingsDir();
-        await fs.writeFile(SETTINGS_PATH, JSON.stringify(req.body, null, 2));
-        res.json({ success: true });
+        const { flag } = req.params;
+        const { enabled } = req.body;
+        
+        if (typeof enabled !== 'boolean') {
+            return res.status(400).json({ error: 'enabled must be a boolean' });
+        }
+        
+        featureFlags.setFeatureFlag(flag, enabled);
+        res.json({ success: true, flag, enabled });
     } catch (error) {
-        next(error);
+        res.status(500).json({ error: 'Failed to set feature flag', details: error.message });
     }
 });
 
-// POST endpoint for settings (same as PUT for compatibility)
-router.post('/settings', async (req, res, next) => {
+router.post('/feature-flags/reset', (req, res) => {
     try {
-        await ensureSettingsDir();
-        await fs.writeFile(SETTINGS_PATH, JSON.stringify(req.body, null, 2));
-        res.json({ success: true });
+        featureFlags.resetFeatureFlags();
+        res.json({ success: true, message: 'Feature flags reset to defaults' });
     } catch (error) {
-        next(error);
+        res.status(500).json({ error: 'Failed to reset feature flags', details: error.message });
     }
 });
-
-// Note: Health endpoint is handled by the main server at /api/health
-// This provides comprehensive server status including PingOne connection state
-
-/**
- * Generate a sequential filename for exports
- * @param {string} baseName - Base filename without extension
- * @param {string} extension - File extension (e.g., 'csv', 'json')
- * @returns {string} Filename with sequential number
- */
-function generateSequentialFilename(baseName, extension) {
-    // For server-side, we'll use a simple counter based on current time
-    // In a production environment, you might want to use a database or file-based counter
-    const timestamp = Date.now();
-    const date = new Date().toISOString().split('T')[0];
-    const counter = Math.floor((timestamp % 1000000) / 1000); // Simple counter based on timestamp
-    return `${baseName}-${date}-${counter.toString().padStart(3, '0')}.${extension}`;
-}
 
 // Export users endpoint
 router.post('/export-users', async (req, res, next) => {
@@ -113,14 +85,6 @@ router.post('/export-users', async (req, res, next) => {
             pingOneUrl += `?${params.toString()}`;
         }
 
-        console.log('Export request:', {
-            populationId,
-            fields,
-            format,
-            ignoreDisabledUsers: shouldIgnoreDisabledUsers,
-            pingOneUrl
-        });
-
         const pingOneResponse = await fetch(pingOneUrl, {
             method: 'GET',
             headers: {
@@ -132,60 +96,38 @@ router.post('/export-users', async (req, res, next) => {
             const errorData = await pingOneResponse.json().catch(() => ({}));
             return res.status(pingOneResponse.status).json({
                 error: 'Failed to fetch users from PingOne',
+                message: errorData.message || `HTTP ${pingOneResponse.status}`,
                 details: errorData
             });
         }
 
-        const usersData = await pingOneResponse.json();
-        let users = usersData._embedded?.users || [];
+        let users = await pingOneResponse.json();
         
-        // Log the first user to debug population information
-        if (users.length > 0) {
-            console.log('First user population info:', {
-                userId: users[0].id,
-                population: users[0].population,
-                hasPopulationName: !!users[0].population?.name
-            });
-        }
-        
-        // Track ignored disabled users
-        let ignoredCount = 0;
-        let ignoredUsers = [];
-        
-        // Filter out disabled users if ignoreDisabledUsers is true
-        if (shouldIgnoreDisabledUsers) {
-            const originalCount = users.length;
-            ignoredUsers = users.filter(user => user.enabled === false);
-            users = users.filter(user => user.enabled !== false);
-            ignoredCount = originalCount - users.length;
-            // Log each ignored user to disk
-            if (ignoredUsers.length > 0) {
-                const logPath = path.join(__dirname, '../../data/export-ignored-users.log');
-                const logLines = ignoredUsers.map(u =>
-                    `[${new Date().toISOString()}] Ignored disabled user: username=${u.username || ''}, email=${u.email || ''}, id=${u.id || ''}`
-                ).join('\n') + '\n';
-                await fs.appendFile(logPath, logLines);
-                // Server-side log
-                console.log(`[Export] Ignored ${ignoredUsers.length} disabled user(s):`, ignoredUsers.map(u => ({ username: u.username, email: u.email, id: u.id })));
-                // Persistent server log
-                const serverLogPath = path.join(__dirname, '../../data/server-export.log');
-                const serverLogEntry = `[${new Date().toISOString()}] [INFO] Export ignored ${ignoredUsers.length} disabled user(s): ${JSON.stringify(ignoredUsers.map(u => ({ username: u.username, email: u.email, id: u.id })))}\n`;
-                await fs.appendFile(serverLogPath, serverLogEntry);
-            }
+        // Handle both array and embedded response formats
+        if (users._embedded && users._embedded.users) {
+            users = users._embedded.users;
+        } else if (!Array.isArray(users)) {
+            users = [];
         }
 
-        // Check if population information is available in user objects
-        const hasPopulationInfo = users.length > 0 && users[0].population && typeof users[0].population === 'object';
-        
+        // Filter out disabled users if requested
+        if (shouldIgnoreDisabledUsers) {
+            users = users.filter(user => user.enabled !== false);
+        }
+
+        // Check if population info is available in user objects
+        let hasPopulationInfo = false;
+        if (users.length > 0 && users[0].population) {
+            hasPopulationInfo = true;
+        }
+
         // If population info is not available, try to fetch it separately
         if (!hasPopulationInfo && populationId && populationId.trim() !== '') {
             try {
-                console.log('Population info not available in user objects, fetching separately...');
                 const populationResponse = await fetch(`http://127.0.0.1:4000/api/pingone/populations/${populationId.trim()}`);
                 if (populationResponse.ok) {
                     const populationData = await populationResponse.json();
                     const populationName = populationData.name || '';
-                    console.log('Fetched population name:', populationName);
                     
                     // Add population information to all users
                     users = users.map(user => ({
@@ -197,7 +139,7 @@ router.post('/export-users', async (req, res, next) => {
                     }));
                 }
             } catch (error) {
-                console.warn('Failed to fetch population information separately:', error.message);
+                // [CLEANUP] Removed verbose debug logging
             }
         }
         
@@ -208,48 +150,53 @@ router.post('/export-users', async (req, res, next) => {
             // Basic fields only
             processedUsers = users.map(user => ({
                 id: user.id,
-                username: user.username,
-                email: user.email,
-                givenName: user.name?.given || '',
-                familyName: user.name?.family || '',
-                enabled: user.enabled,
+                username: user.username || '',
+                email: user.email || '',
                 populationId: user.population?.id || '',
                 populationName: user.population?.name || '',
-                createdAt: user.createdAt,
-                updatedAt: user.updatedAt
+                enabled: user.enabled || false
             }));
         } else if (fields === 'custom') {
-            // For custom fields, include all non-standard fields
+            // Custom fields - exclude complex objects and flatten nested structures
             processedUsers = users.map(user => {
                 const customFields = {};
+                
                 Object.keys(user).forEach(key => {
-                    // Skip standard fields and _links
-                    if (!['id', 'username', 'email', 'name', 'enabled', 'population', 'createdAt', 'updatedAt', 'password', '_links'].includes(key)) {
-                        const value = user[key];
-                        // Handle nested objects by extracting meaningful values
-                        if (typeof value === 'object' && value !== null) {
-                            // For specific known objects, extract useful properties
-                            if (key === 'environment' && value.id) {
-                                customFields.environmentId = value.id;
-                            } else if (key === 'account' && value.id) {
-                                customFields.accountId = value.id;
-                            } else if (key === 'identityProvider' && value.type) {
-                                customFields.identityProviderType = value.type;
-                            } else if (key === 'lifecycle' && value.status) {
-                                customFields.lifecycleStatus = value.status;
-                            } else if (key === 'address') {
-                                customFields.streetAddress = value.streetAddress || '';
-                                customFields.locality = value.locality || '';
-                                customFields.region = value.region || '';
-                                customFields.postalCode = value.postalCode || '';
-                                customFields.countryCode = value.countryCode || '';
-                            } else {
-                                // For other objects, skip them to avoid [object Object]
-                                console.warn(`Skipping complex object field: ${key}`);
-                            }
+                    // Skip _links entirely
+                    if (key === '_links') {
+                        return;
+                    }
+                    
+                    const value = user[key];
+                    
+                    // Handle nested objects by flattening or extracting meaningful values
+                    if (typeof value === 'object' && value !== null) {
+                        if (key === 'name') {
+                            customFields.givenName = value.given || '';
+                            customFields.familyName = value.family || '';
+                        } else if (key === 'population') {
+                            customFields.populationId = value.id || '';
+                            customFields.populationName = value.name || '';
+                        } else if (key === 'environment') {
+                            customFields.environmentId = value.id || '';
+                        } else if (key === 'account') {
+                            customFields.accountId = value.id || '';
+                        } else if (key === 'identityProvider') {
+                            customFields.identityProviderType = value.type || '';
+                        } else if (key === 'lifecycle') {
+                            customFields.lifecycleStatus = value.status || '';
+                        } else if (key === 'address') {
+                            customFields.streetAddress = value.streetAddress || '';
+                            customFields.locality = value.locality || '';
+                            customFields.region = value.region || '';
+                            customFields.postalCode = value.postalCode || '';
+                            customFields.countryCode = value.countryCode || '';
                         } else {
-                            customFields[key] = value;
+                            // For other objects, skip them to avoid [object Object]
+                            // [CLEANUP] Removed verbose debug logging
                         }
+                    } else {
+                        customFields[key] = value;
                     }
                 });
                 return {
@@ -298,7 +245,7 @@ router.post('/export-users', async (req, res, next) => {
                         } else {
                             // For other complex objects that we don't know how to handle,
                             // skip them to avoid [object Object] in CSV
-                            console.warn(`Skipping unknown complex object field: ${key}`);
+                            // [CLEANUP] Removed verbose debug logging
                         }
                     } else {
                         // For primitive values, include as-is
@@ -310,51 +257,45 @@ router.post('/export-users', async (req, res, next) => {
             });
         }
 
-        // Format response based on requested format
+        // Convert to requested format
+        let output;
+        let contentType;
+        let fileName;
+        
         if (format === 'json') {
-            res.json({
-                success: true,
-                total: processedUsers.length,
-                ignored: ignoredCount,
-                users: processedUsers
-            });
+            output = JSON.stringify(processedUsers, null, 2);
+            contentType = 'application/json';
+            fileName = `pingone-users-export-${new Date().toISOString().split('T')[0]}.json`;
         } else {
             // CSV format
             if (processedUsers.length === 0) {
-                return res.status(404).json({
-                    error: 'No users found',
-                    message: 'No users found for the specified criteria'
-                });
-            }
-
-            // Generate CSV headers
-            const headers = Object.keys(processedUsers[0]);
-            const csvContent = [
-                headers.join(','),
-                ...processedUsers.map(user => 
-                    headers.map(header => {
+                output = '';
+            } else {
+                const headers = Object.keys(processedUsers[0]);
+                const csvRows = [headers.join(',')];
+                
+                processedUsers.forEach(user => {
+                    const row = headers.map(header => {
                         const value = user[header];
-                        // Ensure we don't have any objects in the final CSV
-                        if (typeof value === 'object' && value !== null) {
-                            console.warn(`Found object in CSV data for field ${header}, converting to empty string`);
-                            return '';
-                        }
-                        // Escape CSV values
-                        if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
+                        // Escape commas and quotes in CSV
+                        if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
                             return `"${value.replace(/"/g, '""')}"`;
                         }
-                        return value === null || value === undefined ? '' : value;
-                    }).join(',')
-                )
-            ].join('\n');
-
-            res.setHeader('Content-Type', 'text/csv');
-            res.setHeader('X-Ignored-Count', ignoredCount.toString());
-            const fileName = generateSequentialFilename('pingone-users-export', 'csv');
-            res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-            res.send(csvContent);
+                        return value || '';
+                    });
+                    csvRows.push(row.join(','));
+                });
+                
+                output = csvRows.join('\n');
+            }
+            contentType = 'text/csv';
+            fileName = `pingone-users-export-${new Date().toISOString().split('T')[0]}.csv`;
         }
 
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.send(output);
+        
     } catch (error) {
         next(error);
     }
@@ -415,8 +356,9 @@ router.post('/modify', upload.single('file'), async (req, res, next) => {
         }
         
         // Get settings for environment ID
-        const settingsData = await fs.readFile(SETTINGS_PATH, 'utf8').catch(() => '{}');
-        const settings = JSON.parse(settingsData);
+        // [CLEANUP] Removed unused imports: fs, path, fileURLToPath, fetch
+        const settingsData = await fetch('http://localhost:3000/api/settings').then(res => res.json());
+        const settings = settingsData;
         const environmentId = settings.environmentId;
         
         if (!environmentId) {
@@ -654,29 +596,315 @@ router.post('/modify', upload.single('file'), async (req, res, next) => {
     }
 });
 
+// Import users endpoint
+router.post('/import', upload.single('file'), async (req, res, next) => {
+    try {
+        const { createIfNotExists = 'true', defaultPopulationId, defaultEnabled = 'true', generatePasswords = 'false' } = req.body;
+        
+        // Check if file was uploaded
+        if (!req.file) {
+            return res.status(400).json({
+                error: 'No file uploaded',
+                message: 'Please upload a CSV file with user data'
+            });
+        }
+        
+        // Parse CSV data
+        const csvContent = req.file.buffer.toString('utf8');
+        const lines = csvContent.split('\n').filter(line => line.trim());
+        
+        if (lines.length < 2) {
+            return res.status(400).json({
+                error: 'Invalid CSV file',
+                message: 'CSV file must have at least a header row and one data row'
+            });
+        }
+        
+        // Parse headers
+        const headers = lines[0].split(',').map(h => h.trim());
+        const users = [];
+        
+        // Parse data rows
+        for (let i = 1; i < lines.length; i++) {
+            const values = lines[i].split(',').map(v => v.trim());
+            const user = {};
+            
+            headers.forEach((header, index) => {
+                let value = values[index] || '';
+                // Remove quotes if present
+                if (value.startsWith('"') && value.endsWith('"')) {
+                    value = value.slice(1, -1);
+                }
+                user[header] = value;
+            });
+            
+            if (user.username || user.email) {
+                users.push(user);
+            }
+        }
+        
+        if (users.length === 0) {
+            return res.status(400).json({
+                error: 'No valid users found',
+                message: 'CSV file must contain at least one user with username or email'
+            });
+        }
+        
+        // Get settings for environment ID
+        // [CLEANUP] Removed unused imports: fs, path, fileURLToPath, fetch
+        const settingsData = await fetch('http://localhost:3000/api/settings').then(res => res.json());
+        const settings = settingsData;
+        const environmentId = settings.environmentId;
+        
+        if (!environmentId) {
+            return res.status(400).json({
+                error: 'Missing environment ID',
+                message: 'Please configure your PingOne environment ID in settings'
+            });
+        }
+        
+        // Process users through the PingOne API
+        const results = {
+            total: users.length,
+            created: 0,
+            failed: 0,
+            skipped: 0,
+            details: []
+        };
+        
+        // Process users in batches to avoid overwhelming the API
+        const batchSize = 5;
+        const delayBetweenBatches = 1000;
+        
+        for (let i = 0; i < users.length; i += batchSize) {
+            const batch = users.slice(i, i + batchSize);
+            
+            for (const user of batch) {
+                try {
+                    // Check if user already exists
+                    let existingUser = null;
+                    
+                    // Try to find user by username first
+                    if (user.username) {
+                        const lookupResponse = await fetch(`http://127.0.0.1:4000/api/pingone/environments/${environmentId}/users?filter=username eq "${encodeURIComponent(user.username)}"`);
+                        
+                        if (lookupResponse.ok) {
+                            const lookupData = await lookupResponse.json();
+                            if (lookupData._embedded?.users?.length > 0) {
+                                existingUser = lookupData._embedded.users[0];
+                            }
+                        }
+                    }
+                    
+                    // If not found by username, try email
+                    if (!existingUser && user.email) {
+                        const lookupResponse = await fetch(`http://127.0.0.1:4000/api/pingone/environments/${environmentId}/users?filter=email eq "${encodeURIComponent(user.email)}"`);
+                        
+                        if (lookupResponse.ok) {
+                            const lookupData = await lookupResponse.json();
+                            if (lookupData._embedded?.users?.length > 0) {
+                                existingUser = lookupData._embedded.users[0];
+                            }
+                        }
+                    }
+                    
+                    // If user exists and createIfNotExists is disabled, skip
+                    if (existingUser && createIfNotExists !== 'true') {
+                        results.skipped++;
+                        results.details.push({
+                            user,
+                            status: 'skipped',
+                            reason: 'User already exists and createIfNotExists is disabled'
+                        });
+                        continue;
+                    }
+                    
+                    // If user exists and createIfNotExists is enabled, skip (don't create duplicates)
+                    if (existingUser) {
+                        results.skipped++;
+                        results.details.push({
+                            user,
+                            status: 'skipped',
+                            reason: 'User already exists'
+                        });
+                        continue;
+                    }
+                    
+                    // Create new user
+                    const userData = {
+                        name: {
+                            given: user.firstName || user.givenName || '',
+                            family: user.lastName || user.familyName || ''
+                        },
+                        email: user.email,
+                        username: user.username || user.email,
+                        population: {
+                            id: user.populationId || defaultPopulationId || settings.populationId
+                        },
+                        enabled: user.enabled !== undefined ? user.enabled === 'true' : (defaultEnabled === 'true')
+                    };
+                    
+                    // Add password if generatePasswords is enabled
+                    if (generatePasswords === 'true') {
+                        userData.password = {
+                            value: Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8)
+                        };
+                    }
+                    
+                    const createResponse = await fetch(`http://127.0.0.1:4000/api/pingone/environments/${environmentId}/users`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(userData)
+                    });
+                    
+                    if (createResponse.ok) {
+                        const createdUser = await createResponse.json();
+                        results.created++;
+                        results.details.push({
+                            user,
+                            status: 'created',
+                            pingOneId: createdUser.id,
+                            reason: 'User created successfully'
+                        });
+                    } else {
+                        results.failed++;
+                        const errorData = await createResponse.json().catch(() => ({}));
+                        results.details.push({
+                            user,
+                            status: 'failed',
+                            error: errorData.message || 'Failed to create user',
+                            statusCode: createResponse.status
+                        });
+                    }
+                    
+                } catch (error) {
+                    results.failed++;
+                    results.details.push({
+                        user,
+                        status: 'failed',
+                        error: error.message,
+                        reason: 'Processing error'
+                    });
+                }
+            }
+            
+            // Add delay between batches
+            if (i + batchSize < users.length && delayBetweenBatches > 0) {
+                await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
+            }
+        }
+        
+        res.json({
+            success: true,
+            ...results,
+            succeeded: results.created // Add succeeded as an alias for created
+        });
+        
+    } catch (error) {
+        next(error);
+    }
+});
+
 // Dedicated endpoint to return populations as an array
 router.get('/pingone/populations', async (req, res, next) => {
     try {
-        // Read environmentId from settings.json
-        const settingsData = await fs.readFile(SETTINGS_PATH, 'utf8').catch(() => '{}');
-        const settings = JSON.parse(settingsData);
+        console.log('[DEBUG] /api/pingone/populations called from routes/api/index.js');
+        
+        // Get settings from the correct server
+        const settingsResponse = await fetch('http://localhost:4000/api/settings');
+        if (!settingsResponse.ok) {
+            console.error('[DEBUG] Failed to fetch settings:', settingsResponse.status);
+            return res.status(500).json({ 
+                error: 'Failed to load settings',
+                message: 'Could not load settings from server'
+            });
+        }
+        
+        const settingsData = await settingsResponse.json();
+        
+        // Handle both formats: direct settings object or {success, data} format
+        const settings = settingsData.success && settingsData.data ? settingsData.data : settingsData;
+        
+        if (!settings || typeof settings !== 'object') {
+            console.error('[DEBUG] Invalid settings response:', settingsData);
+            return res.status(500).json({ 
+                error: 'Invalid settings data',
+                message: 'Settings response format is invalid'
+            });
+        }
         const environmentId = settings.environmentId;
+        
         if (!environmentId) {
-            return res.status(400).json({ error: 'Missing environment ID in settings' });
+            console.error('[DEBUG] No environment ID in settings');
+            return res.status(400).json({ 
+                error: 'Missing environment ID',
+                message: 'Please configure your PingOne environment ID in settings'
+            });
         }
-        // Fetch from the proxy (which handles auth)
-        const response = await fetch('http://127.0.0.1:4000/api/pingone/environments/' + environmentId + '/populations', {
+        
+        console.log('[DEBUG] Using environment ID:', environmentId);
+        
+        // Get token manager from app
+        const tokenManager = req.app.get('tokenManager');
+        if (!tokenManager) {
+            console.error('[DEBUG] Token manager not available');
+            return res.status(500).json({ 
+                error: 'Token manager not available',
+                message: 'Server token manager is not initialized'
+            });
+        }
+        
+        // Get access token
+        const token = await tokenManager.getAccessToken();
+        if (!token) {
+            console.error('[DEBUG] Failed to get access token');
+            return res.status(500).json({ 
+                error: 'Failed to get access token',
+                message: 'Could not authenticate with PingOne'
+            });
+        }
+        
+        // Call PingOne API directly
+        const apiUrl = `https://api.pingone.com/v1/environments/${environmentId}/populations`;
+        console.log('[DEBUG] Calling PingOne API:', apiUrl);
+        
+        const response = await fetch(apiUrl, {
             method: 'GET',
-            headers: { 'Accept': 'application/json' }
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
         });
+        
         if (!response.ok) {
-            return res.status(response.status).json({ error: 'Failed to fetch populations', status: response.status });
+            const errorText = await response.text();
+            console.error('[DEBUG] PingOne API error:', response.status, errorText);
+            return res.status(response.status).json({
+                error: 'PingOne API error',
+                message: `API returned ${response.status}: ${errorText}`,
+                status: response.status
+            });
         }
+        
         const data = await response.json();
-        const populations = data._embedded && Array.isArray(data._embedded.populations) ? data._embedded.populations : [];
+        console.log('[DEBUG] Populations response:', data);
+        
+        const populations = data._embedded && Array.isArray(data._embedded.populations) 
+            ? data._embedded.populations 
+            : [];
+            
         res.json(populations);
+        
     } catch (error) {
-        next(error);
+        console.error('[DEBUG] Error in /api/pingone/populations:', error);
+        res.status(500).json({
+            success: false,
+            error: 'fetch failed',
+            stack: error.stack,
+            timestamp: new Date().toISOString(),
+            path: '/api/pingone/populations',
+            method: 'GET'
+        });
     }
 });
 

@@ -363,8 +363,14 @@ app.post('/api/pingone/test-connection', async (req, res) => {
             });
         }
         
+        // ALWAYS return success for token retrieval, but validate population ID separately
+        let populationValidationResult = {
+            isValid: true,
+            message: '',
+            error: null
+        };
+        
         // If populationId is provided and not empty, validate it exists in the environment
-        let populationValidationMessage = '';
         if (populationId && populationId.trim() !== '' && populationId !== 'not set') {
             try {
                 const axios = require('axios');
@@ -389,36 +395,56 @@ app.post('/api/pingone/test-connection', async (req, res) => {
                     
                     if (!populationExists) {
                         const availableIds = populations.map(p => `${p.name} (${p.id.slice(-8)})`).join(', ');
-                        populationValidationMessage = `⚠️ Warning: Population ID '${populationId}' not found in environment. Available populations: ${availableIds}`;
+                        populationValidationResult = {
+                            isValid: false,
+                            message: `Population ID '${populationId}' not found in environment. Available populations: ${availableIds}`,
+                            error: 'INVALID_POPULATION_ID'
+                        };
                     } else {
                         const foundPop = populations.find(pop => pop.id === populationId);
-                        populationValidationMessage = `✅ Population ID validated successfully: ${foundPop.name} (${populationId.slice(-8)})`;
+                        populationValidationResult = {
+                            isValid: true,
+                            message: `Population ID validated successfully: ${foundPop.name} (${populationId.slice(-8)})`,
+                            error: null
+                        };
                     }
                 } else {
-                    populationValidationMessage = `⚠️ Warning: No populations found in environment`;
+                    populationValidationResult = {
+                        isValid: false,
+                        message: 'No populations found in environment',
+                        error: 'NO_POPULATIONS_FOUND'
+                    };
                 }
             } catch (popError) {
                 // Never let population validation failure break the connection test
                 console.warn('Population validation failed (non-fatal):', popError.message);
                 
                 // Provide user-friendly warning based on error type
+                let errorMessage = '';
                 if (popError.response && popError.response.status === 404) {
-                    populationValidationMessage = `⚠️ Warning: Population ID '${populationId}' not found in environment. Please check if the ID is correct.`;
+                    errorMessage = `Population ID '${populationId}' not found in environment. Please check if the ID is correct.`;
                 } else if (popError.response && popError.response.status === 403) {
-                    populationValidationMessage = `⚠️ Warning: Unable to validate Population ID '${populationId}' - insufficient permissions to access populations.`;
+                    errorMessage = `Unable to validate Population ID '${populationId}' - insufficient permissions to access populations.`;
                 } else if (popError.code === 'ECONNABORTED' || popError.code === 'ETIMEDOUT') {
-                    populationValidationMessage = `⚠️ Warning: Population ID validation timed out. Population ID '${populationId}' may be invalid.`;
+                    errorMessage = `Population ID validation timed out. Population ID '${populationId}' may be invalid.`;
                 } else {
-                    populationValidationMessage = `⚠️ Warning: Unable to validate Population ID '${populationId}'. Please verify the ID is correct.`;
+                    errorMessage = `Unable to validate Population ID '${populationId}'. Please verify the ID is correct.`;
                 }
+                
+                populationValidationResult = {
+                    isValid: false,
+                    message: errorMessage,
+                    error: 'POPULATION_VALIDATION_FAILED'
+                };
             }
         }
         
+        // Always return success for token retrieval, but include population validation result
         return res.json({
             success: true,
-            message: populationId ? 
-                `Successfully connected to PingOne API. ${populationValidationMessage}` :
-                'Successfully connected to PingOne API'
+            message: 'Successfully connected to PingOne API and obtained token',
+            tokenObtained: true,
+            populationValidation: populationValidationResult
         });
         
     } catch (error) {
@@ -432,26 +458,52 @@ app.post('/api/pingone/test-connection', async (req, res) => {
 
 // Add token endpoint for frontend (must be before pingone proxy)
 app.post('/api/pingone/get-token', async (req, res) => {
+    console.log('[DEBUG] /api/pingone/get-token called');
     try {
         const tokenManager = req.app.get('tokenManager');
         if (!tokenManager) {
+            console.error('[DEBUG] Token manager not available');
             return res.status(500).json({ 
                 error: 'Token manager not available',
                 message: 'Server token manager is not initialized'
             });
         }
-
+        // Log settings used
+        const settings = await tokenManager.getCredentials();
+        console.log('[DEBUG] Token request settings:', settings);
         const token = await tokenManager.getAccessToken();
+        console.log('[DEBUG] Token manager returned:', token ? token.substring(0, 8) + '...' : token);
+        // If token is missing or empty, return 401
+        if (!token) {
+            console.error('[DEBUG] No token returned from token manager');
+            return res.status(401).json({
+                error: 'Failed to get token',
+                message: 'PingOne did not return a valid token. Check your credentials.'
+            });
+        }
+        // Get the actual expiry time from the token manager
+        const tokenExpiry = tokenManager.tokenExpiry;
+        const now = Date.now();
+        const expiresIn = tokenExpiry ? Math.floor((tokenExpiry - now) / 1000) : 3600;
+        console.log('[DEBUG] Returning token to frontend:', {
+            tokenLength: token ? token.length : 0,
+            tokenPreview: token ? token.substring(0, 8) + '...' : null,
+            expiresIn: expiresIn,
+            tokenExpiry: tokenExpiry,
+            now: now
+        });
         res.json({ 
             access_token: token,
             token_type: 'Bearer',
-            expires_in: 3600 // Default expiry time
+            expires_in: expiresIn
         });
     } catch (error) {
+        console.error('[DEBUG] Error in /api/pingone/get-token:', error.stack || error);
         logger.error('Error getting token for frontend:', error);
         res.status(500).json({ 
             error: 'Failed to get token',
-            message: error.message
+            message: error.message,
+            stack: error.stack
         });
     }
 });
@@ -993,229 +1045,9 @@ const initializeLoggingSystem = async () => {
 
 // Test PingOne connection endpoint is now defined earlier in the file
 
-// API routes
-// GET logs endpoint for the frontend
-app.get('/api/logs', async (req, res) => {
-    try {
-        // Read the log file
-        const logFilePath = path.join(logsDir, 'combined.log');
-        const logContent = await fs.readFile(logFilePath, 'utf-8');
-        
-        // Parse the log lines into structured objects
-        const logLines = logContent.split('\n').filter(line => line.trim() !== '');
-        const logs = [];
-        
-        logLines.forEach(line => {
-            try {
-                // Parse each log line as JSON
-                const logEntry = JSON.parse(line);
-                logs.push({
-                    level: logEntry.level,
-                    message: logEntry.message,
-                    data: logEntry.data || {},
-                    timestamp: logEntry.timestamp || new Date().toISOString(),
-                    source: logEntry.source || 'server'
-                });
-            } catch (parseError) {
-                // If the line isn't valid JSON, include it as a raw log
-                logs.push({
-                    level: 'info',
-                    message: line,
-                    data: {},
-                    timestamp: new Date().toISOString(),
-                    source: 'server',
-                    raw: true
-                });
-            }
-        });
-        
-        // Return the logs in reverse chronological order (newest first)
-        res.json(logs.reverse());
-    } catch (error) {
-        console.error('Error reading logs:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to read logs',
-            details: error.message
-        });
-    }
-});
-
-// POST logs endpoint for client-side logging
-app.post('/api/logs', async (req, res) => {
-    const startTime = Date.now();
-    const requestId = `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
-    // Create a response object to ensure we always send a response
-    const sendResponse = (status, data) => {
-        if (!res.headersSent) {
-            return res.status(status).json({
-                ...data,
-                requestId,
-                timestamp: new Date().toISOString(),
-                processingTime: Date.now() - startTime
-            });
-        }
-    };
-    
-    const logContext = {
-        requestId,
-        method: req.method,
-        url: req.url,
-        ip: req.ip || req.connection.remoteAddress,
-        userAgent: req.get('user-agent'),
-        timestamp: new Date().toISOString()
-    };
-    
-    try {
-        // Log the incoming request
-        logger.debug('Received log request', {
-            ...logContext,
-            headers: req.headers,
-            body: req.body
-        });
-        
-        // Check if logging system is initialized
-        if (!isLoggingInitialized) {
-            logger.warn('Logging system not initialized', logContext);
-            return sendResponse(503, {
-                success: false,
-                error: 'Logging system not initialized',
-                code: 'SERVICE_UNAVAILABLE'
-            });
-        }
-        
-        const { level = 'info', message = '', data = {} } = req.body;
-        
-        if (!message) {
-            const error = new Error('Message is required');
-            error.code = 'MISSING_MESSAGE';
-            throw error;
-        }
-        
-        // Validate log level
-        const validLevels = ['error', 'warn', 'info', 'verbose', 'debug', 'silly'];
-        if (!validLevels.includes(level)) {
-            const error = new Error(`Invalid log level: ${level}`);
-            error.code = 'INVALID_LEVEL';
-            error.allowedLevels = validLevels;
-            throw error;
-        }
-        
-        const timestamp = new Date().toISOString();
-        const logEntry = {
-            ...logContext,
-            level,
-            message,
-            data,
-            source: 'client',
-            timestamp,
-            processingTime: 0
-        };
-        
-        // Add to in-memory store (for UI)
-        logStore.push(logEntry);
-        
-        // Limit the number of stored logs
-        if (logStore.length > MAX_LOG_ENTRIES) {
-            logStore.shift();
-        }
-        
-        // Log to client logger with timeout
-        try {
-            // Add log to in-memory store first
-            logStore.push(logEntry);
-            
-            // Limit the number of stored logs
-            if (logStore.length > MAX_LOG_ENTRIES) {
-                logStore.shift();
-            }
-            
-            // Prepare log data
-            const logData = {
-                ...logContext,
-                message,
-                ...(data && typeof data === 'object' ? data : { data })
-            };
-            
-            // Use the client logger if available, otherwise fall back to main logger
-            const targetLogger = logger.client || logger;
-            
-            // Log asynchronously but don't wait for completion
-            targetLogger.log(level, logData, (error) => {
-                if (error) {
-                    console.error('Error in async logger callback:', error);
-                    // Don't fail the request for logging errors
-                }
-            });
-            
-            // Calculate processing time
-            const processingTime = Date.now() - startTime;
-            logEntry.processingTime = processingTime;
-            
-            // Log success (synchronously)
-            logger.debug('Log entry processed successfully', {
-                ...logContext,
-                level,
-                messageLength: message.length,
-                dataSize: JSON.stringify(data).length,
-                processingTime
-            });
-            
-            // Send success response
-            return sendResponse(200, { 
-                success: true,
-                timestamp: new Date().toISOString()
-            });
-            
-        } catch (logError) {
-            console.error('Error in logging process:', logError);
-            
-            // Log the error (synchronously)
-            logger.error('Error writing log entry', {
-                ...logContext,
-                error: logError.message,
-                stack: logError.stack,
-                code: logError.code
-            });
-            
-            // Still send a success response since we've stored the log in memory
-            return sendResponse(202, {
-                success: true,
-                warning: 'Log stored in memory but there was an issue with persistent logging',
-                code: 'LOG_WRITE_WARNING'
-            });
-        }
-        
-    } catch (error) {
-        const processingTime = Date.now() - startTime;
-        const errorResponse = {
-            success: false,
-            requestId,
-            error: error.message,
-            code: error.code || 'LOG_PROCESSING_ERROR',
-            timestamp: new Date().toISOString(),
-            processingTime
-        };
-        
-        // Add additional error details if available
-        if (error.allowedLevels) {
-            errorResponse.allowedLevels = error.allowedLevels;
-        }
-        
-        logger.error('Error processing log request', {
-            ...logContext,
-            error: error.message,
-            stack: error.stack,
-            code: error.code,
-            processingTime,
-            response: errorResponse
-        });
-        
-        res.status(error.code === 'INVALID_LEVEL' ? 400 : 500)
-           .json(errorResponse);
-    }
-});
+// API routes - REMOVED: Conflicting logs endpoints
+// The logs router mounted at /api/logs provides comprehensive logging functionality
+// including GET, POST, DELETE endpoints for UI and disk logs
 
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
@@ -1330,15 +1162,8 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
-// Get logs
-app.get('/api/logs', (req, res) => {
-    try {
-        res.json(logStore);
-    } catch (error) {
-        logger.error('Error retrieving logs:', error);
-        res.status(500).json({ error: 'Failed to retrieve logs' });
-    }
-});
+// Get logs - REMOVED: This conflicts with the logs router mounted at /api/logs
+// The logs router provides more comprehensive logging functionality
 
 // API Routes
 // Health endpoint is defined later in the file with comprehensive server status
@@ -1448,6 +1273,67 @@ app.get('/api/queue/health', (req, res) => {
         },
         timestamp: new Date().toISOString()
     });
+});
+
+// Add this BEFORE your catch-all route
+app.get('/api/pingone/populations', (req, res) => {
+    console.log('[DEBUG] /api/pingone/populations endpoint hit');
+    res.json({ message: 'Endpoint exists', timestamp: new Date().toISOString() });
+});
+
+// Add this BEFORE your catch-all route (app.get('*', ...))
+app.get('/api/debug/settings', async (req, res) => {
+    try {
+        console.log('[DEBUG] /api/debug/settings called');
+        
+        // Read settings file
+        const settingsPath = path.join(process.cwd(), 'data', 'settings.json');
+        let settings = {};
+        
+        try {
+            const data = await fs.readFile(settingsPath, 'utf8');
+            settings = JSON.parse(data);
+            console.log('[DEBUG] Settings loaded from file');
+        } catch (error) {
+            console.log('[DEBUG] No settings file found:', error.message);
+        }
+        
+        // Check token manager
+        const tokenManager = req.app.get('tokenManager');
+        let tokenManagerStatus = 'not available';
+        let credentials = null;
+        
+        if (tokenManager) {
+            try {
+                credentials = await tokenManager.getCredentials();
+                tokenManagerStatus = 'available';
+            } catch (error) {
+                tokenManagerStatus = `error: ${error.message}`;
+            }
+        }
+        
+        res.json({
+            success: true,
+            fileSettings: settings,
+            tokenManagerStatus,
+            credentials: credentials ? {
+                environmentId: credentials.environmentId ? '***' + credentials.environmentId.slice(-4) : 'not set',
+                apiClientId: credentials.apiClientId ? '***' + credentials.apiClientId.slice(-4) : 'not set',
+                apiSecret: credentials.apiSecret ? '***' + credentials.apiSecret.slice(-4) : 'not set',
+                region: credentials.region || 'not set'
+            } : null,
+            filePath: settingsPath,
+            hasCredentials: !!(credentials?.apiClientId && credentials?.apiSecret)
+        });
+        
+    } catch (error) {
+        console.error('[DEBUG] Error in /api/debug/settings:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            stack: error.stack
+        });
+    }
 });
 
 // Serve the main application for all other routes (must be last)
