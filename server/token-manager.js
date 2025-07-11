@@ -1,3 +1,17 @@
+// File: server/token-manager.js
+// Description: PingOne API token management for server-side authentication
+// 
+// This module handles authentication with PingOne APIs by managing access tokens.
+// It provides token caching, automatic refresh, rate limiting, and credential
+// management from both environment variables and settings files.
+// 
+// Key Features:
+// - Token caching with automatic refresh before expiry
+// - Rate limiting to prevent API abuse
+// - Support for encrypted API secrets
+// - Fallback credential sources (env vars, settings file)
+// - Queue management for concurrent token requests
+
 import fetch from 'node-fetch';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -6,27 +20,46 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/**
+ * Token Manager Class
+ * 
+ * Manages PingOne API authentication tokens with caching, automatic refresh,
+ * and rate limiting. Handles credential retrieval from multiple sources
+ * and provides a unified interface for token access.
+ * 
+ * @param {Object} logger - Logger instance for debugging and error reporting
+ */
 class TokenManager {
     constructor(logger) {
+        // Initialize logger with fallback to console methods
         this.logger = logger || {
             debug: console.debug.bind(console),
             info: console.log.bind(console),
             warn: console.warn.bind(console),
             error: console.error.bind(console)
         };
+        
+        // Token state management
         this.token = null;
         this.tokenExpiry = null;
         this.isRefreshing = false;
         this.refreshQueue = [];
         
-        // Rate limiting for token requests - FIXED to 50ms
+        // Rate limiting configuration
+        // Prevents API abuse by limiting token requests to 20 per second
         this.lastTokenRequest = 0;
         this.minRequestInterval = 50; // Minimum 50ms between token requests (20/sec)
     }
 
     /**
-     * Read settings from file
+     * Read application settings from the settings.json file
+     * 
+     * Loads configuration data including API credentials from the data/settings.json
+     * file. This provides a fallback source for credentials when environment
+     * variables are not available.
+     * 
      * @private
+     * @returns {Promise<Object|null>} Settings object or null if file cannot be read
      */
     async readSettingsFromFile() {
         try {
@@ -41,11 +74,18 @@ class TokenManager {
     }
 
     /**
-     * Get API credentials from settings file or environment variables
+     * Get API credentials from multiple sources
+     * 
+     * Retrieves PingOne API credentials from environment variables first,
+     * then falls back to the settings file. Supports both encrypted and
+     * plain text API secrets, with automatic decryption when needed.
+     * 
      * @private
+     * @returns {Promise<Object|null>} Credentials object or null if not available
      */
     async getCredentials() {
-        // Helper to get a setting by multiple possible keys
+        // Helper function to get a setting by multiple possible keys
+        // Handles different naming conventions (camelCase, kebab-case)
         const getSetting = (obj, ...keys) => {
             for (const key of keys) {
                 if (obj && typeof obj === 'object' && obj[key]) return obj[key];
@@ -53,7 +93,7 @@ class TokenManager {
             return undefined;
         };
 
-        // First try environment variables
+        // First try environment variables (preferred source)
         let clientId = process.env.PINGONE_CLIENT_ID;
         let clientSecret = process.env.PINGONE_CLIENT_SECRET;
         let environmentId = process.env.PINGONE_ENVIRONMENT_ID;

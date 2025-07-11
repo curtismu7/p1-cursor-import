@@ -1,4 +1,15 @@
-// Main application entry point
+// File: app.js
+// Description: Main application entry point for PingOne user import tool
+// 
+// This file orchestrates the entire application, managing:
+// - UI state and view transitions
+// - File upload and CSV processing
+// - Import/export/modify/delete operations
+// - Real-time progress tracking via SSE
+// - Settings management and population selection
+// - Error handling and user feedback
+// - Disclaimer agreement and feature flags
+
 import { Logger } from './modules/logger.js';
 import { FileLogger } from './modules/file-logger.js';
 import { SettingsManager } from './modules/settings-manager.js';
@@ -11,28 +22,48 @@ import { VersionManager } from './modules/version-manager.js';
 import { apiFactory, initAPIFactory } from './modules/api-factory.js';
 
 /**
- * Simple Secret Field Toggle - Handles only the eye icon visibility toggle
+ * Secret Field Toggle Component
+ * 
+ * Manages the visibility toggle for sensitive input fields (like API secrets).
+ * Provides a secure way to show/hide sensitive data with visual feedback.
+ * 
+ * Features:
+ * - Toggle between visible and masked input
+ * - Visual eye icon that changes based on state
+ * - Maintains actual value while showing masked version
+ * - Prevents accidental exposure of sensitive data
  */
 class SecretFieldToggle {
     constructor() {
+        // Core DOM elements for the toggle functionality
         this.inputElement = null;
         this.eyeButton = null;
+        
+        // State tracking for visibility and initialization
         this.isVisible = false;
         this.actualValue = '';
         this.isInitialized = false;
     }
 
     /**
-     * Initialize the secret field toggle
+     * Initialize the secret field toggle component
+     * 
+     * Sets up DOM element references and event handlers for the toggle functionality.
+     * Called during app initialization to prepare the secret field for user interaction.
+     * 
+     * @returns {void}
      */
     init() {
+        // Prevent double initialization
         if (this.isInitialized) {
             return;
         }
 
+        // Get references to the required DOM elements
         this.inputElement = document.getElementById('api-secret');
         this.eyeButton = document.getElementById('toggle-api-secret-visibility');
 
+        // Validate that both elements exist before proceeding
         if (!this.inputElement || !this.eyeButton) {
             console.error('❌ Secret field elements not found');
             console.error('Input element:', !!this.inputElement);
@@ -44,33 +75,44 @@ class SecretFieldToggle {
         console.log('Input element ID:', this.inputElement.id);
         console.log('Eye button ID:', this.eyeButton.id);
 
-        // Set up the eye button click handler
+        // Set up event handlers for user interaction
         this.setupToggleHandler();
-        
-        // Set up input change handler
         this.handleInputChange();
         
+        // Mark as initialized to prevent re-initialization
         this.isInitialized = true;
         console.log('✅ Secret field toggle initialized');
     }
 
     /**
      * Set up the toggle button click handler
+     * 
+     * Binds the click event to the eye button for toggling visibility.
+     * Ensures proper event handling and prevents memory leaks.
+     * 
+     * @returns {void}
      */
     setupToggleHandler() {
-        // Remove any existing listeners
+        // Remove any existing listeners to prevent duplicates
         this.eyeButton.removeEventListener('click', this.handleToggleClick);
         
-        // Add the click handler
+        // Add the click handler with proper binding
         this.eyeButton.addEventListener('click', this.handleToggleClick.bind(this));
         
         console.log('Secret field toggle handler set up');
     }
 
     /**
-     * Handle the toggle button click
+     * Handle the toggle button click event
+     * 
+     * Toggles the visibility state of the secret field and updates the UI accordingly.
+     * Prevents event bubbling and provides visual feedback to the user.
+     * 
+     * @param {Event} e - The click event object
+     * @returns {void}
      */
     handleToggleClick(e) {
+        // Prevent default behavior and stop event propagation
         e.preventDefault();
         e.stopPropagation();
         
@@ -78,13 +120,13 @@ class SecretFieldToggle {
         console.log('Current visibility:', this.isVisible);
         console.log('Current value length:', this.actualValue.length);
         
-        // Toggle visibility
+        // Toggle the visibility state
         this.isVisible = !this.isVisible;
         
-        // Update the input field
+        // Update the input field display based on new state
         this.updateInputField();
         
-        // Update the eye icon
+        // Update the eye icon to reflect current state
         this.updateEyeIcon();
         
         console.log('✅ Toggle completed!');
@@ -94,7 +136,12 @@ class SecretFieldToggle {
     }
 
     /**
-     * Update the input field based on visibility state
+     * Update the input field display based on visibility state
+     * 
+     * Switches between text and password input types to show/hide the actual value.
+     * Maintains the actual value while providing visual masking for security.
+     * 
+     * @returns {void}
      */
     updateInputField() {
         if (!this.inputElement) {
@@ -102,50 +149,62 @@ class SecretFieldToggle {
         }
 
         if (this.isVisible) {
-            // Show the actual value
+            // Show the actual value in plain text
             this.inputElement.type = 'text';
             this.inputElement.value = this.actualValue;
         } else {
-            // Show masked value
+            // Show masked value using password input type
             this.inputElement.type = 'password';
             this.inputElement.value = this.actualValue || '';
         }
     }
 
     /**
-     * Update the eye icon to reflect current state
+     * Update the eye icon to reflect current visibility state
+     * 
+     * Changes the FontAwesome icon class to show either an open eye (visible)
+     * or crossed-out eye (hidden) based on the current state.
+     * 
+     * @returns {void}
      */
     updateEyeIcon() {
         if (!this.eyeButton) {
             return;
         }
 
+        // Find the icon element within the button
         const iconElement = this.eyeButton.querySelector('i');
         if (!iconElement) {
             return;
         }
 
         if (this.isVisible) {
-            // Show eye (visible state)
+            // Show open eye icon for visible state
             iconElement.classList.remove('fa-eye-slash');
             iconElement.classList.add('fa-eye');
         } else {
-            // Show eye-slash (hidden state)
+            // Show crossed-out eye icon for hidden state
             iconElement.classList.remove('fa-eye');
             iconElement.classList.add('fa-eye-slash');
         }
     }
 
     /**
-     * Set the secret value (called when form is populated)
+     * Set the secret value and update display
+     * 
+     * Called when the form is populated with existing settings.
+     * Always starts in hidden state for security.
+     * 
+     * @param {string} value - The secret value to store
+     * @returns {void}
      */
     setValue(value) {
         this.actualValue = value || '';
         
-        // Always start in hidden state
+        // Always start in hidden state for security
         this.isVisible = false;
         
-        // Update the display
+        // Update the display to reflect the new value
         this.updateInputField();
         this.updateEyeIcon();
         
@@ -154,20 +213,29 @@ class SecretFieldToggle {
 
     /**
      * Get the current secret value
+     * 
+     * Returns the actual stored value, not the displayed value.
+     * 
+     * @returns {string} The current secret value
      */
     getValue() {
         return this.actualValue;
     }
 
     /**
-     * Handle input changes (when user types)
+     * Handle input changes when user types in the field
+     * 
+     * Updates the stored value to match what the user is typing.
+     * Ensures the actual value stays synchronized with user input.
+     * 
+     * @returns {void}
      */
     handleInputChange() {
         if (!this.inputElement) {
             return;
         }
 
-        // Add input event listener
+        // Listen for input changes and update stored value
         this.inputElement.addEventListener('input', (e) => {
             this.actualValue = e.target.value;
             console.log('Secret field input changed, new length:', this.actualValue.length);
@@ -175,9 +243,24 @@ class SecretFieldToggle {
     }
 }
 
+/**
+ * Main Application Class
+ * 
+ * Orchestrates the entire PingOne user import tool application.
+ * Manages all UI interactions, API calls, file processing, and state management.
+ * 
+ * Key Responsibilities:
+ * - Initialize and coordinate all component modules
+ * - Handle user interactions and view transitions
+ * - Manage import/export/modify/delete operations
+ * - Provide real-time progress feedback via SSE
+ * - Handle error states and user notifications
+ * - Manage settings and population selection
+ */
 class App {
     constructor() {
-        // Initialize core components
+        // Initialize core component modules
+        // Each module handles a specific aspect of the application
         this.logger = new Logger();
         this.fileLogger = new FileLogger();
         this.settingsManager = new SettingsManager(this.logger);
@@ -187,17 +270,18 @@ class App {
         this.fileHandler = new FileHandler(this.logger, this.uiManager);
         this.versionManager = new VersionManager(this.logger);
         
-        // Initialize secret field manager
+        // Initialize secret field manager for secure input handling
         this.secretFieldToggle = new SecretFieldToggle();
         
-        // Initialize state
+        // Application state tracking
+        // Tracks current view and operation states to prevent conflicts
         this.currentView = 'import';
         this.isImporting = false;
         this.isExporting = false;
         this.isDeleting = false;
         this.isModifying = false;
             
-        // Abort controllers
+        // Abort controllers for canceling ongoing operations
         this.importAbortController = null;
         this.exportAbortController = null;
         this.deleteAbortController = null;
@@ -210,36 +294,46 @@ class App {
         this.importErrors = [];
     }
 
+    /**
+     * Initialize the application and all its components
+     * 
+     * Sets up all modules, loads settings, establishes connections,
+     * and prepares the UI for user interaction. This is the main
+     * entry point after the app is constructed.
+     * 
+     * @returns {Promise<void>}
+     */
     async init() {
         try {
             console.log('Initializing app...');
             
-            // Initialize API Factory first
+            // Initialize API Factory first to establish API client infrastructure
             await this.initAPIFactory();
             
-            // Initialize API clients
+            // Initialize API clients for PingOne communication
             this.pingOneClient = apiFactory.getPingOneClient(this.logger, this.settingsManager);
             
-            // Initialize UI manager
+            // Initialize UI manager for interface management
             await this.uiManager.init();
             
-            // Initialize settings manager
+            // Initialize settings manager for configuration handling
             await this.settingsManager.init();
             
-            // Initialize file handler
+            // Initialize file handler for CSV processing
             this.fileHandler = new FileHandler(this.logger, this.uiManager);
             
-            // Initialize secret field toggle
+            // Initialize secret field toggle for secure input handling
             this.secretFieldToggle = new SecretFieldToggle();
             this.secretFieldToggle.init();
             
-            // Load settings
+            // Load application settings from storage
             await this.loadSettings();
             
-            // Setup event listeners
+            // Setup event listeners for user interactions
             this.setupEventListeners();
             
             // Check disclaimer status and setup if needed
+            // Ensures user has accepted terms before using the tool
             const disclaimerPreviouslyAccepted = this.checkDisclaimerStatus();
             if (!disclaimerPreviouslyAccepted) {
                 console.log('Disclaimer not previously accepted, setting up disclaimer agreement');
@@ -248,16 +342,18 @@ class App {
                 console.log('Disclaimer previously accepted, tool already enabled');
             }
             
-            // Check server connection status
+            // Check server connection status to ensure backend is available
             await this.checkServerConnectionStatus();
             
             // Update import button state after initialization
+            // Ensures UI reflects current application state
             this.updateImportButtonState();
             
-            // Update version information in UI
+            // Update version information in UI for user reference
             this.versionManager.updateTitle();
             
             console.log('App initialization complete');
+            console.log("✅ Moved Import Progress section below Import Users button");
             
         } catch (error) {
             console.error('Error initializing app:', error);
@@ -832,35 +928,142 @@ class App {
         return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uuid);
     }
 
+    /**
+     * Handles file selection from the UI, parses CSV, and triggers population conflict logic if needed
+     * @param {File} file - The selected CSV file
+     */
+    async handleFileSelect(file) {
+        try {
+            // Log file selection for debugging
+            this.uiManager.debugLog("FileUpload", `File selected: ${file.name}, size: ${file.size}`);
+            await this.fileHandler.setFile(file);
+            this.uiManager.showSuccess('File selected successfully', `Selected file: ${file.name}`);
+            // Update import button state after file selection
+            this.updateImportButtonState();
+
+            // --- Population conflict detection ---
+            const users = this.fileHandler.getParsedUsers ? this.fileHandler.getParsedUsers() : [];
+            // Log number of users parsed from CSV
+            this.uiManager.debugLog("CSV", `Parsed ${users.length} users from CSV`);
+            const populationSelect = document.getElementById('import-population-select');
+            const uiPopulationId = populationSelect && populationSelect.value;
+            // Log selected population
+            this.uiManager.debugLog("Population", `Selected population: ${uiPopulationId}`);
+            let hasCsvPopulation = false;
+            if (users.length) {
+                hasCsvPopulation = Object.keys(users[0]).some(
+                    h => h.toLowerCase() === 'populationid' || h.toLowerCase() === 'population_id'
+                ) && users.some(u => u.populationId && u.populationId.trim() !== '');
+            }
+            // If both UI and CSV have population, show conflict modal
+            if (uiPopulationId && hasCsvPopulation) {
+                const modal = document.getElementById('population-conflict-modal');
+                if (modal) {
+                    modal.style.display = 'flex';
+                    // Set up modal buttons for user choice
+                    const useUiBtn = document.getElementById('use-ui-population');
+                    const useCsvBtn = document.getElementById('use-csv-population');
+                    const cancelBtn = document.getElementById('cancel-population-conflict');
+                    useUiBtn.onclick = () => {
+                        modal.style.display = 'none';
+                        // Overwrite all user records with UI populationId
+                        users.forEach(u => u.populationId = uiPopulationId);
+                        this.populationChoice = 'ui';
+                        this.uiManager.logMessage('info', 'Population conflict resolved: using UI dropdown');
+                    };
+                    useCsvBtn.onclick = () => {
+                        modal.style.display = 'none';
+                        // Use CSV populationId as-is
+                        this.populationChoice = 'csv';
+                        this.uiManager.logMessage('info', 'Population conflict resolved: using CSV file');
+                    };
+                    cancelBtn.onclick = () => {
+                        modal.style.display = 'none';
+                        this.populationChoice = null;
+                        this.uiManager.logMessage('warning', 'Population conflict prompt cancelled.');
+                    };
+                }
+                return;
+            }
+            // If only UI or only CSV, no prompt needed
+            if (uiPopulationId && !hasCsvPopulation) {
+                users.forEach(u => u.populationId = uiPopulationId);
+                this.populationChoice = 'ui';
+            } else if (!uiPopulationId && hasCsvPopulation) {
+                this.populationChoice = 'csv';
+            }
+            // Show population prompt if needed (legacy)
+            this.showPopulationChoicePrompt();
+        } catch (error) {
+            this.uiManager.showError('Failed to select file', error.message);
+        }
+    }
+
+    /**
+     * Starts the user import flow with real-time progress tracking
+     * 
+     * Validates user inputs, sends CSV data to the server, and establishes
+     * a Server-Sent Events (SSE) connection for real-time progress updates.
+     * Handles error states, retry logic, and user feedback throughout the process.
+     * 
+     * @returns {Promise<void>}
+     */
     async startImport() {
+        // Prevent multiple simultaneous imports
         if (this.isImporting) {
             this.logger.warn('Import already in progress');
             return;
         }
+        
+        // SSE connection management variables
         let sseSource;
         let sseRetryCount = 0;
         const maxSseRetries = 3;
         const retryDelay = 5000;
+        
+        /**
+         * Establishes SSE connection for real-time import progress updates
+         * 
+         * Opens a persistent connection to receive progress events from the server.
+         * Handles various event types: progress updates, errors, and completion.
+         * Includes retry logic for connection failures.
+         * 
+         * @param {string} sessionId - Unique session identifier for this import
+         */
         const connectSSE = (sessionId) => {
-            console.log('Connecting to SSE with sessionId:', sessionId);
+            // Log SSE connection attempt for debugging
+            this.uiManager.debugLog("SSE", `Connecting with sessionId: ${sessionId}`);
+            
+            // Create EventSource for Server-Sent Events connection
+            // This establishes a persistent HTTP connection for real-time updates
             sseSource = new window.EventSource(`/api/import/progress/${sessionId}`);
+            
+            // Track if server has sent an error event to prevent false retries
+            let serverErrorReceived = false;
+            
+            // Handle progress updates from the server
+            // Each event contains current progress, total count, and status information
             sseSource.addEventListener('progress', (event) => {
-                console.log('SSE progress event received:', event);
+                this.uiManager.debugLog("SSE", "Progress event received", event.data);
                 let data;
                 try {
                     data = JSON.parse(event.data);
                 } catch (e) {
-                    console.error('Failed to parse SSE progress event data:', event.data);
+                    this.uiManager.debugLog("SSE", "Failed to parse progress event data", event.data);
                     return;
                 }
-                // Log user and progress
+                // Log which user is currently being processed
                 if (data.user) {
-                    console.log('Processing user:', data.user.username);
+                    this.uiManager.debugLog("Import", `Processing user: ${data.user.username}`);
                 }
+                
+                // Log progress update with current/total counts
                 if (data.current !== undefined && data.total !== undefined) {
-                    console.log('Progress screen update:', data.current, 'of', data.total);
+                    this.uiManager.debugLog("Import", `Progress update: ${data.current} of ${data.total}`);
                 }
-                // Update UI
+                
+                // Update UI with progress information
+                // This updates the progress bar, counts, and status messages
                 this.uiManager.updateImportProgress(
                     data.current || 0,
                     data.total || 0,
@@ -869,69 +1072,90 @@ class App {
                     data.populationName || '',
                     data.populationId || ''
                 );
-                // Log progress message
+                
+                // Display status message to user if provided
                 if (data.message) {
                     this.uiManager.logMessage('info', data.message);
                 }
             });
-            sseSource.onmessage = (event) => {
-                console.log('SSE generic message event:', event);
-            };
-            sseSource.addEventListener('population_conflict', (event) => {
-                console.log('SSE population_conflict event:', event);
-            });
-            sseSource.addEventListener('invalid_population', (event) => {
-                console.log('SSE invalid_population event:', event);
-            });
-            sseSource.addEventListener('done', (event) => {
-                console.log('SSE done event:', event);
-            });
+            // Handle explicit server error events
+            // These are sent by the server when import fails due to server-side issues
             sseSource.addEventListener('error', (event) => {
-                console.log('SSE error event:', event);
-                this.uiManager.logMessage('error', 'SSE connection error during import.');
+                serverErrorReceived = true;
                 let data = {};
                 try { data = JSON.parse(event.data); } catch {}
-                const errorSummary = 'Import failed due to connection error';
-                const errorDetails = [data.error || 'SSE connection error'];
+                this.uiManager.debugLog("SSE", "Server error event received", data);
+                
+                // Update UI with error information
+                const errorSummary = 'Import failed due to server error';
+                const errorDetails = [data.error || 'SSE server error'];
                 this.uiManager.updateImportErrorStatus(errorSummary, errorDetails);
-                this.uiManager.showError('Import failed', data.error || 'SSE connection error');
+                this.uiManager.showError('Import failed', data.error || 'SSE server error');
+                
+                // Clean up connection and state
                 sseSource.close();
                 this.isImporting = false;
-                // Retry logic
-                if (sseRetryCount < maxSseRetries) {
-                    sseRetryCount++;
-                    this.uiManager.showInfo('Reconnecting to import progress stream...', `Attempt ${sseRetryCount} of ${maxSseRetries}`);
-                    setTimeout(() => connectSSE(sessionId), retryDelay);
-                } else {
-                    this.uiManager.showError('Import progress stream lost', 'Real-time updates unavailable. Progress will not update live, but import will continue.');
-                }
             });
-            sseSource.addEventListener('open', (event) => {
-                console.log('SSE connection opened for import progress.');
+            
+            // Handle import completion event
+            // Sent by server when import process finishes (success or failure)
+            sseSource.addEventListener('done', (event) => {
+                this.uiManager.debugLog("SSE", "Done event received", event.data);
+                sseSource.close();
+                this.isImporting = false;
+            });
+            
+            // Log when SSE connection successfully opens
+            // This confirms the connection is established and ready for events
+            sseSource.onopen = (event) => {
+                this.uiManager.debugLog("SSE", "Connection opened", { readyState: sseSource.readyState });
                 this.uiManager.logMessage('api', 'SSE connection opened for import progress.');
                 sseRetryCount = 0;
-            });
+            };
+            
+            // Handle connection errors and implement retry logic
+            // Distinguishes between network errors and server errors
+            sseSource.onerror = (err) => {
+                this.uiManager.debugLog("SSE", "Connection error", { readyState: sseSource.readyState, sessionId });
+                if (!serverErrorReceived) {
+                    this.uiManager.logMessage('warning', 'SSE connection lost. Retrying...');
+                    sseSource.close();
+                    if (sseRetryCount < maxSseRetries) {
+                        sseRetryCount++;
+                        setTimeout(() => connectSSE(sessionId), retryDelay);
+                    } else {
+                        this.uiManager.showError('Import progress stream lost', 'Real-time updates unavailable. Progress will not update live, but import will continue.');
+                        this.isImporting = false;
+                    }
+                }
+            };
         };
-        // === NEW CODE: Get sessionId from backend ===
         try {
+            // Set import state to prevent multiple simultaneous imports
             this.isImporting = true;
             this.importAbortController = new AbortController();
+            
+            // Validate import options (file, population, etc.)
             const importOptions = this.getImportOptions();
             if (!importOptions) {
                 this.isImporting = false;
                 return;
             }
-            // Show import progress screen immediately
-            console.log('Progress screen activated.');
-            console.log('Import started');
+            
+            // Log import start with user count for debugging
+            this.uiManager.debugLog("Import", "Import process started", { userCount: importOptions.totalUsers });
             this.uiManager.showImportStatus(importOptions.totalUsers, importOptions.selectedPopulationName, importOptions.selectedPopulationId);
-            // Prepare FormData for file upload
+            
+            // Prepare FormData for file upload to server
+            // Includes file, population selection, and metadata
             const formData = new FormData();
             formData.append('file', importOptions.file);
             formData.append('selectedPopulationId', importOptions.selectedPopulationId);
             formData.append('selectedPopulationName', importOptions.selectedPopulationName);
             formData.append('totalUsers', importOptions.totalUsers);
-            // Start import and get sessionId
+            
+            // Send CSV data and population info to backend for processing
+            // The server will start the import process and return a session ID
             const response = await fetch('/api/import', {
                 method: 'POST',
                 body: formData,
@@ -939,26 +1163,41 @@ class App {
             });
             const result = await response.json();
             const sessionId = result.sessionId;
+            
+            // Validate session ID is present (required for SSE connection)
             if (!sessionId) {
-                console.error('Session ID is undefined. Import cannot proceed.');
+                this.uiManager.debugLog("Import", "Session ID is undefined. Import cannot proceed.");
                 this.uiManager.showError('Import failed', 'Session ID is undefined. Import cannot proceed.');
                 this.isImporting = false;
                 return;
             }
+            
+            // Log session ID and establish SSE connection for progress updates
+            this.uiManager.debugLog("Import", "Session ID received", { sessionId });
             connectSSE(sessionId);
         } catch (error) {
-            console.error('Error starting import:', error);
+            this.uiManager.debugLog("Import", "Error starting import", error);
             this.uiManager.showError('Import failed', error.message || error);
             this.isImporting = false;
         }
     }
 
+    /**
+     * Validates and retrieves import configuration options
+     * 
+     * Checks that a population is selected and a CSV file is loaded.
+     * Returns the configuration needed to start the import process.
+     * Shows appropriate error messages if validation fails.
+     * 
+     * @returns {Object|null} Import options or null if validation fails
+     */
     getImportOptions() {
+        // Get population selection from UI
         const populationSelect = document.getElementById('import-population-select');
         const selectedPopulationId = populationSelect?.value;
         const selectedPopulationName = populationSelect?.selectedOptions[0]?.text || '';
         
-        // Debug: Log the current population selection
+        // Debug logging to help troubleshoot population selection issues
         console.log('=== getImportOptions Debug ===');
         console.log('Population select element:', populationSelect);
         console.log('Selected population ID:', selectedPopulationId);
@@ -966,17 +1205,20 @@ class App {
         console.log('All options:', populationSelect ? Array.from(populationSelect.options).map(opt => ({ value: opt.value, text: opt.text })) : 'No select element');
         console.log('===========================');
         
+        // Validate population selection is required
         if (!selectedPopulationId) {
             this.uiManager.showError('No population selected', 'Please select a population before starting the import.');
             return null;
         }
         
+        // Validate CSV file contains users to import
         const totalUsers = this.fileHandler.getTotalUsers();
         if (!totalUsers || totalUsers === 0) {
             this.uiManager.showError('No users to import', 'Please select a CSV file with users to import.');
             return null;
         }
         
+        // Return validated import configuration
         return {
             selectedPopulationId,
             selectedPopulationName,
@@ -1043,30 +1285,33 @@ class App {
         }
     }
 
+    /**
+     * Starts the user export flow by validating options, sending request to the server, and handling progress
+     */
     async startExport() {
         if (this.isExporting) {
             this.logger.warn('Export already in progress');
             return;
         }
-        
         try {
             this.isExporting = true;
             this.exportAbortController = new AbortController();
-            
             const exportOptions = this.getExportOptions();
-            if (!exportOptions) return;
-            
-            // Show export status
+            // If no export options, show error and stop
+            if (!exportOptions) {
+                this.isExporting = false;
+                return;
+            }
+            // Show export status in UI
             this.uiManager.showExportStatus();
-            
-            // Start export process
+            // Send export request to backend
             const response = await this.localClient.post('/api/export-users', exportOptions, {
                 signal: this.exportAbortController.signal,
                 onProgress: (current, total, message, counts) => {
+                    // Update UI with export progress
                     this.uiManager.updateExportProgress(current, total, message, counts);
                 }
             });
-            
             // Handle completion
             if (response.success) {
                 this.uiManager.updateExportProgress(exportOptions.totalUsers, exportOptions.totalUsers, 'Export completed successfully', response.counts);
@@ -1075,7 +1320,6 @@ class App {
                 this.uiManager.updateExportProgress(0, exportOptions.totalUsers, 'Export failed', response.counts);
                 this.uiManager.showError('Export failed', response.error);
             }
-            
         } catch (error) {
             if (error.name === 'AbortError') {
                 this.uiManager.updateExportProgress(0, 0, 'Export cancelled');
@@ -1114,53 +1358,47 @@ class App {
         }
     }
 
+    /**
+     * Starts the user delete flow by validating options, sending request to the server, and handling progress
+     */
     async startDelete() {
         if (this.isDeleting) {
             this.logger.warn('Delete already in progress');
             return;
         }
-        
         try {
             this.isDeleting = true;
             this.deleteAbortController = new AbortController();
-            
             const deleteOptions = this.getDeleteOptions();
-            if (!deleteOptions) return;
-            
-            // Capture the selected population name and ID at the start of the delete
-            const { selectedPopulationName, selectedPopulationId } = deleteOptions;
-            const populationNameForThisRun = selectedPopulationName;
-            const populationIdForThisRun = selectedPopulationId;
-            
-            // Show delete status
-            this.uiManager.showDeleteStatus(deleteOptions.totalUsers, populationNameForThisRun, populationIdForThisRun);
-            
-            // Start delete process
+            // If no delete options, show error and stop
+            if (!deleteOptions) {
+                this.isDeleting = false;
+                return;
+            }
+            // Show delete status in UI
+            this.uiManager.showDeleteStatus(deleteOptions.totalUsers, deleteOptions.populationName, deleteOptions.populationId);
+            // Send delete request to backend
             const response = await this.localClient.post('/api/delete-users', deleteOptions, {
                 signal: this.deleteAbortController.signal,
                 onProgress: (current, total, message, counts) => {
-                    this.uiManager.updateDeleteProgress(current, total, message, counts, populationNameForThisRun, populationIdForThisRun);
+                    // Update UI with delete progress
+                    this.uiManager.updateDeleteProgress(current, total, message, counts, deleteOptions.populationName, deleteOptions.populationId);
                 }
             });
-            
             // Handle completion
             if (response.success) {
-                this.uiManager.updateDeleteProgress(deleteOptions.totalUsers, deleteOptions.totalUsers, 'Delete completed successfully', response.counts, populationNameForThisRun, populationIdForThisRun);
+                this.uiManager.updateDeleteProgress(deleteOptions.totalUsers, deleteOptions.totalUsers, 'Delete completed successfully', response.counts, deleteOptions.populationName, deleteOptions.populationId);
                 this.uiManager.showSuccess('Delete completed successfully', response.message);
             } else {
-                this.uiManager.updateDeleteProgress(0, deleteOptions.totalUsers, 'Delete failed', response.counts, populationNameForThisRun, populationIdForThisRun);
+                this.uiManager.updateDeleteProgress(0, deleteOptions.totalUsers, 'Delete failed', response.counts, deleteOptions.populationName, deleteOptions.populationId);
                 this.uiManager.showError('Delete failed', response.error);
             }
-            
         } catch (error) {
-            const deleteOptions = this.getDeleteOptions();
-            const populationNameForThisRun = deleteOptions ? deleteOptions.selectedPopulationName : '';
-            const populationIdForThisRun = deleteOptions ? deleteOptions.selectedPopulationId : '';
             if (error.name === 'AbortError') {
-                this.uiManager.updateDeleteProgress(0, 0, 'Delete cancelled', {}, populationNameForThisRun, populationIdForThisRun);
+                this.uiManager.updateDeleteProgress(0, 0, 'Delete cancelled');
                 this.uiManager.showInfo('Delete cancelled');
             } else {
-                this.uiManager.updateDeleteProgress(0, 0, 'Delete failed: ' + error.message, {}, populationNameForThisRun, populationIdForThisRun);
+                this.uiManager.updateDeleteProgress(0, 0, 'Delete failed: ' + error.message);
                 this.uiManager.showError('Delete failed', error.message);
             }
         } finally {
@@ -1198,30 +1436,33 @@ class App {
         }
     }
 
+    /**
+     * Starts the user modify flow by validating options, sending request to the server, and handling progress
+     */
     async startModify() {
         if (this.isModifying) {
             this.logger.warn('Modify already in progress');
             return;
         }
-        
         try {
             this.isModifying = true;
             this.modifyAbortController = new AbortController();
-            
             const modifyOptions = this.getModifyOptions();
-            if (!modifyOptions) return;
-            
-            // Show modify status
+            // If no modify options, show error and stop
+            if (!modifyOptions) {
+                this.isModifying = false;
+                return;
+            }
+            // Show modify status in UI
             this.uiManager.showModifyStatus(modifyOptions.totalUsers);
-            
-            // Start modify process
+            // Send modify request to backend
             const response = await this.localClient.post('/api/modify-users', modifyOptions, {
                 signal: this.modifyAbortController.signal,
                 onProgress: (current, total, message, counts) => {
+                    // Update UI with modify progress
                     this.uiManager.updateModifyProgress(current, total, message, counts);
                 }
             });
-            
             // Handle completion
             if (response.success) {
                 this.uiManager.updateModifyProgress(modifyOptions.totalUsers, modifyOptions.totalUsers, 'Modify completed successfully', response.counts);
@@ -1230,7 +1471,6 @@ class App {
                 this.uiManager.updateModifyProgress(0, modifyOptions.totalUsers, 'Modify failed', response.counts);
                 this.uiManager.showError('Modify failed', response.error);
             }
-            
         } catch (error) {
             if (error.name === 'AbortError') {
                 this.uiManager.updateModifyProgress(0, 0, 'Modify cancelled');
@@ -1401,70 +1641,6 @@ class App {
             
         } catch (error) {
             this.uiManager.showError(`Failed to toggle feature flag ${flag}`, error.message);
-        }
-    }
-
-    async handleFileSelect(file) {
-        try {
-            await this.fileHandler.setFile(file);
-            this.uiManager.showSuccess('File selected successfully', `Selected file: ${file.name}`);
-            // Update import button state after file selection
-            this.updateImportButtonState();
-
-            // --- Population conflict detection ---
-            const users = this.fileHandler.getParsedUsers ? this.fileHandler.getParsedUsers() : [];
-            const populationSelect = document.getElementById('import-population-select');
-            const uiPopulationId = populationSelect && populationSelect.value;
-            let hasCsvPopulation = false;
-            if (users.length) {
-                hasCsvPopulation = Object.keys(users[0]).some(
-                    h => h.toLowerCase() === 'populationid' || h.toLowerCase() === 'population_id'
-                ) && users.some(u => u.populationId && u.populationId.trim() !== '');
-            }
-            if (uiPopulationId && hasCsvPopulation) {
-                // Show conflict modal
-                const modal = document.getElementById('population-conflict-modal');
-                if (modal) {
-                    modal.style.display = 'flex';
-                    // Set up modal buttons
-                    const useUiBtn = document.getElementById('use-ui-population');
-                    const useCsvBtn = document.getElementById('use-csv-population');
-                    const cancelBtn = document.getElementById('cancel-population-conflict');
-                    useUiBtn.onclick = () => {
-                        modal.style.display = 'none';
-                        // Overwrite all user records with UI populationId
-                        users.forEach(u => u.populationId = uiPopulationId);
-                        this.populationChoice = 'ui';
-                        console.log('Population conflict resolved: using UI dropdown');
-                        this.uiManager.logMessage('info', 'Population conflict resolved: using UI dropdown');
-                    };
-                    useCsvBtn.onclick = () => {
-                        modal.style.display = 'none';
-                        // Use CSV populationId as-is
-                        this.populationChoice = 'csv';
-                        console.log('Population conflict resolved: using CSV file');
-                        this.uiManager.logMessage('info', 'Population conflict resolved: using CSV file');
-                    };
-                    cancelBtn.onclick = () => {
-                        modal.style.display = 'none';
-                        this.populationChoice = null;
-                        this.uiManager.logMessage('warning', 'Population conflict prompt cancelled.');
-                    };
-                }
-                return;
-            }
-            // If only UI or only CSV, no prompt needed
-            if (uiPopulationId && !hasCsvPopulation) {
-                // Overwrite all user records with UI populationId
-                users.forEach(u => u.populationId = uiPopulationId);
-                this.populationChoice = 'ui';
-            } else if (!uiPopulationId && hasCsvPopulation) {
-                this.populationChoice = 'csv';
-            }
-            // Show population prompt if needed (legacy)
-            this.showPopulationChoicePrompt();
-        } catch (error) {
-            this.uiManager.showError('Failed to select file', error.message);
         }
     }
 
@@ -2156,4 +2332,124 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (error) {
         console.error('Failed to initialize app:', error);
     }
+});
+
+// Debug log filtering functions
+window.clearDebugLog = function() {
+    const debugContent = document.getElementById('debug-log-content');
+    if (debugContent) {
+        debugContent.innerHTML = '';
+    }
+};
+
+window.toggleDebugFilter = function(area) {
+    // Store filter state
+    if (!window.debugFilters) window.debugFilters = {};
+    window.debugFilters[area] = !window.debugFilters[area];
+    applyDebugFilters();
+};
+
+window.applyDebugFilters = function() {
+    const debugContent = document.getElementById('debug-log-content');
+    if (!debugContent) return;
+    
+    const entries = debugContent.querySelectorAll('.debug-log-entry');
+    entries.forEach(entry => {
+        const area = entry.getAttribute('data-area');
+        const isVisible = !window.debugFilters || window.debugFilters[area] !== false;
+        entry.style.display = isVisible ? 'block' : 'none';
+    });
+};
+
+// Initialize debug filters
+window.debugFilters = {};
+
+// Global click handler for log entries to enable expand/collapse functionality
+document.addEventListener('click', (e) => {
+    // Check if the clicked element is a log entry or inside one
+    const logEntry = e.target.closest('.log-entry');
+    if (!logEntry) return;
+    
+    // Check if the clicked element is an expand icon
+    const expandIcon = e.target.closest('.log-expand-icon');
+    if (expandIcon) {
+        e.stopPropagation(); // Prevent triggering the log entry click
+    }
+    
+    // Find the details and icon elements
+    const details = logEntry.querySelector('.log-details');
+    const icon = logEntry.querySelector('.log-expand-icon');
+    
+    if (details && icon) {
+        const isExpanded = details.style.display !== 'none';
+        
+        if (isExpanded) {
+            // Collapse
+            details.style.display = 'none';
+            icon.innerHTML = '▶';
+            logEntry.classList.remove('expanded');
+        } else {
+            // Expand
+            details.style.display = 'block';
+            icon.innerHTML = '▼';
+            logEntry.classList.add('expanded');
+        }
+    }
+});
+
+// Function to add expand icons to existing log entries that don't have them
+window.addExpandIconsToLogEntries = function() {
+    const logEntries = document.querySelectorAll('.log-entry');
+    logEntries.forEach(entry => {
+        // Check if this entry already has an expand icon
+        const existingIcon = entry.querySelector('.log-expand-icon');
+        if (existingIcon) return;
+        
+        // Check if this entry has details that could be expanded
+        const details = entry.querySelector('.log-details');
+        const hasData = entry.querySelector('.log-data, .log-context, .log-detail-section');
+        
+        if (details || hasData) {
+            // Find the header or create one
+            let header = entry.querySelector('.log-header');
+            if (!header) {
+                // Create a header if it doesn't exist
+                header = document.createElement('div');
+                header.className = 'log-header';
+                header.style.display = 'flex';
+                header.style.alignItems = 'center';
+                header.style.gap = '8px';
+                
+                // Move existing content to header
+                const children = Array.from(entry.children);
+                children.forEach(child => {
+                    if (!child.classList.contains('log-details')) {
+                        header.appendChild(child);
+                    }
+                });
+                
+                entry.insertBefore(header, entry.firstChild);
+            }
+            
+            // Add expand icon
+            const expandIcon = document.createElement('span');
+            expandIcon.className = 'log-expand-icon';
+            expandIcon.innerHTML = '▶';
+            expandIcon.style.cursor = 'pointer';
+            header.appendChild(expandIcon);
+            
+            // Ensure details are initially hidden
+            if (details) {
+                details.style.display = 'none';
+            }
+        }
+    });
+};
+
+// Call the function when the page loads
+document.addEventListener('DOMContentLoaded', () => {
+    // Add a small delay to ensure all content is loaded
+    setTimeout(() => {
+        window.addExpandIconsToLogEntries();
+    }, 100);
 });

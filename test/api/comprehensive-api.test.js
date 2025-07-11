@@ -60,7 +60,7 @@ const createTestApp = () => {
       },
       info: {
         nodeEnv: 'test',
-        appVersion: '4.5.0',
+        appVersion: '4.8.0',
         hostname: 'test-host'
       },
       message: 'One or more critical services are not healthy'

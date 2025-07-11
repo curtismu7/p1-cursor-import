@@ -1,3 +1,17 @@
+// File: server.js
+// Description: Main server entry point for PingOne user import tool
+// 
+// This file sets up the Express server with all necessary middleware,
+// route handlers, and server management functionality. It handles:
+// - Express app configuration and middleware setup
+// - Rate limiting and security measures
+// - API routing and request handling
+// - Logging and monitoring
+// - Graceful shutdown and error handling
+// - Token management and authentication
+// 
+// The server provides both REST API endpoints and serves the frontend application.
+
 import express from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
@@ -12,6 +26,8 @@ import settingsRouter from './routes/settings.js';
 import pingoneProxyRouter from './routes/pingone-proxy.js';
 import apiRouter from './routes/api/index.js';
 import util from 'util';
+
+// Import chalk for colored console output (optional dependency)
 let chalk = null;
 try {
   chalk = (await import('chalk')).default;
@@ -23,17 +39,17 @@ const __dirname = path.dirname(__filename);
 // Load environment variables from .env file
 dotenv.config();
 
-// Initialize Express app
+// Initialize Express application
 const app = express();
 const PORT = parseInt(process.env.PORT) || 4000;
 
-// Validate port range
+// Validate port number is within valid range
 if (PORT < 0 || PORT > 65535) {
     console.error(`Invalid port number: ${PORT}. Port must be between 0 and 65535.`);
     process.exit(1);
 }
 
-// Debug: Log the port value and type
+// Debug logging for port configuration
 console.log(`🔍 PORT debugging:`, {
     rawEnvPort: process.env.PORT,
     parsedPort: PORT,
@@ -41,10 +57,19 @@ console.log(`🔍 PORT debugging:`, {
     portValid: PORT >= 0 && PORT <= 65535
 });
 
-// Function to create rate limiter with configurable settings
+/**
+ * Create a rate limiter with configurable settings
+ * 
+ * Creates an Express rate limiter middleware with burst handling and queue
+ * management. Designed to handle bulk import operations while preventing
+ * API abuse.
+ * 
+ * @param {number} maxRequests - Maximum requests per second (default: 50)
+ * @returns {Object} Express rate limiter middleware
+ */
 function createRateLimiter(maxRequests = 50) {
     return rateLimit({
-        windowMs: 1000, // 1 second
+        windowMs: 1000, // 1 second window
         max: maxRequests, // limit each IP to maxRequests per second
         message: {
             error: 'Too many requests',
@@ -60,13 +85,13 @@ function createRateLimiter(maxRequests = 50) {
                 retryAfter: 1
             });
         },
-        // Burst handling configuration
+        // Burst handling configuration for bulk operations
         skipSuccessfulRequests: false, // Count all requests
         skipFailedRequests: false, // Count failed requests too
         // Allow burst of up to 4x maxRequests in first 1000ms, then enforce maxRequests/sec
         burstLimit: maxRequests * 4,
         burstWindowMs: 1000,
-        // Queue configuration for handling bursts
+        // Queue configuration for handling request bursts
         queue: {
             enabled: true,
             maxQueueSize: 300, // Maximum number of requests to queue (increased from 100)
@@ -176,13 +201,16 @@ const healthRateLimiter = rateLimit({
 app.use('/api', limiter);
 
 // API request/response logging middleware
+// Logs all API requests and responses for debugging and monitoring
 app.use('/api', (req, res, next) => {
+    // Generate unique request ID for tracking
     const startTime = Date.now();
     const requestId = `api-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     req.requestId = requestId;
     req.startTime = startTime;
 
-    // Log the incoming request
+    // Log the incoming request with sanitized data
+    // Redacts sensitive information like authorization headers
     const requestLog = {
         type: 'api_request',
         method: req.method,
@@ -2225,27 +2253,8 @@ const startServer = async () => {
                         errorMessage = `❌ Error: ${bind} requires elevated privileges. Please try running with sudo or use a different port.`;
                         break;
                     case 'EADDRINUSE':
-                        errorMessage = `❌ Error: Port ${PORT} is already in use. Please stop the other process or use a different port.`;
-                        
-                        // In development, suggest how to find and kill the process
-                        if (process.env.NODE_ENV !== 'production') {
-                            // Use sync method to avoid async/await issues in error handling
-                            try {
-                                // Use process.platform directly to avoid async/await
-                                const isWindows = process.platform === 'win32';
-                                const command = isWindows 
-                                    ? `netstat -ano | findstr :${PORT}`
-                                    : `lsof -i :${PORT} | grep LISTEN`;
-                                    
-                                errorMessage += `\n\nTo find and kill the process, run:\n${command}`;
-                                errorMessage += isWindows 
-                                    ? '\nthen: taskkill /F /PID <PID>'
-                                    : '\nthen: kill -9 <PID>';
-                            } catch (osError) {
-                                console.warn('⚠️  Could not determine OS-specific process commands:', osError.message);
-                                errorMessage += '\n\nNote: Could not determine OS-specific commands to find and kill the process.';
-                            }
-                        }
+                        errorMessage =
+`================================================================================\n❌ Error: Port ${PORT} is already in use. Please stop the other process or use a different port.\n\nTo find and kill the process, run:\nlsof -i :${PORT} | grep LISTEN\nthen: kill -9 <PID>\n================================================================================`;
                         break;
                     case 'EADDRNOTAVAIL':
                         errorMessage = `❌ Error: The requested address ${error.address} is not available on this machine.`;
@@ -2526,4 +2535,4 @@ export { app };
 export { testServer };
 export default app;
 
-console.log("Server running - version 4.7");
+console.log("Server running - version 4.8");

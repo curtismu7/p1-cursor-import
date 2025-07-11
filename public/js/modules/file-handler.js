@@ -1,26 +1,55 @@
+// File: file-handler.js
+// Description: CSV file processing and validation for PingOne user import
+// 
+// This module handles all file-related operations including:
+// - CSV file reading and parsing
+// - User data validation and error checking
+// - File preview generation
+// - File information display and management
+// - Folder path tracking for better UX
+// - Validation summary and error reporting
+// 
+// Provides comprehensive CSV processing with detailed validation feedback.
+
+/**
+ * File Handler Class
+ * 
+ * Manages CSV file processing, validation, and user data preparation
+ * for the PingOne import tool. Handles file selection, parsing,
+ * validation, and preview generation.
+ * 
+ * @param {Object} logger - Logger instance for debugging
+ * @param {Object} uiManager - UI manager for status updates
+ */
 class FileHandler {
     constructor(logger, uiManager) {
         this.logger = logger;
         this.uiManager = uiManager;
+        
+        // Required fields for user validation
         this.requiredFields = ['username'];
+        
+        // Validation tracking for processed files
         this.validationResults = {
             total: 0,
             valid: 0,
             errors: 0,
             warnings: 0
         };
+        
+        // File processing state
         this.lastParsedUsers = [];
         this.currentFile = null;
         
-        // Initialize UI elements
+        // Initialize UI elements for file handling
         this.fileInput = document.getElementById('csv-file');
         this.fileInfo = document.getElementById('file-info');
         this.previewContainer = document.getElementById('preview-container');
         
-        // Load last file info from localStorage
+        // Load last file info from localStorage for better UX
         this.lastFileInfo = this.loadLastFileInfo();
         
-        // Initialize event listeners
+        // Initialize event listeners for file input
         this.initializeFileInput();
 
 
@@ -44,25 +73,34 @@ class FileHandler {
     
     /**
      * Get the current file being processed
-     * @returns {File|null} The current file or null if none
+     * 
+     * Returns the File object that is currently loaded and ready for processing.
+     * Used by other modules to access the file for upload operations.
+     * 
+     * @returns {File|null} The current file or null if none is loaded
      */
     getCurrentFile() {
         return this.currentFile;
     }
     
     /**
-     * Set a file and process it
+     * Set a file and process it for import
+     * 
+     * Validates the file, processes its contents, and prepares it for
+     * import operations. Updates UI with file information and validation results.
+     * 
      * @param {File} file - The file to set and process
-     * @returns {Promise} Promise that resolves when file is processed
+     * @returns {Promise<Object>} Promise that resolves with processing result
      */
     async setFile(file) {
         try {
             this.logger.info('Setting file', { fileName: file.name, fileSize: file.size });
             
-            // Store the current file reference
+            // Store the current file reference for later use
             this.currentFile = file;
             
             // Process the file using the existing internal method
+            // This includes validation, parsing, and UI updates
             await this._handleFileInternal(file);
             
             return { success: true, file };
@@ -73,8 +111,12 @@ class FileHandler {
     }
     
     /**
-     * Get the list of parsed users
-     * @returns {Array} Array of user objects
+     * Get the list of parsed users from the current file
+     * 
+     * Returns the array of user objects that were successfully parsed
+     * from the CSV file. Each user object contains validated data.
+     * 
+     * @returns {Array} Array of user objects with validated data
      */
     getUsers() {
         return this.lastParsedUsers || [];
@@ -82,7 +124,11 @@ class FileHandler {
 
     /**
      * Get the total number of users parsed from the CSV file
-     * @returns {number} Total number of users
+     * 
+     * Returns the total count of users found in the processed CSV file.
+     * This count includes all rows, regardless of validation status.
+     * 
+     * @returns {number} Total number of users in the CSV file
      */
     getTotalUsers() {
         const totalUsers = this.validationResults.total || 0;
@@ -91,9 +137,13 @@ class FileHandler {
     }
 
     /**
-     * Read file as text using FileReader
+     * Read file as text using FileReader API
+     * 
+     * Asynchronously reads a file and returns its contents as a string.
+     * Used for processing CSV files and other text-based formats.
+     * 
      * @param {File} file - The file to read
-     * @returns {Promise<string>} Promise that resolves with file content
+     * @returns {Promise<string>} Promise that resolves with file content as string
      */
     readFileAsText(file) {
         return new Promise((resolve, reject) => {
@@ -439,11 +489,21 @@ class FileHandler {
         }
     }
     
+    /**
+     * Process a CSV file for user import
+     * 
+     * Validates the file format, reads its contents, parses CSV data,
+     * and prepares user objects for import. Handles file validation,
+     * CSV parsing, and error reporting.
+     * 
+     * @param {File} file - The CSV file to process
+     * @returns {Promise<Object>} Promise that resolves with parsing results
+     */
     async processCSV(file) {
         // Log file object for debugging
         this.logger.log('Processing file object:', 'debug', file);
         
-        // Validate file
+        // Validate file exists and is not empty
         if (!file) {
             this.logger.error('No file provided to processCSV');
             throw new Error('No file selected');
@@ -545,16 +605,30 @@ class FileHandler {
     }
     
     // ======================
-    // CSV Parsing
+    // CSV Parsing Methods
     // ======================
     
+    /**
+     * Parse CSV content into headers and data rows
+     * 
+     * Splits CSV content into lines, extracts headers, and validates
+     * required and recommended columns. Handles header mapping for
+     * different naming conventions.
+     * 
+     * @param {string} content - Raw CSV content as string
+     * @returns {Object} Object containing headers and parsed rows
+     */
     parseCSV(content) {
+        // Split content into lines and filter out empty lines
         const lines = content.split('\n').filter(line => line.trim());
         if (lines.length < 2) {
             throw new Error('CSV file must have at least a header row and one data row');
         }
 
+        // Parse headers from first line
         const headers = this.parseCSVLine(lines[0]);
+        
+        // Define required and recommended headers for validation
         const requiredHeaders = ['username'];
         const recommendedHeaders = ['firstName', 'lastName', 'email'];
         

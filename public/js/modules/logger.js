@@ -1,20 +1,42 @@
+// File: logger.js
+// Description: Centralized logging system for PingOne user import tool
+// 
+// This module provides comprehensive logging functionality including:
+// - Console logging with different levels (debug, info, warn, error)
+// - File logging with automatic rotation and cleanup
+// - UI logging with real-time updates
+// - Offline log queuing and synchronization
+// - Server-side log integration
+// 
+// Supports both browser and server environments with appropriate fallbacks.
+
 import { FileLogger } from './file-logger.js';
 
+/**
+ * Logger Class
+ * 
+ * Provides centralized logging functionality with support for multiple outputs:
+ * console, file, UI, and server. Handles log levels, formatting, and
+ * offline/online state management.
+ * 
+ * @param {Object|HTMLElement} optionsOrLogContainer - Options object or log container element
+ */
 export class Logger {
     constructor(optionsOrLogContainer = {}) {
         // Handle both old signature (logContainer) and new signature (options object)
+        // This maintains backward compatibility while supporting new features
         let options = {};
         let logContainer = null;
         
-        // If first parameter is an object with maxLogs property, it's the new options format
-        // If it's null, a string, or an HTMLElement, it's the old logContainer format
+        // Determine if using new options format or old logContainer format
+        // New format has maxLogs or fileLogger properties
         if (optionsOrLogContainer && typeof optionsOrLogContainer === 'object' && 
             (optionsOrLogContainer.maxLogs !== undefined || optionsOrLogContainer.fileLogger !== undefined)) {
-            // New options format
+            // New options format with configuration object
             options = optionsOrLogContainer;
             logContainer = options.logContainer || null;
         } else {
-            // Old logContainer format
+            // Old logContainer format for backward compatibility
             logContainer = optionsOrLogContainer;
             options = {};
         }
@@ -282,7 +304,7 @@ export class Logger {
             
             const timeStr = new Date(logEntry.timestamp).toLocaleTimeString();
             
-            // Create a more structured log entry
+            // Create a more structured log entry with expand/collapse functionality
             const timeElement = document.createElement('span');
             timeElement.className = 'log-time';
             timeElement.textContent = timeStr;
@@ -295,29 +317,125 @@ export class Logger {
             messageElement.className = 'log-message';
             messageElement.textContent = logEntry.message;
             
-            // Create a container for the log header (time, level, message)
+            // Create expand icon for entries with additional data
+            const hasDetails = logEntry.data || logEntry.context;
+            let expandIcon = null;
+            if (hasDetails) {
+                expandIcon = document.createElement('span');
+                expandIcon.className = 'log-expand-icon';
+                expandIcon.innerHTML = '▶'; // Right-pointing triangle for collapsed state
+                expandIcon.style.cursor = 'pointer';
+            }
+            
+            // Create a container for the log header (time, level, message, expand icon)
             const headerElement = document.createElement('div');
             headerElement.className = 'log-header';
+            headerElement.style.display = 'flex';
+            headerElement.style.alignItems = 'center';
+            headerElement.style.gap = '8px';
             headerElement.appendChild(timeElement);
             headerElement.appendChild(levelElement);
             headerElement.appendChild(messageElement);
+            if (expandIcon) {
+                headerElement.appendChild(expandIcon);
+            }
             
             logElement.appendChild(headerElement);
             
-            // Add data if it exists
-            if (logEntry.data) {
-                const dataElement = document.createElement('pre');
-                dataElement.className = 'log-data';
-                dataElement.textContent = JSON.stringify(logEntry.data, null, 2);
-                logElement.appendChild(dataElement);
-            }
-            
-            // Add context if it exists
-            if (logEntry.context) {
-                const contextElement = document.createElement('pre');
-                contextElement.className = 'log-context';
-                contextElement.textContent = `Context: ${JSON.stringify(logEntry.context, null, 2)}`;
-                logElement.appendChild(contextElement);
+            // Create details container for expandable content
+            if (hasDetails) {
+                const detailsElement = document.createElement('div');
+                detailsElement.className = 'log-details';
+                detailsElement.style.display = 'none'; // Initially hidden
+                
+                // Add data if it exists
+                if (logEntry.data) {
+                    const dataSection = document.createElement('div');
+                    dataSection.className = 'log-detail-section';
+                    
+                    const dataTitle = document.createElement('h4');
+                    dataTitle.textContent = 'Data';
+                    dataSection.appendChild(dataTitle);
+                    
+                    const dataContent = document.createElement('pre');
+                    dataContent.className = 'log-detail-json';
+                    dataContent.textContent = JSON.stringify(logEntry.data, null, 2);
+                    dataSection.appendChild(dataContent);
+                    
+                    detailsElement.appendChild(dataSection);
+                }
+                
+                // Add context if it exists
+                if (logEntry.context) {
+                    const contextSection = document.createElement('div');
+                    contextSection.className = 'log-detail-section';
+                    
+                    const contextTitle = document.createElement('h4');
+                    contextTitle.textContent = 'Context';
+                    contextSection.appendChild(contextTitle);
+                    
+                    const contextContent = document.createElement('pre');
+                    contextContent.className = 'log-detail-json';
+                    contextContent.textContent = JSON.stringify(logEntry.context, null, 2);
+                    contextSection.appendChild(contextContent);
+                    
+                    detailsElement.appendChild(contextSection);
+                }
+                
+                logElement.appendChild(detailsElement);
+                
+                // Add click handler for expand/collapse functionality
+                logElement.addEventListener('click', (e) => {
+                    // Don't expand if clicking on the expand icon itself
+                    if (e.target === expandIcon) {
+                        return;
+                    }
+                    
+                    const details = logElement.querySelector('.log-details');
+                    const icon = logElement.querySelector('.log-expand-icon');
+                    
+                    if (details && icon) {
+                        const isExpanded = details.style.display !== 'none';
+                        
+                        if (isExpanded) {
+                            // Collapse
+                            details.style.display = 'none';
+                            icon.innerHTML = '▶';
+                            logElement.classList.remove('expanded');
+                        } else {
+                            // Expand
+                            details.style.display = 'block';
+                            icon.innerHTML = '▼';
+                            logElement.classList.add('expanded');
+                        }
+                    }
+                });
+                
+                // Add click handler for expand icon specifically
+                if (expandIcon) {
+                    expandIcon.addEventListener('click', (e) => {
+                        e.stopPropagation(); // Prevent triggering the log entry click
+                        
+                        const details = logElement.querySelector('.log-details');
+                        const icon = logElement.querySelector('.log-expand-icon');
+                        
+                        if (details && icon) {
+                            const isExpanded = details.style.display !== 'none';
+                            
+                            if (isExpanded) {
+                                // Collapse
+                                details.style.display = 'none';
+                                icon.innerHTML = '▶';
+                                logElement.classList.remove('expanded');
+                            } else {
+                                // Expand
+                                details.style.display = 'block';
+                                icon.innerHTML = '▼';
+                                logElement.classList.add('expanded');
+                            }
+                        }
+                    });
+                }
             }
             
             // Add to the top of the log container

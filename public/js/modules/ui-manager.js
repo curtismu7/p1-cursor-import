@@ -1,8 +1,36 @@
+// File: ui-manager.js
+// Description: UI management for PingOne user import tool
+// 
+// This module handles all user interface interactions and state management:
+// - Status notifications and user feedback
+// - Progress tracking and real-time updates
+// - View transitions and navigation
+// - Debug logging and error display
+// - Connection status indicators
+// - Form handling and validation feedback
+// 
+// Provides a centralized interface for updating the UI based on application events.
+
 import { Logger } from './logger.js';
 
+// Enable debug mode for development (set to false in production)
+const DEBUG_MODE = true;
+
+/**
+ * UI Manager Class
+ * 
+ * Centralizes all UI-related operations and state management.
+ * Provides methods for updating progress, showing notifications,
+ * handling view transitions, and managing user feedback.
+ * 
+ * @param {Logger} logger - Logger instance for UI logging
+ */
 export class UIManager {
     constructor(logger) {
         this.logger = logger;
+        
+        // Application state tracking
+        // Tracks current view and operation states to prevent conflicts
         this.currentView = 'import';
         this.isImporting = false;
         this.isExporting = false;
@@ -10,19 +38,28 @@ export class UIManager {
         this.isModifying = false;
         this.isPopulationDeleting = false;
         
-        // Navigation elements
+        // Navigation elements cache
         this.navItems = [];
         
-        // Progress tracking
+        // Progress tracking for last run status
         this.lastRunStatus = {};
     }
 
+    /**
+     * Initialize the UI Manager
+     * 
+     * Sets up navigation elements and initializes progress tracking state.
+     * Called during application startup to prepare the UI for user interaction.
+     * 
+     * @returns {Promise<void>}
+     */
     async init() {
         try {
-            // Initialize navigation
+            // Initialize navigation elements for view switching
             this.navItems = document.querySelectorAll('[data-view]');
             
-            // Initialize progress tracking
+            // Initialize progress tracking for all operation types
+            // Each operation maintains its last run status for display
             this.lastRunStatus = {
                 import: { status: 'idle', message: 'No import run yet' },
                 export: { status: 'idle', message: 'No export run yet' },
@@ -37,39 +74,80 @@ export class UIManager {
         }
     }
 
+    /**
+     * Show success notification to user
+     * 
+     * @param {string} message - Success message to display
+     * @param {string} details - Optional additional details
+     */
     showSuccess(message, details = '') {
         this.showNotification('success', message, details);
     }
 
+    /**
+     * Show error notification to user
+     * 
+     * @param {string} message - Error message to display
+     * @param {string} details - Optional additional details
+     */
     showError(message, details = '') {
         this.showNotification('error', message, details);
     }
 
+    /**
+     * Show warning notification to user
+     * 
+     * @param {string} message - Warning message to display
+     * @param {string} details - Optional additional details
+     */
     showWarning(message, details = '') {
         this.showNotification('warning', message, details);
     }
 
+    /**
+     * Show info notification to user
+     * 
+     * @param {string} message - Info message to display
+     * @param {string} details - Optional additional details
+     */
     showInfo(message, details = '') {
         this.showNotification('info', message, details);
     }
 
+    /**
+     * Display a notification to the user
+     * 
+     * Creates and displays a Bootstrap alert with appropriate styling,
+     * icon, and auto-dismiss functionality. Supports different types
+     * of notifications (success, error, warning, info).
+     * 
+     * @param {string} type - Notification type ('success', 'error', 'warning', 'info')
+     * @param {string} message - Main notification message
+     * @param {string} details - Optional additional details
+     */
     showNotification(type, message, details = '') {
         try {
+            // Get notification container and clear existing notifications
             const container = document.getElementById('notification-area');
-            // Remove all existing notifications before showing a new one
             if (container) {
                 while (container.firstChild) {
                     container.removeChild(container.firstChild);
                 }
             }
+            
+            // Create notification element with Bootstrap classes
             const notification = document.createElement('div');
             notification.className = `status-message status-${type} alert-dismissible fade show`;
             notification.setAttribute('role', 'alert');
             notification.setAttribute('aria-live', 'polite');
+            
             // Debug log for rendered message
             console.log(`Message rendered: "${message}", type = ${type}, class = ${notification.className}`);
-            // Get icon and styling based on type
+            
+            // Get icon and styling configuration based on notification type
             const iconConfig = this.getStatusIconConfig(type);
+            
+            // Build notification HTML with icon, message, and close button
             notification.innerHTML = `
                 <div class="status-message-content">
                     <span class="status-icon" aria-hidden="true">${iconConfig.icon}</span>
@@ -82,9 +160,12 @@ export class UIManager {
                     </button>
                 </div>
             `;
+            
+            // Add notification to container and set auto-dismiss timer
             if (container) {
                 container.appendChild(notification);
-                // Auto-remove after 5 seconds
+                
+                // Auto-remove notification after 5 seconds
                 setTimeout(() => {
                     if (notification.parentNode) {
                         notification.remove();
@@ -131,24 +212,56 @@ export class UIManager {
         return configs[type] || configs.info;
     }
 
+    /**
+     * Updates connection status indicators throughout the UI
+     * 
+     * Updates both the main connection status and settings page connection status
+     * with appropriate icons and messages. Used to show server connectivity state.
+     * 
+     * @param {string} status - Status type ('connected', 'error', 'disconnected')
+     * @param {string} message - Optional custom status message
+     */
     updateConnectionStatus(status, message = '') {
         try {
+            // Update main connection status indicator
             const statusElement = document.getElementById('connection-status');
-            if (!statusElement) return;
-            
-            const iconElement = statusElement.querySelector('.status-icon');
-            const messageElement = statusElement.querySelector('.status-message');
-            
-            if (iconElement) {
-                iconElement.className = `status-icon fas ${this.getStatusIcon(status)}`;
+            if (statusElement) {
+                const iconElement = statusElement.querySelector('.status-icon');
+                const messageElement = statusElement.querySelector('.status-message');
+                
+                // Update icon based on status
+                if (iconElement) {
+                    iconElement.className = `status-icon fas ${this.getStatusIcon(status)}`;
+                }
+                
+                // Update message text
+                if (messageElement) {
+                    messageElement.textContent = message || this.getDefaultStatusMessage(status);
+                }
+                
+                // Update CSS class for styling
+                statusElement.className = `connection-status ${status}`;
             }
             
-            if (messageElement) {
-                messageElement.textContent = message || this.getDefaultStatusMessage(status);
+            // Also update settings page connection status if present
+            const settingsStatus = document.getElementById('settings-connection-status');
+            if (settingsStatus) {
+                const iconElement = settingsStatus.querySelector('.status-icon');
+                const messageElement = settingsStatus.querySelector('.status-message');
+                
+                if (iconElement) {
+                    iconElement.className = `status-icon fas ${this.getStatusIcon(status)}`;
+                }
+                
+                if (messageElement) {
+                    messageElement.textContent = message || this.getDefaultStatusMessage(status);
+                }
+                
+                settingsStatus.className = `settings-connection-status ${status}`;
+                
+                // Log for debugging
+                console.log('[UI] Settings connection status updated:', status, message);
             }
-            
-            statusElement.className = `connection-status ${status}`;
-            
         } catch (error) {
             console.error('Error updating connection status:', error);
         }
@@ -223,36 +336,36 @@ export class UIManager {
         return messages[status] || 'Unknown status';
     }
 
+    /**
+     * Shows the import progress section and initializes progress display
+     * @param {number} totalUsers - Total number of users to import
+     * @param {string} populationName - Name of the selected population
+     * @param {string} populationId - ID of the selected population
+     */
     showImportStatus(totalUsers, populationName = '', populationId = '') {
-        console.log('Progress screen activated.');
-        console.log('Moved progress section below CSV file input');
         // Show import status section (no modal overlay needed)
         const importStatus = document.getElementById('import-status');
         if (importStatus) {
             importStatus.style.display = 'block';
-            console.log('Import status section displayed');
+            this.debugLog('UI', 'Import status section displayed');
         } else {
             console.error('Import status element not found');
         }
-        
         this.isImporting = true;
         this.updateLastRunStatus('import', 'User Import', 'In Progress', `Importing ${totalUsers} users`, { total: totalUsers, success: 0, failed: 0, skipped: 0 });
         this.updateImportProgress(0, totalUsers, 'Starting import...', {}, populationName, populationId);
     }
 
+    /**
+     * Updates the import progress bar, counters, and log
+     * @param {number} current - Current user index
+     * @param {number} total - Total users
+     * @param {string} message - Progress message
+     * @param {object} counts - Success/fail/skip counts
+     * @param {string} populationName - Population name
+     * @param {string} populationId - Population ID
+     */
     updateImportProgress(current, total, message, counts = {}, populationName = '', populationId = '') {
-        console.log(`[UI Manager] updateImportProgress called: ${current}/${total} - ${message}`);
-        
-        const progressBar = document.getElementById('import-progress-bar');
-        const progressPercent = document.getElementById('import-progress-percent');
-        const progressText = document.getElementById('import-progress-text');
-        const progressCount = document.getElementById('import-progress-count');
-        const successCount = document.getElementById('import-success-count');
-        const failedCount = document.getElementById('import-failed-count');
-        const skippedCount = document.getElementById('import-skipped-count');
-        const populationNameElement = document.getElementById('import-population-name');
-        const populationIdElement = document.getElementById('import-population-id');
-
         // Ensure percent is always defined before use
         const percent = total > 0 ? (current / total) * 100 : 0;
 
@@ -696,14 +809,163 @@ export class UIManager {
             if (progressLogs) {
                 const logElement = document.createElement('div');
                 logElement.className = `log-entry log-${level}`;
-                logElement.innerHTML = `
-                    <span class="log-timestamp">${new Date().toLocaleTimeString()}</span>
-                    <span class="log-level">${level.toUpperCase()}</span>
-                    <span class="log-message">${message}</span>
-                    ${counts.success !== undefined ? `<span class="log-success">✓ ${counts.success}</span>` : ''}
-                    ${counts.failed !== undefined ? `<span class="log-failed">✗ ${counts.failed}</span>` : ''}
-                    ${counts.skipped !== undefined ? `<span class="log-skipped">- ${counts.skipped}</span>` : ''}
-                `;
+                
+                const timeStr = new Date().toLocaleTimeString();
+                
+                // Create header with timestamp, level, message, and expand icon if details exist
+                const headerElement = document.createElement('div');
+                headerElement.className = 'log-header';
+                headerElement.style.display = 'flex';
+                headerElement.style.alignItems = 'center';
+                headerElement.style.gap = '8px';
+                
+                const timeElement = document.createElement('span');
+                timeElement.className = 'log-timestamp';
+                timeElement.textContent = timeStr;
+                
+                const levelElement = document.createElement('span');
+                levelElement.className = 'log-level';
+                levelElement.textContent = level.toUpperCase();
+                
+                const messageElement = document.createElement('span');
+                messageElement.className = 'log-message';
+                messageElement.textContent = message;
+                
+                headerElement.appendChild(timeElement);
+                headerElement.appendChild(levelElement);
+                headerElement.appendChild(messageElement);
+                
+                // Add count badges to header
+                if (counts.success !== undefined) {
+                    const successElement = document.createElement('span');
+                    successElement.className = 'log-success';
+                    successElement.textContent = `✓ ${counts.success}`;
+                    headerElement.appendChild(successElement);
+                }
+                
+                if (counts.failed !== undefined) {
+                    const failedElement = document.createElement('span');
+                    failedElement.className = 'log-failed';
+                    failedElement.textContent = `✗ ${counts.failed}`;
+                    headerElement.appendChild(failedElement);
+                }
+                
+                if (counts.skipped !== undefined) {
+                    const skippedElement = document.createElement('span');
+                    skippedElement.className = 'log-skipped';
+                    skippedElement.textContent = `- ${counts.skipped}`;
+                    headerElement.appendChild(skippedElement);
+                }
+                
+                // Check if we have additional details for expandable content
+                const hasDetails = Object.keys(counts).length > 0 || operation;
+                let expandIcon = null;
+                if (hasDetails) {
+                    expandIcon = document.createElement('span');
+                    expandIcon.className = 'log-expand-icon';
+                    expandIcon.innerHTML = '▶'; // Right-pointing triangle for collapsed state
+                    expandIcon.style.cursor = 'pointer';
+                    headerElement.appendChild(expandIcon);
+                }
+                
+                logElement.appendChild(headerElement);
+                
+                // Create details container for expandable content
+                if (hasDetails) {
+                    const detailsElement = document.createElement('div');
+                    detailsElement.className = 'log-details';
+                    detailsElement.style.display = 'none'; // Initially hidden
+                    
+                    // Add counts section if counts exist
+                    if (Object.keys(counts).length > 0) {
+                        const countsSection = document.createElement('div');
+                        countsSection.className = 'log-detail-section';
+                        
+                        const countsTitle = document.createElement('h4');
+                        countsTitle.textContent = 'Counts';
+                        countsSection.appendChild(countsTitle);
+                        
+                        const countsContent = document.createElement('pre');
+                        countsContent.className = 'log-detail-json';
+                        countsContent.textContent = JSON.stringify(counts, null, 2);
+                        countsSection.appendChild(countsContent);
+                        
+                        detailsElement.appendChild(countsSection);
+                    }
+                    
+                    // Add operation section if operation exists
+                    if (operation) {
+                        const operationSection = document.createElement('div');
+                        operationSection.className = 'log-detail-section';
+                        
+                        const operationTitle = document.createElement('h4');
+                        operationTitle.textContent = 'Operation';
+                        operationSection.appendChild(operationTitle);
+                        
+                        const operationContent = document.createElement('pre');
+                        operationContent.className = 'log-detail-json';
+                        operationContent.textContent = operation;
+                        operationSection.appendChild(operationContent);
+                        
+                        detailsElement.appendChild(operationSection);
+                    }
+                    
+                    logElement.appendChild(detailsElement);
+                    
+                    // Add click handler for expand/collapse functionality
+                    logElement.addEventListener('click', (e) => {
+                        // Don't expand if clicking on the expand icon itself
+                        if (e.target === expandIcon) {
+                            return;
+                        }
+                        
+                        const details = logElement.querySelector('.log-details');
+                        const icon = logElement.querySelector('.log-expand-icon');
+                        
+                        if (details && icon) {
+                            const isExpanded = details.style.display !== 'none';
+                            
+                            if (isExpanded) {
+                                // Collapse
+                                details.style.display = 'none';
+                                icon.innerHTML = '▶';
+                                logElement.classList.remove('expanded');
+                            } else {
+                                // Expand
+                                details.style.display = 'block';
+                                icon.innerHTML = '▼';
+                                logElement.classList.add('expanded');
+                            }
+                        }
+                    });
+                    
+                    // Add click handler for expand icon specifically
+                    if (expandIcon) {
+                        expandIcon.addEventListener('click', (e) => {
+                            e.stopPropagation(); // Prevent triggering the log entry click
+                            
+                            const details = logElement.querySelector('.log-details');
+                            const icon = logElement.querySelector('.log-expand-icon');
+                            
+                            if (details && icon) {
+                                const isExpanded = details.style.display !== 'none';
+                                
+                                if (isExpanded) {
+                                    // Collapse
+                                    details.style.display = 'none';
+                                    icon.innerHTML = '▶';
+                                    logElement.classList.remove('expanded');
+                                } else {
+                                    // Expand
+                                    details.style.display = 'block';
+                                    icon.innerHTML = '▼';
+                                    logElement.classList.add('expanded');
+                                }
+                            }
+                        });
+                    }
+                }
+                
                 progressLogs.appendChild(logElement);
                 progressLogs.scrollTop = progressLogs.scrollHeight;
             }
@@ -731,8 +993,10 @@ export class UIManager {
     logMessage(type, message, details = '') {
         const logContainer = document.getElementById('log-entries');
         if (!logContainer) return;
+        
         const entry = document.createElement('div');
         entry.className = `log-entry log-${type}`;
+        
         const iconMap = {
             success: '✅',
             api: '🔄',
@@ -742,13 +1006,111 @@ export class UIManager {
         };
         const icon = iconMap[type] || '';
         const timestamp = new Date().toLocaleTimeString();
-        entry.innerHTML = `<span class="log-icon">${icon}</span> <span class="log-timestamp">[${timestamp}]</span> <span class="log-message">${message}</span>${details ? `<div class='log-details'>${details}</div>` : ''}`;
+        
+        // Create header with icon, timestamp, message, and expand icon if details exist
+        const headerElement = document.createElement('div');
+        headerElement.className = 'log-header';
+        headerElement.style.display = 'flex';
+        headerElement.style.alignItems = 'center';
+        headerElement.style.gap = '8px';
+        
+        const iconElement = document.createElement('span');
+        iconElement.className = 'log-icon';
+        iconElement.textContent = icon;
+        
+        const timestampElement = document.createElement('span');
+        timestampElement.className = 'log-timestamp';
+        timestampElement.textContent = `[${timestamp}]`;
+        
+        const messageElement = document.createElement('span');
+        messageElement.className = 'log-message';
+        messageElement.textContent = message;
+        
+        headerElement.appendChild(iconElement);
+        headerElement.appendChild(timestampElement);
+        headerElement.appendChild(messageElement);
+        
+        // Add expand icon if details exist
+        let expandIcon = null;
+        if (details) {
+            expandIcon = document.createElement('span');
+            expandIcon.className = 'log-expand-icon';
+            expandIcon.innerHTML = '▶'; // Right-pointing triangle for collapsed state
+            expandIcon.style.cursor = 'pointer';
+            headerElement.appendChild(expandIcon);
+        }
+        
+        entry.appendChild(headerElement);
+        
+        // Add details if they exist
+        if (details) {
+            const detailsElement = document.createElement('div');
+            detailsElement.className = 'log-details';
+            detailsElement.style.display = 'none'; // Initially hidden
+            detailsElement.innerHTML = details;
+            entry.appendChild(detailsElement);
+            
+            // Add click handler for expand/collapse functionality
+            entry.addEventListener('click', (e) => {
+                // Don't expand if clicking on the expand icon itself
+                if (e.target === expandIcon) {
+                    return;
+                }
+                
+                const details = entry.querySelector('.log-details');
+                const icon = entry.querySelector('.log-expand-icon');
+                
+                if (details && icon) {
+                    const isExpanded = details.style.display !== 'none';
+                    
+                    if (isExpanded) {
+                        // Collapse
+                        details.style.display = 'none';
+                        icon.innerHTML = '▶';
+                        entry.classList.remove('expanded');
+                    } else {
+                        // Expand
+                        details.style.display = 'block';
+                        icon.innerHTML = '▼';
+                        entry.classList.add('expanded');
+                    }
+                }
+            });
+            
+            // Add click handler for expand icon specifically
+            if (expandIcon) {
+                expandIcon.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevent triggering the log entry click
+                    
+                    const details = entry.querySelector('.log-details');
+                    const icon = entry.querySelector('.log-expand-icon');
+                    
+                    if (details && icon) {
+                        const isExpanded = details.style.display !== 'none';
+                        
+                        if (isExpanded) {
+                            // Collapse
+                            details.style.display = 'none';
+                            icon.innerHTML = '▶';
+                            entry.classList.remove('expanded');
+                        } else {
+                            // Expand
+                            details.style.display = 'block';
+                            icon.innerHTML = '▼';
+                            entry.classList.add('expanded');
+                        }
+                    }
+                });
+            }
+        }
+        
         logContainer.appendChild(entry);
         logContainer.scrollTop = logContainer.scrollHeight;
     }
 
     updateFileInfo(fileInfo) {
         console.log('File info section repositioned under CSV file input');
+        console.log('File info section moved below file upload input.');
     }
 
     // Missing methods that were removed during cleanup
@@ -808,11 +1170,158 @@ export class UIManager {
                         data.logs.forEach(log => {
                             const logEntry = document.createElement('div');
                             logEntry.className = `log-entry log-${log.level}`;
-                            logEntry.innerHTML = `
-                                <span class="log-timestamp">${new Date(log.timestamp).toLocaleString()}</span>
-                                <span class="log-level">${log.level.toUpperCase()}</span>
-                                <span class="log-message">${log.message}</span>
-                            `;
+                            
+                            const timeStr = new Date(log.timestamp).toLocaleString();
+                            
+                            // Create header with timestamp, level, message, and expand icon if details exist
+                            const headerElement = document.createElement('div');
+                            headerElement.className = 'log-header';
+                            headerElement.style.display = 'flex';
+                            headerElement.style.alignItems = 'center';
+                            headerElement.style.gap = '8px';
+                            
+                            const timeElement = document.createElement('span');
+                            timeElement.className = 'log-timestamp';
+                            timeElement.textContent = timeStr;
+                            
+                            const levelElement = document.createElement('span');
+                            levelElement.className = 'log-level';
+                            levelElement.textContent = log.level.toUpperCase();
+                            
+                            const messageElement = document.createElement('span');
+                            messageElement.className = 'log-message';
+                            messageElement.textContent = log.message;
+                            
+                            headerElement.appendChild(timeElement);
+                            headerElement.appendChild(levelElement);
+                            headerElement.appendChild(messageElement);
+                            
+                            // Check if log has additional data or context for expandable content
+                            const hasDetails = log.data || log.context || log.details;
+                            let expandIcon = null;
+                            if (hasDetails) {
+                                expandIcon = document.createElement('span');
+                                expandIcon.className = 'log-expand-icon';
+                                expandIcon.innerHTML = '▶'; // Right-pointing triangle for collapsed state
+                                expandIcon.style.cursor = 'pointer';
+                                headerElement.appendChild(expandIcon);
+                            }
+                            
+                            logEntry.appendChild(headerElement);
+                            
+                            // Create details container for expandable content
+                            if (hasDetails) {
+                                const detailsElement = document.createElement('div');
+                                detailsElement.className = 'log-details';
+                                detailsElement.style.display = 'none'; // Initially hidden
+                                
+                                // Add data if it exists
+                                if (log.data) {
+                                    const dataSection = document.createElement('div');
+                                    dataSection.className = 'log-detail-section';
+                                    
+                                    const dataTitle = document.createElement('h4');
+                                    dataTitle.textContent = 'Data';
+                                    dataSection.appendChild(dataTitle);
+                                    
+                                    const dataContent = document.createElement('pre');
+                                    dataContent.className = 'log-detail-json';
+                                    dataContent.textContent = JSON.stringify(log.data, null, 2);
+                                    dataSection.appendChild(dataContent);
+                                    
+                                    detailsElement.appendChild(dataSection);
+                                }
+                                
+                                // Add context if it exists
+                                if (log.context) {
+                                    const contextSection = document.createElement('div');
+                                    contextSection.className = 'log-detail-section';
+                                    
+                                    const contextTitle = document.createElement('h4');
+                                    contextTitle.textContent = 'Context';
+                                    contextSection.appendChild(contextTitle);
+                                    
+                                    const contextContent = document.createElement('pre');
+                                    contextContent.className = 'log-detail-json';
+                                    contextContent.textContent = JSON.stringify(log.context, null, 2);
+                                    contextSection.appendChild(contextContent);
+                                    
+                                    detailsElement.appendChild(contextSection);
+                                }
+                                
+                                // Add details if it exists (as a string)
+                                if (log.details) {
+                                    const detailsSection = document.createElement('div');
+                                    detailsSection.className = 'log-detail-section';
+                                    
+                                    const detailsTitle = document.createElement('h4');
+                                    detailsTitle.textContent = 'Details';
+                                    detailsSection.appendChild(detailsTitle);
+                                    
+                                    const detailsContent = document.createElement('pre');
+                                    detailsContent.className = 'log-detail-json';
+                                    detailsContent.textContent = log.details;
+                                    detailsSection.appendChild(detailsContent);
+                                    
+                                    detailsElement.appendChild(detailsSection);
+                                }
+                                
+                                logEntry.appendChild(detailsElement);
+                                
+                                // Add click handler for expand/collapse functionality
+                                logEntry.addEventListener('click', (e) => {
+                                    // Don't expand if clicking on the expand icon itself
+                                    if (e.target === expandIcon) {
+                                        return;
+                                    }
+                                    
+                                    const details = logEntry.querySelector('.log-details');
+                                    const icon = logEntry.querySelector('.log-expand-icon');
+                                    
+                                    if (details && icon) {
+                                        const isExpanded = details.style.display !== 'none';
+                                        
+                                        if (isExpanded) {
+                                            // Collapse
+                                            details.style.display = 'none';
+                                            icon.innerHTML = '▶';
+                                            logEntry.classList.remove('expanded');
+                                        } else {
+                                            // Expand
+                                            details.style.display = 'block';
+                                            icon.innerHTML = '▼';
+                                            logEntry.classList.add('expanded');
+                                        }
+                                    }
+                                });
+                                
+                                // Add click handler for expand icon specifically
+                                if (expandIcon) {
+                                    expandIcon.addEventListener('click', (e) => {
+                                        e.stopPropagation(); // Prevent triggering the log entry click
+                                        
+                                        const details = logEntry.querySelector('.log-details');
+                                        const icon = logEntry.querySelector('.log-expand-icon');
+                                        
+                                        if (details && icon) {
+                                            const isExpanded = details.style.display !== 'none';
+                                            
+                                            if (isExpanded) {
+                                                // Collapse
+                                                details.style.display = 'none';
+                                                icon.innerHTML = '▶';
+                                                logEntry.classList.remove('expanded');
+                                            } else {
+                                                // Expand
+                                                details.style.display = 'block';
+                                                icon.innerHTML = '▼';
+                                                logEntry.classList.add('expanded');
+                                            }
+                                        }
+                                    });
+                                }
+                            }
+                            
                             logsContainer.appendChild(logEntry);
                         });
                     } else {
@@ -975,5 +1484,43 @@ export class UIManager {
         if (!el) return;
         el.textContent = '';
         el.style.display = 'none';
+    }
+
+    /**
+     * Centralized debug logger for UI and import flow
+     * @param {string} area - Tag/category for the log (e.g., 'Import', 'SSE')
+     * @param {string} message - Log message
+     * @param {any} data - Optional data to log
+     */
+    debugLog(area, message, data = null) {
+        if (!DEBUG_MODE) return;
+        const formatted = `[DEBUG - ${area}] ${message}`;
+        if (data !== null) {
+            console.log(formatted, data);
+        } else {
+            console.log(formatted);
+        }
+        // Also log to debug window if present
+        this.logDebugToWindow(area, message, data);
+    }
+
+    /**
+     * Appends a debug log entry to the debug log window in the UI (if present)
+     * @param {string} area - Log area/tag
+     * @param {string} message - Log message
+     * @param {any} data - Optional data
+     */
+    logDebugToWindow(area, message, data = null) {
+        const debugContent = document.getElementById('debug-log-content');
+        if (!debugContent) return;
+        // Create a new log entry element
+        const entry = document.createElement('div');
+        entry.className = `debug-log-entry debug-${area.toLowerCase()}`;
+        entry.setAttribute('data-area', area.toLowerCase());
+        entry.innerHTML = `<span class="debug-tag">[${area}]</span> <span class="debug-msg">${message}</span> ${data ? `<pre class='debug-data'>${JSON.stringify(data, null, 2)}</pre>` : ''}`;
+        debugContent.appendChild(entry);
+        debugContent.scrollTop = debugContent.scrollHeight;
+        // Apply current filters
+        applyDebugFilters();
     }
 }

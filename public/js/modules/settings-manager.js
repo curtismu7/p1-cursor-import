@@ -1,17 +1,38 @@
+// File: settings-manager.js
+// Description: Application settings management with encryption support
+// 
+// This module handles all application configuration including:
+// - Secure storage of API credentials and settings
+// - Encryption/decryption of sensitive data
+// - Settings validation and default values
+// - Local storage management with fallbacks
+// - Device-specific encryption keys
+// 
+// Provides a secure way to store and retrieve application settings.
+
 import { CryptoUtils } from './crypto-utils.js';
 
+/**
+ * Settings Manager Class
+ * 
+ * Manages application settings with secure storage and encryption.
+ * Handles API credentials, user preferences, and configuration data
+ * with automatic encryption for sensitive information.
+ * 
+ * @param {Object} logger - Logger instance for debugging
+ */
 class SettingsManager {
     constructor(logger) {
-        // Initialize settings and storage key
+        // Initialize settings with default values
         this.settings = this.getDefaultSettings();
         this.storageKey = 'pingone-import-settings';
         this.crypto = new CryptoUtils();
         this.encryptionKey = null;
         
-        // Initialize logger
+        // Initialize logger for debugging and error reporting
         this.initializeLogger(logger);
         
-        // Initialize encryption (will be called in init method)
+        // Encryption will be initialized in the init method
         this.encryptionInitialized = false;
     }
     
