@@ -415,6 +415,44 @@ router.post('/disk', express.json(), async (req, res) => {
 });
 
 /**
+ * Get logs summary and available endpoints
+ * GET /api/logs
+ * Returns a summary of available logs and endpoints
+ */
+router.get('/', (req, res) => {
+    try {
+        res.json({
+            success: true,
+            message: 'Logs API endpoints available',
+            endpoints: {
+                'GET /api/logs': 'This endpoint - shows available log endpoints',
+                'GET /api/logs/ui': 'Get UI logs (in-memory)',
+                'POST /api/logs/ui': 'Post UI log entry',
+                'DELETE /api/logs/ui': 'Clear UI logs',
+                'GET /api/logs/disk': 'Get disk logs',
+                'POST /api/logs/disk': 'Post disk log entry',
+                'POST /api/logs/error': 'Post error log',
+                'POST /api/logs/warning': 'Post warning log',
+                'POST /api/logs/info': 'Post info log',
+                'DELETE /api/logs': 'Clear all logs'
+            },
+            summary: {
+                uiLogsCount: uiLogs.length,
+                maxUiLogs: MAX_UI_LOGS,
+                logsDirectory: LOGS_DIR
+            }
+        });
+    } catch (error) {
+        console.error('Error getting logs summary:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to get logs summary',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+});
+
+/**
  * Delete all logs (both UI and disk logs)
  * DELETE /api/logs
  */

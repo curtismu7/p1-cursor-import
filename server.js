@@ -1364,8 +1364,20 @@ app.get('/api/debug/settings', async (req, res) => {
     }
 });
 
-// Serve the main application for all other routes (must be last)
+// Serve the main application for non-API routes (must be last)
 app.get('*', (req, res) => {
+    // Don't serve HTML for API routes
+    if (req.path.startsWith('/api/')) {
+        return res.status(404).json({
+            success: false,
+            error: 'API endpoint not found',
+            message: `Cannot ${req.method} ${req.originalUrl}`,
+            status: 404,
+            timestamp: new Date().toISOString()
+        });
+    }
+    
+    // Serve the main HTML page for all other routes
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
