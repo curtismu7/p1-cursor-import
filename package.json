@@ -1,6 +1,6 @@
 {
   "name": "pingone-import-cursor",
-  "version": "4.8",
+  "version": "4.9",
   "description": "A modern web application for importing users into PingOne using the PingOne Admin API.",
   "main": "server.js",
   "type": "module",

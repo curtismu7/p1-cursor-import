@@ -742,41 +742,524 @@ const importProgressStreams = new Map(); // sessionId -> res
 
 /**
  * GET /api/import/progress/:sessionId
- * Establishes Server-Sent Events connection for real-time import progress updates
+ * Server-Sent Events (SSE) endpoint for real-time import progress updates
  * 
- * This endpoint creates a persistent HTTP connection that streams progress events
- * to the frontend during long-running import operations. Includes heartbeat
- * mechanism to keep connection alive and proper cleanup on disconnect.
+ * Establishes a persistent HTTP connection that streams progress events to the client.
+ * Used during user import operations to provide real-time feedback on import status.
+ * 
+ * Features:
+ * - Validates sessionId and client capabilities
+ * - Sets proper SSE headers for persistent connection
+ * - Sends heartbeat messages to keep connection alive
+ * - Monitors connection health and cleanup
+ * - Comprehensive error handling and logging
  * 
  * @param {string} sessionId - Unique session identifier for this import operation
  */
 router.get('/import/progress/:sessionId', (req, res) => {
     const { sessionId } = req.params;
     
+    // Log SSE connection attempt with detailed information
+    console.log("SSE: 🔄 SSE connection request received", {
+        sessionId,
+        ip: req.ip,
+        userAgent: req.get('User-Agent'),
+        accept: req.get('Accept'),
+        timestamp: new Date().toISOString()
+    });
+    
+    // Validate sessionId parameter
+    if (!sessionId || typeof sessionId !== 'string' || sessionId.trim() === '') {
+        console.error("SSE: ❌ Invalid sessionId in request", { sessionId, ip: req.ip });
+        debugLog("SSE", "❌ Invalid sessionId in request", { sessionId, ip: req.ip });
+        return res.status(400).json({ 
+            error: 'Invalid session ID', 
+            message: 'Session ID is required and must be a non-empty string' 
+        });
+    }
+
+    // Log SSE connection attempt
+    debugLog("SSE", "🔄 SSE connection request received", { 
+        sessionId, 
+        ip: req.ip,
+        userAgent: req.get('User-Agent'),
+        accept: req.get('Accept')
+    });
+
+    // Check if client accepts SSE
+    const acceptHeader = req.get('Accept') || '';
+    if (!acceptHeader.includes('text/event-stream') && !acceptHeader.includes('*/*')) {
+        console.error("SSE: ❌ Client does not accept SSE", { 
+            sessionId, 
+            accept: acceptHeader 
+        });
+        debugLog("SSE", "❌ Client does not accept SSE", { 
+            sessionId, 
+            accept: acceptHeader 
+        });
+        return res.status(406).json({ 
+            error: 'Not Acceptable', 
+            message: 'Client must accept text/event-stream' 
+        });
+    }
+
     // Set SSE headers for persistent connection
     res.set({
         'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Cache-Control',
+        'X-Accel-Buffering': 'no' // Disable proxy buffering for nginx
     });
+    
+    // Flush headers immediately to establish connection
     res.flushHeaders();
     
+    console.log("SSE: ✅ SSE headers set and flushed", { 
+        sessionId, 
+        headers: res.getHeaders() 
+    });
+    debugLog("SSE", "✅ SSE headers set and flushed", { 
+        sessionId, 
+        headers: res.getHeaders() 
+    });
+
     // Store this connection for progress updates
+    // Use a Map to handle multiple concurrent imports
     importProgressStreams.set(sessionId, res);
     
+    console.log("SSE: 📝 SSE connection stored in streams map", { 
+        sessionId, 
+        totalStreams: importProgressStreams.size 
+    });
+    debugLog("SSE", "📝 SSE connection stored in streams map", { 
+        sessionId, 
+        totalStreams: importProgressStreams.size 
+    });
+
+    // Send initial connection confirmation event
+    try {
+        const initialEvent = {
+            sessionId, 
+            timestamp: new Date().toISOString(),
+            message: 'SSE connection established'
+        };
+        
+        console.log("SSE: ✅ Sending initial connection event", { sessionId, event: initialEvent });
+        res.write(`event: connected\ndata: ${JSON.stringify(initialEvent)}\n\n`);
+        
+        if (typeof res.flush === 'function') {
+            res.flush();
+        }
+        
+        debugLog("SSE", "✅ Initial connection event sent", { sessionId });
+    } catch (error) {
+        console.error("SSE: ❌ Error sending initial connection event", { 
+            sessionId, 
+            error: error.message 
+        });
+        debugLog("SSE", "❌ Error sending initial connection event", { 
+            sessionId, 
+            error: error.message 
+        });
+    }
+
     // Send heartbeat every 25 seconds to keep connection alive
     // This prevents timeouts during long import operations
     const heartbeat = setInterval(() => {
-        res.write(': keep-alive\n\n');
-        if (typeof res.flush === 'function') res.flush();
+        try {
+            // Send a comment line as heartbeat (standard SSE practice)
+            res.write(': heartbeat\n\n');
+            
+            if (typeof res.flush === 'function') {
+                res.flush();
+            }
+            
+            console.log("SSE: 💓 Heartbeat sent", { 
+                sessionId, 
+                timestamp: new Date().toISOString() 
+            });
+            debugLog("SSE", "💓 Heartbeat sent", { 
+                sessionId, 
+                timestamp: new Date().toISOString() 
+            });
+        } catch (error) {
+            console.error("SSE: ❌ Error sending heartbeat", { 
+                sessionId, 
+                error: error.message 
+            });
+            debugLog("SSE", "❌ Error sending heartbeat", { 
+                sessionId, 
+                error: error.message 
+            });
+            clearInterval(heartbeat);
+            importProgressStreams.delete(sessionId);
+        }
     }, 25000);
+
+    // Track connection start time for monitoring
+    const connectionStartTime = Date.now();
     
+    // Monitor connection health
+    const healthCheck = setInterval(() => {
+        const connectionDuration = Date.now() - connectionStartTime;
+        console.log("SSE: 🔍 Connection health check", { 
+            sessionId, 
+            duration: connectionDuration,
+            active: importProgressStreams.has(sessionId)
+        });
+        debugLog("SSE", "🔍 Connection health check", { 
+            sessionId, 
+            duration: connectionDuration,
+            active: importProgressStreams.has(sessionId)
+        });
+    }, 60000); // Check every minute
+
     // Clean up connection when client disconnects
     req.on('close', () => {
+        const connectionDuration = Date.now() - connectionStartTime;
+        console.log("SSE: 🔌 Client disconnected", { 
+            sessionId, 
+            duration: connectionDuration 
+        });
+        debugLog("SSE", "🔌 Client disconnected", { 
+            sessionId, 
+            duration: connectionDuration 
+        });
+        
         clearInterval(heartbeat);
+        clearInterval(healthCheck);
+        importProgressStreams.delete(sessionId);
+        
+        console.log("SSE: 🧹 SSE connection cleaned up", { 
+            sessionId, 
+            remainingStreams: importProgressStreams.size 
+        });
+        debugLog("SSE", "🧹 SSE connection cleaned up", { 
+            sessionId, 
+            remainingStreams: importProgressStreams.size 
+        });
+    });
+
+    // Handle request errors
+    req.on('error', (error) => {
+        console.error("SSE: ❌ Request error", { 
+            sessionId, 
+            error: error.message 
+        });
+        debugLog("SSE", "❌ Request error", { 
+            sessionId, 
+            error: error.message 
+        });
+        
+        clearInterval(heartbeat);
+        clearInterval(healthCheck);
         importProgressStreams.delete(sessionId);
     });
+
+    // Handle response errors
+    res.on('error', (error) => {
+        console.error("SSE: ❌ Response error", { 
+            sessionId, 
+            error: error.message 
+        });
+        debugLog("SSE", "❌ Response error", { 
+            sessionId, 
+            error: error.message 
+        });
+        
+        clearInterval(heartbeat);
+        clearInterval(healthCheck);
+        importProgressStreams.delete(sessionId);
+    });
+
+    // Handle response finish
+    res.on('finish', () => {
+        console.log("SSE: ✅ Response finished", { 
+            sessionId, 
+            statusCode: res.statusCode 
+        });
+        debugLog("SSE", "✅ Response finished", { 
+            sessionId, 
+            statusCode: res.statusCode 
+        });
+    });
+
+    debugLog("SSE", "✅ SSE connection established successfully", { 
+        sessionId, 
+        totalStreams: importProgressStreams.size 
+    });
 });
+
+/**
+ * Helper function to send SSE events with proper error handling and debugging
+ * 
+ * @param {string} sessionId - The session ID for the SSE connection
+ * @param {string} eventType - The type of event (progress, error, complete, etc.)
+ * @param {Object} data - The data to send with the event
+ * @param {boolean} shouldEnd - Whether to end the connection after sending
+ * @returns {boolean} True if event was sent successfully, false otherwise
+ */
+function sendSSEEvent(sessionId, eventType, data, shouldEnd = false) {
+    try {
+        // Validate parameters
+        if (!sessionId || typeof sessionId !== 'string') {
+            console.error("SSE: ❌ Invalid sessionId for SSE event", { sessionId, eventType });
+            debugLog("SSE", "❌ Invalid sessionId for SSE event", { sessionId, eventType });
+            return false;
+        }
+
+        if (!eventType || typeof eventType !== 'string') {
+            console.error("SSE: ❌ Invalid eventType for SSE event", { sessionId, eventType });
+            debugLog("SSE", "❌ Invalid eventType for SSE event", { sessionId, eventType });
+            return false;
+        }
+
+        // Get the SSE response object
+        const sseRes = importProgressStreams.get(sessionId);
+        if (!sseRes) {
+            console.error("SSE: ❌ No SSE connection found for sessionId", { sessionId, eventType });
+            debugLog("SSE", "❌ No SSE connection found for sessionId", { sessionId, eventType });
+            return false;
+        }
+
+        // Validate that the response is still writable
+        if (sseRes.destroyed || sseRes.finished) {
+            console.error("SSE: ❌ SSE connection is no longer writable", { 
+                sessionId, 
+                eventType, 
+                destroyed: sseRes.destroyed, 
+                finished: sseRes.finished 
+            });
+            debugLog("SSE", "❌ SSE connection is no longer writable", { 
+                sessionId, 
+                eventType, 
+                destroyed: sseRes.destroyed, 
+                finished: sseRes.finished 
+            });
+            importProgressStreams.delete(sessionId);
+            return false;
+        }
+
+        // Format the SSE event according to the specification
+        const eventData = JSON.stringify(data);
+        const sseMessage = `event: ${eventType}\ndata: ${eventData}\n\n`;
+        
+        console.log("SSE: 📤 Sending SSE event", { 
+            sessionId, 
+            eventType, 
+            dataLength: eventData.length,
+            shouldEnd 
+        });
+        
+        // Send the event
+        const writeResult = sseRes.write(sseMessage);
+        
+        if (!writeResult) {
+            console.error("SSE: ❌ Failed to write SSE event - buffer full", { 
+                sessionId, 
+                eventType,
+                dataLength: eventData.length 
+            });
+            debugLog("SSE", "❌ Failed to write SSE event - buffer full", { 
+                sessionId, 
+                eventType,
+                dataLength: eventData.length 
+            });
+            return false;
+        }
+
+        // Flush the response if possible
+        if (typeof sseRes.flush === 'function') {
+            sseRes.flush();
+        }
+
+        // Log successful event sending
+        console.log("SSE: ✅ SSE event sent successfully", { 
+            sessionId, 
+            eventType, 
+            dataLength: eventData.length,
+            shouldEnd 
+        });
+        debugLog("SSE", `✅ SSE event sent successfully`, { 
+            sessionId, 
+            eventType, 
+            dataLength: eventData.length,
+            shouldEnd 
+        });
+
+        // End the connection if requested
+        if (shouldEnd) {
+            console.log("SSE: 🔚 Ending SSE connection as requested", { sessionId, eventType });
+            debugLog("SSE", "🔚 Ending SSE connection as requested", { sessionId, eventType });
+            sseRes.end();
+            importProgressStreams.delete(sessionId);
+        }
+
+        return true;
+
+    } catch (error) {
+        console.error("SSE: ❌ Error sending SSE event", { 
+            sessionId, 
+            eventType, 
+            error: error.message,
+            stack: error.stack 
+        });
+        debugLog("SSE", "❌ Error sending SSE event", { 
+            sessionId, 
+            eventType, 
+            error: error.message,
+            stack: error.stack 
+        });
+        
+        // Clean up the connection on error
+        const sseRes = importProgressStreams.get(sessionId);
+        if (sseRes) {
+            try {
+                sseRes.end();
+            } catch (endError) {
+                console.error("SSE: ❌ Error ending SSE connection after error", { 
+                    sessionId, 
+                    error: endError.message 
+                });
+                debugLog("SSE", "❌ Error ending SSE connection after error", { 
+                    sessionId, 
+                    error: endError.message 
+                });
+            }
+            importProgressStreams.delete(sessionId);
+        }
+        
+        return false;
+    }
+}
+
+/**
+ * Helper function to send progress updates via SSE
+ * 
+ * @param {string} sessionId - The session ID for the SSE connection
+ * @param {number} current - Current progress count
+ * @param {number} total - Total count
+ * @param {string} message - Progress message
+ * @param {Object} counts - Success/failed/skipped counts
+ * @param {Object} user - Current user being processed (optional)
+ * @returns {boolean} True if event was sent successfully
+ */
+function sendProgressEvent(sessionId, current, total, message, counts = {}, user = null) {
+    console.log("SSE: 📊 Sending progress event", { 
+        sessionId, 
+        current, 
+        total, 
+        message,
+        user: user ? user.username || user.email : null
+    });
+    
+    const progressData = {
+        current,
+        total,
+        message,
+        counts,
+        timestamp: new Date().toISOString()
+    };
+
+    if (user) {
+        progressData.user = user;
+    }
+
+    const result = sendSSEEvent(sessionId, 'progress', progressData);
+    
+    if (result) {
+        console.log("SSE: ✅ Progress event sent successfully", { 
+            sessionId, 
+            current, 
+            total, 
+            percentage: total > 0 ? Math.round(current/total*100) : 0
+        });
+    } else {
+        console.error("SSE: ❌ Failed to send progress event", { sessionId, current, total });
+    }
+    
+    return result;
+}
+
+/**
+ * Helper function to send error events via SSE
+ * 
+ * @param {string} sessionId - The session ID for the SSE connection
+ * @param {string} error - Error type/message
+ * @param {string} message - Detailed error message
+ * @param {Object} details - Additional error details
+ * @returns {boolean} True if event was sent successfully
+ */
+function sendErrorEvent(sessionId, error, message, details = {}) {
+    console.error("SSE: ❌ Sending error event", { 
+        sessionId, 
+        error, 
+        message, 
+        details 
+    });
+    
+    const errorData = {
+        error,
+        message,
+        details,
+        timestamp: new Date().toISOString()
+    };
+
+    const result = sendSSEEvent(sessionId, 'error', errorData, true); // End connection on error
+    
+    if (result) {
+        console.log("SSE: ✅ Error event sent successfully", { sessionId, error });
+    } else {
+        console.error("SSE: ❌ Failed to send error event", { sessionId, error });
+    }
+    
+    return result;
+}
+
+/**
+ * Helper function to send completion events via SSE
+ * 
+ * @param {string} sessionId - The session ID for the SSE connection
+ * @param {number} current - Final progress count
+ * @param {number} total - Total count
+ * @param {string} message - Completion message
+ * @param {Object} counts - Final success/failed/skipped counts
+ * @returns {boolean} True if event was sent successfully
+ */
+function sendCompletionEvent(sessionId, current, total, message, counts = {}) {
+    console.log("SSE: ✅ Sending completion event", { 
+        sessionId, 
+        current, 
+        total, 
+        message,
+        counts 
+    });
+    
+    const completionData = {
+        current,
+        total,
+        message,
+        counts,
+        timestamp: new Date().toISOString()
+    };
+
+    const result = sendSSEEvent(sessionId, 'complete', completionData, true); // End connection on completion
+    
+    if (result) {
+        console.log("SSE: ✅ Completion event sent successfully", { 
+            sessionId, 
+            current, 
+            total,
+            percentage: total > 0 ? Math.round(current/total*100) : 0
+        });
+    } else {
+        console.error("SSE: ❌ Failed to send completion event", { sessionId, current, total });
+    }
+    
+    return result;
+}
 
 // ============================================================================
 // USER IMPORT ENDPOINT
@@ -1011,15 +1494,7 @@ async function runImportProcess(req, sessionId, options) {
         
         // Send initial progress event to establish SSE connection
         // This ensures the frontend receives immediate feedback that import has started
-        const initialSseRes = importProgressStreams.get(sessionId);
-        if (initialSseRes) {
-            initialSseRes.write(`event: progress\ndata: ${JSON.stringify({ 
-                current: 0, 
-                total: 0, 
-                message: 'Starting import...',
-                counts: { succeeded: 0, failed: 0, skipped: 0 }
-            })}\n\n`);
-        }
+        sendProgressEvent(sessionId, 0, 0, 'Starting import...', { succeeded: 0, failed: 0, skipped: 0 });
 
         // Parse CSV file content from uploaded buffer
         // Convert buffer to string and split into lines, filtering out empty lines
@@ -1030,15 +1505,7 @@ async function runImportProcess(req, sessionId, options) {
         // Validate CSV structure: must have header row and at least one data row
         if (lines.length < 2) {
             debugLog("CSV", "Invalid CSV file - insufficient data");
-            const csvErrorSseRes = importProgressStreams.get(sessionId);
-            if (csvErrorSseRes) {
-                csvErrorSseRes.write(`event: error\ndata: ${JSON.stringify({ 
-                    error: 'Invalid CSV file', 
-                    message: 'CSV file must have at least a header row and one data row' 
-                })}\n\n`);
-                csvErrorSseRes.end();
-                importProgressStreams.delete(sessionId);
-            }
+            sendErrorEvent(sessionId, 'Invalid CSV file', 'CSV file must have at least a header row and one data row');
             return;
         }
         
@@ -1070,15 +1537,7 @@ async function runImportProcess(req, sessionId, options) {
         // Validate that we have at least one valid user to process
         if (users.length === 0) {
             debugLog("CSV", "No valid users found in CSV");
-            const noUsersSseRes = importProgressStreams.get(sessionId);
-            if (noUsersSseRes) {
-                noUsersSseRes.write(`event: error\ndata: ${JSON.stringify({ 
-                    error: 'No valid users found', 
-                    message: 'CSV file must contain at least one user with username or email' 
-                })}\n\n`);
-                noUsersSseRes.end();
-                importProgressStreams.delete(sessionId);
-            }
+            sendErrorEvent(sessionId, 'No valid users found', 'CSV file must contain at least one user with username or email');
             return;
         }
         
@@ -1092,25 +1551,12 @@ async function runImportProcess(req, sessionId, options) {
         
         if (!environmentId) {
             debugLog("Settings", "Missing environment ID in settings");
-            const envErrorSseRes = importProgressStreams.get(sessionId);
-            if (envErrorSseRes) {
-                envErrorSseRes.write(`event: error\ndata: ${JSON.stringify({ error: 'Missing environment ID', message: 'Please configure your PingOne environment ID in settings' })}\n\n`);
-                envErrorSseRes.end();
-                importProgressStreams.delete(sessionId);
-            }
+            sendErrorEvent(sessionId, 'Missing environment ID', 'Please configure your PingOne environment ID in settings');
             return;
         }
         
         // Send progress event with total count
-        const progressSseRes = importProgressStreams.get(sessionId);
-        if (progressSseRes) {
-            progressSseRes.write(`event: progress\ndata: ${JSON.stringify({ 
-                current: 0, 
-                total: users.length, 
-                message: `Starting import of ${users.length} users...`,
-                counts: { succeeded: 0, failed: 0, skipped: 0 }
-            })}\n\n`);
-        }
+        sendProgressEvent(sessionId, 0, users.length, `Starting import of ${users.length} users...`, { succeeded: 0, failed: 0, skipped: 0 });
         
         // Detect population conflicts between CSV data and UI selection
         // A conflict occurs when both CSV contains population data AND UI has selected a population
@@ -1149,20 +1595,15 @@ This conflict needs to be resolved before import can proceed.`;
                 global.populationConflictResolutions.delete(sessionId);
             } else {
                 // Send conflict event to frontend for user resolution
-                const conflictSseRes = importProgressStreams.get(sessionId);
-                if (conflictSseRes) {
-                    conflictSseRes.write(`event: population_conflict\ndata: ${JSON.stringify({ 
-                        error: 'Population conflict detected',
-                        message: populationConflictMessage,
-                        hasCsvPopulationData,
-                        hasUiSelectedPopulation,
-                        csvPopulationCount: users.filter(u => u.populationId && u.populationId.trim() !== '').length,
-                        uiSelectedPopulation: defaultPopulationId,
-                        sessionId
-                    })}\n\n`);
-                    conflictSseRes.end();
-                    importProgressStreams.delete(sessionId);
-                }
+                sendSSEEvent(sessionId, 'population_conflict', { 
+                    error: 'Population conflict detected',
+                    message: populationConflictMessage,
+                    hasCsvPopulationData,
+                    hasUiSelectedPopulation,
+                    csvPopulationCount: users.filter(u => u.populationId && u.populationId.trim() !== '').length,
+                    uiSelectedPopulation: defaultPopulationId,
+                    sessionId
+                }, true); // End connection after sending conflict event
                 return;
             }
         }
@@ -1227,18 +1668,13 @@ This conflict needs to be resolved before import can proceed.`;
                 global.invalidPopulationResolutions.delete(sessionId);
             } else {
                 // Send invalid population event to frontend
-                const invalidPopulationSseRes = importProgressStreams.get(sessionId);
-                if (invalidPopulationSseRes) {
-                    invalidPopulationSseRes.write(`event: invalid_population\ndata: ${JSON.stringify({ 
-                        error: 'Invalid populations detected',
-                        message: invalidPopulationMessage,
-                        invalidPopulations,
-                        affectedUserCount: users.filter(u => invalidPopulations.includes(u.populationId)).length,
-                        sessionId
-                    })}\n\n`);
-                    invalidPopulationSseRes.end();
-                    importProgressStreams.delete(sessionId);
-                }
+                sendSSEEvent(sessionId, 'invalid_population', { 
+                    error: 'Invalid populations detected',
+                    message: invalidPopulationMessage,
+                    invalidPopulations,
+                    affectedUserCount: users.filter(u => invalidPopulations.includes(u.populationId)).length,
+                    sessionId
+                }, true); // End connection after sending invalid population event
                 return;
             }
         }
@@ -1258,16 +1694,11 @@ This conflict needs to be resolved before import can proceed.`;
                     debugLog("Populations", "Assigned PingOne default population to all users");
                 } else {
                     // No valid fallback, prompt user as before
-                    const pickPopSseRes = importProgressStreams.get(sessionId);
-                    if (pickPopSseRes) {
-                        pickPopSseRes.write(`event: pick_population_required\ndata: ${JSON.stringify({
-                            error: 'No valid population found',
-                            message: 'No valid populationId found in CSV, UI, settings.json, or PingOne default. Please pick a population.',
-                            sessionId
-                        })}\n\n`);
-                        pickPopSseRes.end();
-                        importProgressStreams.delete(sessionId);
-                    }
+                    sendSSEEvent(sessionId, 'pick_population_required', {
+                        error: 'No valid population found',
+                        message: 'No valid populationId found in CSV, UI, settings.json, or PingOne default. Please pick a population.',
+                        sessionId
+                    }, true); // End connection after sending pick population event
                     return;
                 }
             }

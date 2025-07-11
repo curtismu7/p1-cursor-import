@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disclaimer Debug - Current State</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .debug-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 5px; }
+        .success { color: green; }
+        .error { color: red; }
+        .warning { color: orange; }
+        .info { color: blue; }
+        .test-button { margin: 10px; padding: 10px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        .test-button:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <h1>Disclaimer Debug - Current State</h1>
+    
+    <!-- Test Disclaimer Section -->
+    <div class="debug-section">
+        <h2>Test Disclaimer Elements</h2>
+        <div id="disclaimer" class="disclaimer-box">
+            <div class="disclaimer-header">
+                <h3>⚠️ Important Disclaimer</h3>
+                <p><strong>This tool is NOT an official Ping Identity product and is provided without any warranty or support. Use at your own risk.</strong></p>
+            </div>
+            <div class="acceptance-section">
+                <div class="agreement-checkbox">
+                    <input type="checkbox" id="disclaimer-agreement" required>
+                    <label for="disclaimer-agreement">
+                        <strong>I acknowledge and accept the above disclaimer.</strong>
+                    </label>
+                </div>
+                <button id="accept-disclaimer" class="btn btn-danger" disabled style="margin-top: 1rem; min-width: 120px;">
+                    Continue
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Debug Controls -->
+    <div class="debug-section">
+        <h2>Debug Controls</h2>
+        <button class="test-button" onclick="checkElements()">Check Elements</button>
+        <button class="test-button" onclick="testSetupFunction()">Test Setup Function</button>
+        <button class="test-button" onclick="checkDOMReady()">Check DOM Ready State</button>
+        <button class="test-button" onclick="clearLog()">Clear Log</button>
+    </div>
+
+    <!-- Debug Output -->
+    <div class="debug-section">
+        <h2>Debug Output</h2>
+        <div id="debug-output" style="background: #f5f5f5; padding: 10px; border-radius: 3px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 12px;"></div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const output = document.getElementById('debug-output');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warning' ? 'warning' : 'info';
+            output.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('debug-output').innerHTML = '';
+        }
+
+        function checkElements() {
+            log('=== Checking Elements ===', 'info');
+            
+            const elements = {
+                'disclaimer-agreement': document.getElementById('disclaimer-agreement'),
+                'accept-disclaimer': document.getElementById('accept-disclaimer'),
+                'disclaimer': document.getElementById('disclaimer')
+            };
+
+            let allFound = true;
+            for (const [id, element] of Object.entries(elements)) {
+                if (element) {
+                    log(`✅ Found element: ${id}`, 'success');
+                    log(`   - Type: ${element.tagName}`, 'info');
+                    log(`   - Classes: ${element.className}`, 'info');
+                    if (element.tagName === 'INPUT') {
+                        log(`   - Type: ${element.type}`, 'info');
+                        log(`   - Checked: ${element.checked}`, 'info');
+                    }
+                } else {
+                    log(`❌ Element not found: ${id}`, 'error');
+                    allFound = false;
+                }
+            }
+
+            if (allFound) {
+                log('✅ All required elements found!', 'success');
+            } else {
+                log('❌ Some elements are missing!', 'error');
+            }
+        }
+
+        function testSetupFunction() {
+            log('=== Testing Setup Function ===', 'info');
+            
+            // Simulate the setupDisclaimerAgreement function
+            try {
+                const disclaimerCheckbox = document.getElementById('disclaimer-agreement');
+                const acceptButton = document.getElementById('accept-disclaimer');
+                const disclaimerBox = document.getElementById('disclaimer');
+
+                if (!disclaimerCheckbox || !acceptButton || !disclaimerBox) {
+                    log('❌ Required disclaimer elements not found:', 'error');
+                    log(`   - disclaimerCheckbox: ${!!disclaimerCheckbox}`, 'error');
+                    log(`   - acceptButton: ${!!acceptButton}`, 'error');
+                    log(`   - disclaimerBox: ${!!disclaimerBox}`, 'error');
+                    return;
+                }
+
+                log('✅ All elements found, setting up event listeners...', 'success');
+
+                // Function to check if the checkbox is checked
+                const checkAgreementStatus = () => {
+                    const isChecked = disclaimerCheckbox.checked;
+                    acceptButton.disabled = !isChecked;
+                    
+                    if (isChecked) {
+                        acceptButton.classList.remove('btn-secondary');
+                        acceptButton.classList.add('btn-danger');
+                        log('✅ Button enabled', 'success');
+                    } else {
+                        acceptButton.classList.remove('btn-danger');
+                        acceptButton.classList.add('btn-secondary');
+                        log('❌ Button disabled', 'warning');
+                    }
+                };
+
+                // Attach event listener to checkbox
+                disclaimerCheckbox.addEventListener('change', (e) => {
+                    log(`Checkbox changed: ${e.target.checked}`, 'info');
+                    checkAgreementStatus();
+                });
+
+                // Attach event listener to accept button
+                acceptButton.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    log('Accept button clicked', 'info');
+                    
+                    if (disclaimerCheckbox.checked) {
+                        log('✅ Disclaimer accepted - enabling tool', 'success');
+                        // this.enableToolAfterDisclaimer(); // Would be called in real app
+                    } else {
+                        log('❌ Button clicked but checkbox not checked', 'error');
+                    }
+                });
+
+                // Initial status check
+                checkAgreementStatus();
+                log('✅ Setup completed successfully', 'success');
+                
+            } catch (err) {
+                log(`❌ Error in setupDisclaimerAgreement: ${err.message}`, 'error');
+                log(`Stack: ${err.stack}`, 'error');
+            }
+        }
+
+        function checkDOMReady() {
+            log('=== Checking DOM Ready State ===', 'info');
+            log(`Document ready state: ${document.readyState}`, 'info');
+            log(`Document complete: ${document.readyState === 'complete'}`, 'info');
+            log(`Document loading: ${document.readyState === 'loading'}`, 'info');
+            log(`Document interactive: ${document.readyState === 'interactive'}`, 'info');
+        }
+
+        // Auto-run checks when page loads
+        window.addEventListener('load', () => {
+            log('=== Page Loaded ===', 'success');
+            setTimeout(() => {
+                checkElements();
+                checkDOMReady();
+            }, 100);
+        });
+
+        // Also check when DOM content is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            log('=== DOM Content Loaded ===', 'success');
+            setTimeout(() => {
+                checkElements();
+            }, 100);
+        });
+    </script>
+</body>
+</html> 

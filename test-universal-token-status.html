@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Token Status Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .test-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        
+        .test-section h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        
+        .status-display {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-family: monospace;
+        }
+        
+        .status-valid {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        
+        .status-expired {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        
+        .status-no-token {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            color: #6c757d;
+        }
+        
+        .status-warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        
+        .btn-warning {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        
+        .page-simulator {
+            border: 2px solid #007bff;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            background-color: #f8f9fa;
+        }
+        
+        .page-simulator h4 {
+            margin-top: 0;
+            color: #007bff;
+        }
+        
+        .token-status-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+            padding: 8px 20px;
+            background: #fff;
+            border-bottom: 1px solid #e9ecef;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .token-status-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+        
+        .token-status-icon {
+            font-size: 16px;
+            flex-shrink: 0;
+            width: 20px;
+            text-align: center;
+        }
+        
+        .token-status-text {
+            font-size: 14px;
+            font-weight: 500;
+            color: #495057;
+        }
+        
+        .token-status-time {
+            font-size: 13px;
+            color: #6c757d;
+            font-weight: normal;
+            margin-left: 5px;
+        }
+        
+        .token-status-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        
+        .token-status-actions .btn {
+            padding: 4px 8px;
+            font-size: 12px;
+            border-radius: 4px;
+        }
+        
+        /* Token Status States */
+        .token-status-bar.valid {
+            background: linear-gradient(90deg, #d4edda 0%, #c3e6cb 100%);
+            border-bottom-color: #28a745;
+        }
+        
+        .token-status-bar.valid .token-status-icon {
+            color: #28a745;
+        }
+        
+        .token-status-bar.valid .token-status-text {
+            color: #155724;
+        }
+        
+        .token-status-bar.valid .token-status-time {
+            color: #155724;
+        }
+        
+        .token-status-bar.expired {
+            background: linear-gradient(90deg, #f8d7da 0%, #f5c6cb 100%);
+            border-bottom-color: #dc3545;
+        }
+        
+        .token-status-bar.expired .token-status-icon {
+            color: #dc3545;
+        }
+        
+        .token-status-bar.expired .token-status-text {
+            color: #721c24;
+        }
+        
+        .token-status-bar.expired .token-status-time {
+            color: #721c24;
+        }
+        
+        .token-status-bar.no-token {
+            background: linear-gradient(90deg, #f8f9fa 0%, #e9ecef 100%);
+            border-bottom-color: #6c757d;
+        }
+        
+        .token-status-bar.no-token .token-status-icon {
+            color: #6c757d;
+        }
+        
+        .token-status-bar.no-token .token-status-text {
+            color: #495057;
+        }
+        
+        .token-status-bar.no-token .token-status-time {
+            color: #6c757d;
+        }
+        
+        .token-status-bar.warning {
+            background: linear-gradient(90deg, #fff3cd 0%, #ffeaa7 100%);
+            border-bottom-color: #ffc107;
+        }
+        
+        .token-status-bar.warning .token-status-icon {
+            color: #856404;
+        }
+        
+        .token-status-bar.warning .token-status-text {
+            color: #856404;
+        }
+        
+        .token-status-bar.warning .token-status-time {
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>Universal Token Status Test</h1>
+        
+        <div class="test-section">
+            <h3>Token Status Bar Simulation</h3>
+            <p>This simulates the universal token status bar that appears on all pages.</p>
+            
+            <div id="token-status-bar" class="token-status-bar no-token">
+                <div class="token-status-content">
+                    <span class="token-status-icon">❌</span>
+                    <span class="token-status-text">No valid token available</span>
+                    <span class="token-status-time"></span>
+                </div>
+                <div class="token-status-actions">
+                    <button class="btn btn-secondary" onclick="refreshTokenStatus()">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    <button class="btn btn-success" onclick="getTokenQuick()" style="display: none;">
+                        <i class="fas fa-key"></i> Get Token
+                    </button>
+                </div>
+            </div>
+            
+            <div style="margin-top: 15px;">
+                <button class="btn btn-success" onclick="simulateValidToken()">Simulate Valid Token</button>
+                <button class="btn btn-warning" onclick="simulateExpiredToken()">Simulate Expired Token</button>
+                <button class="btn btn-danger" onclick="simulateNoToken()">Simulate No Token</button>
+                <button class="btn btn-warning" onclick="simulateWarningToken()">Simulate Warning Token</button>
+                <button class="btn btn-primary" onclick="refreshTokenStatus()">Refresh Status</button>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Page Simulation</h3>
+            <p>Simulate how the token status appears on different pages:</p>
+            
+            <div class="page-simulator">
+                <h4>Settings Page</h4>
+                <div id="settings-token-status" class="token-status-bar no-token">
+                    <div class="token-status-content">
+                        <span class="token-status-icon">❌</span>
+                        <span class="token-status-text">No valid token available</span>
+                        <span class="token-status-time"></span>
+                    </div>
+                    <div class="token-status-actions">
+                        <button class="btn btn-secondary">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                        <button class="btn btn-success">
+                            <i class="fas fa-key"></i> Get Token
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="page-simulator">
+                <h4>Import Page</h4>
+                <div id="import-token-status" class="token-status-bar no-token">
+                    <div class="token-status-content">
+                        <span class="token-status-icon">❌</span>
+                        <span class="token-status-text">No valid token available</span>
+                        <span class="token-status-time"></span>
+                    </div>
+                    <div class="token-status-actions">
+                        <button class="btn btn-secondary">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                        <button class="btn btn-success">
+                            <i class="fas fa-key"></i> Get Token
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="page-simulator">
+                <h4>Progress Page</h4>
+                <div id="progress-token-status" class="token-status-bar no-token">
+                    <div class="token-status-content">
+                        <span class="token-status-icon">❌</span>
+                        <span class="token-status-text">No valid token available</span>
+                        <span class="token-status-time"></span>
+                    </div>
+                    <div class="token-status-actions">
+                        <button class="btn btn-secondary">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                        <button class="btn btn-success">
+                            <i class="fas fa-key"></i> Get Token
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Status Information</h3>
+            <div id="status-info">
+                <p><strong>Current Status:</strong> <span id="current-status">No token</span></p>
+                <p><strong>Time Remaining:</strong> <span id="time-remaining">N/A</span></p>
+                <p><strong>Last Updated:</strong> <span id="last-updated">Never</span></p>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Test Functions</h3>
+            <button class="btn btn-primary" onclick="testAutoRefresh()">Test Auto Refresh (5s)</button>
+            <button class="btn btn-secondary" onclick="testPageNavigation()">Test Page Navigation</button>
+            <button class="btn btn-warning" onclick="testTokenExpiration()">Test Token Expiration</button>
+        </div>
+    </div>
+
+    <script>
+        // Simulate token status bar functionality
+        let currentTokenInfo = null;
+        let autoRefreshTimer = null;
+        
+        function updateTokenStatusBar(statusBarId, tokenInfo) {
+            const statusBar = document.getElementById(statusBarId);
+            if (!statusBar) return;
+            
+            const icon = statusBar.querySelector('.token-status-icon');
+            const text = statusBar.querySelector('.token-status-text');
+            const time = statusBar.querySelector('.token-status-time');
+            const getTokenBtn = statusBar.querySelector('.btn-success');
+            
+            if (!tokenInfo) {
+                // No token
+                statusBar.className = 'token-status-bar no-token';
+                icon.textContent = '❌';
+                text.textContent = 'No valid token available';
+                time.textContent = '';
+                getTokenBtn.style.display = 'inline-block';
+            } else if (tokenInfo.isExpired) {
+                // Expired token
+                statusBar.className = 'token-status-bar expired';
+                icon.textContent = '⚠️';
+                text.textContent = 'Token expired';
+                time.textContent = '';
+                getTokenBtn.style.display = 'inline-block';
+            } else if (tokenInfo.timeRemaining <= 300) { // 5 minutes or less
+                // Warning state
+                statusBar.className = 'token-status-bar warning';
+                icon.textContent = '⚠️';
+                text.textContent = 'Token expires soon';
+                time.textContent = `(${tokenInfo.formattedTime} remaining)`;
+                getTokenBtn.style.display = 'inline-block';
+            } else {
+                // Valid token
+                statusBar.className = 'token-status-bar valid';
+                icon.textContent = '✅';
+                text.textContent = 'Token valid';
+                time.textContent = `(${tokenInfo.formattedTime} remaining)`;
+                getTokenBtn.style.display = 'none';
+            }
+        }
+        
+        function updateAllTokenStatusBars() {
+            updateTokenStatusBar('token-status-bar', currentTokenInfo);
+            updateTokenStatusBar('settings-token-status', currentTokenInfo);
+            updateTokenStatusBar('import-token-status', currentTokenInfo);
+            updateTokenStatusBar('progress-token-status', currentTokenInfo);
+            
+            // Update status info
+            updateStatusInfo();
+        }
+        
+        function updateStatusInfo() {
+            const currentStatus = document.getElementById('current-status');
+            const timeRemaining = document.getElementById('time-remaining');
+            const lastUpdated = document.getElementById('last-updated');
+            
+            if (!currentTokenInfo) {
+                currentStatus.textContent = 'No token';
+                timeRemaining.textContent = 'N/A';
+            } else if (currentTokenInfo.isExpired) {
+                currentStatus.textContent = 'Expired';
+                timeRemaining.textContent = '0s';
+            } else {
+                currentStatus.textContent = 'Valid';
+                timeRemaining.textContent = currentTokenInfo.formattedTime;
+            }
+            
+            lastUpdated.textContent = new Date().toLocaleTimeString();
+        }
+        
+        function formatDuration(seconds) {
+            if (!seconds || seconds <= 0) {
+                return '0s';
+            }
+            
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            
+            let result = '';
+            if (hours > 0) {
+                result += `${hours}h `;
+            }
+            if (minutes > 0 || hours > 0) {
+                result += `${minutes}m `;
+            }
+            result += `${secs}s`;
+            
+            return result.trim();
+        }
+        
+        function simulateValidToken() {
+            currentTokenInfo = {
+                timeRemaining: 3600, // 1 hour
+                formattedTime: formatDuration(3600),
+                isExpired: false
+            };
+            updateAllTokenStatusBars();
+            console.log('Simulated valid token:', currentTokenInfo);
+        }
+        
+        function simulateExpiredToken() {
+            currentTokenInfo = {
+                timeRemaining: 0,
+                formattedTime: '0s',
+                isExpired: true
+            };
+            updateAllTokenStatusBars();
+            console.log('Simulated expired token:', currentTokenInfo);
+        }
+        
+        function simulateNoToken() {
+            currentTokenInfo = null;
+            updateAllTokenStatusBars();
+            console.log('Simulated no token');
+        }
+        
+        function simulateWarningToken() {
+            currentTokenInfo = {
+                timeRemaining: 240, // 4 minutes
+                formattedTime: formatDuration(240),
+                isExpired: false
+            };
+            updateAllTokenStatusBars();
+            console.log('Simulated warning token:', currentTokenInfo);
+        }
+        
+        function refreshTokenStatus() {
+            console.log('Token status refresh requested');
+            updateAllTokenStatusBars();
+        }
+        
+        function getTokenQuick() {
+            console.log('Quick token acquisition requested');
+            // Simulate getting a new token
+            setTimeout(() => {
+                simulateValidToken();
+            }, 1000);
+        }
+        
+        function testAutoRefresh() {
+            console.log('Testing auto refresh...');
+            
+            // Clear existing timer
+            if (autoRefreshTimer) {
+                clearInterval(autoRefreshTimer);
+            }
+            
+            // Start 5-second refresh cycle
+            autoRefreshTimer = setInterval(() => {
+                console.log('Auto refresh triggered');
+                updateAllTokenStatusBars();
+            }, 5000);
+            
+            // Stop after 30 seconds
+            setTimeout(() => {
+                if (autoRefreshTimer) {
+                    clearInterval(autoRefreshTimer);
+                    autoRefreshTimer = null;
+                    console.log('Auto refresh stopped');
+                }
+            }, 30000);
+        }
+        
+        function testPageNavigation() {
+            console.log('Testing page navigation...');
+            
+            // Simulate navigating between pages
+            const pages = ['settings', 'import', 'progress', 'logs'];
+            let currentPageIndex = 0;
+            
+            const navigatePages = () => {
+                const page = pages[currentPageIndex];
+                console.log(`Navigating to ${page} page`);
+                
+                // Update page-specific status bars
+                updateTokenStatusBar(`${page}-token-status`, currentTokenInfo);
+                
+                currentPageIndex = (currentPageIndex + 1) % pages.length;
+            };
+            
+            // Navigate every 3 seconds
+            const navigationTimer = setInterval(navigatePages, 3000);
+            
+            // Stop after 15 seconds
+            setTimeout(() => {
+                clearInterval(navigationTimer);
+                console.log('Page navigation test completed');
+            }, 15000);
+        }
+        
+        function testTokenExpiration() {
+            console.log('Testing token expiration...');
+            
+            // Start with a valid token
+            simulateValidToken();
+            
+            // Gradually decrease time to simulate expiration
+            let timeRemaining = 60; // Start with 1 minute
+            
+            const expirationTimer = setInterval(() => {
+                timeRemaining -= 10; // Decrease by 10 seconds
+                
+                if (timeRemaining <= 0) {
+                    // Token expired
+                    simulateExpiredToken();
+                    clearInterval(expirationTimer);
+                    console.log('Token expired');
+                } else {
+                    // Update token info
+                    currentTokenInfo = {
+                        timeRemaining: timeRemaining,
+                        formattedTime: formatDuration(timeRemaining),
+                        isExpired: false
+                    };
+                    updateAllTokenStatusBars();
+                    console.log(`Token expires in ${timeRemaining}s`);
+                }
+            }, 1000); // Update every second
+        }
+        
+        // Initialize with no token
+        updateAllTokenStatusBars();
+    </script>
+</body>
+</html> 

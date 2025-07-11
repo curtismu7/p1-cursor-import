@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSE Connection Verification</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { padding: 20px; background-color: #f8f9fa; }
+        .container { max-width: 800px; }
+        .test-section { 
+            background: white; 
+            border-radius: 8px; 
+            padding: 20px; 
+            margin-bottom: 20px; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
+        }
+        .log-container { 
+            background: #f8f9fa; 
+            border: 1px solid #dee2e6; 
+            border-radius: 4px; 
+            padding: 15px; 
+            max-height: 300px; 
+            overflow-y: auto; 
+            font-family: 'Courier New', monospace; 
+            font-size: 12px; 
+        }
+        .log-entry { margin-bottom: 5px; }
+        .info { color: #0d6efd; }
+        .success { color: #198754; }
+        .warning { color: #ffc107; }
+        .error { color: #dc3545; }
+        .api { color: #6f42c1; }
+        .sse-status {
+            background: #e9ecef;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .sse-connected { background: #d4edda; }
+        .sse-connecting { background: #fff3cd; }
+        .sse-error { background: #f8d7da; }
+        .sse-disconnected { background: #e9ecef; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 SSE Connection Verification</h1>
+        <p>Quick test to verify SSE connection functionality.</p>
+
+        <!-- Test Controls -->
+        <div class="test-section">
+            <h2>🎛️ SSE Test Controls</h2>
+            <button class="btn btn-primary" onclick="testConnection()">Test SSE Connection</button>
+            <button class="btn btn-success" onclick="testValidSessionId()">Test Valid SessionId</button>
+            <button class="btn btn-warning" onclick="testInvalidSessionId()">Test Invalid SessionId</button>
+            <button class="btn btn-danger" onclick="testNonExistentEndpoint()">Test Non-Existent Endpoint</button>
+            <button class="btn btn-secondary" onclick="disconnect()">Disconnect</button>
+            <button class="btn btn-outline-secondary" onclick="clearLogs()">Clear Logs</button>
+        </div>
+
+        <!-- SSE Connection Status -->
+        <div class="test-section">
+            <h2>📡 SSE Connection Status</h2>
+            <div class="sse-status" id="sse-status">
+                <span>🔗 Status: <span id="sse-status-text">Disconnected</span></span>
+                <span>🔄 Retries: <span id="sse-retry-count">0</span></span>
+                <span>⏱️ Last Heartbeat: <span id="sse-heartbeat">Never</span></span>
+                <span>📊 Events Received: <span id="sse-event-count">0</span></span>
+            </div>
+        </div>
+
+        <!-- SSE Event Log -->
+        <div class="test-section">
+            <h2>📝 SSE Event Log</h2>
+            <div class="log-container" id="sse-log-output">
+                <div class="info">[System] Ready to test SSE connection</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // SSE Test State
+        let sseConnection = null;
+        let sseRetryCount = 0;
+        let sseEventCount = 0;
+
+        // Helper function to log messages
+        function log(message, type = 'info') {
+            const logContainer = document.getElementById('sse-log-output');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${type}`;
+            logEntry.innerHTML = `[${timestamp}] ${message}`;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        // Update SSE status display
+        function updateSSEStatus(status, text) {
+            const sseStatus = document.getElementById('sse-status');
+            const sseStatusText = document.getElementById('sse-status-text');
+            
+            sseStatus.className = `sse-status sse-${status}`;
+            sseStatusText.textContent = text;
+            
+            document.getElementById('sse-retry-count').textContent = sseRetryCount;
+            document.getElementById('sse-event-count').textContent = sseEventCount;
+        }
+
+        // Clear logs
+        function clearLogs() {
+            document.getElementById('sse-log-output').innerHTML = '<div class="info">[System] Logs cleared</div>';
+        }
+
+        // Test basic SSE connection
+        function testConnection() {
+            log('🧪 Testing SSE connection...', 'info');
+            
+            const sessionId = 'test-session-' + Date.now();
+            updateSSEStatus('connecting', 'Connecting...');
+            
+            try {
+                sseConnection = new EventSource(`/api/import/progress/${sessionId}`);
+                
+                sseConnection.addEventListener('open', (event) => {
+                    log('✅ SSE connection opened successfully', 'success');
+                    updateSSEStatus('connected', 'Connected');
+                });
+                
+                sseConnection.addEventListener('message', (event) => {
+                    sseEventCount++;
+                    log(`📨 Received SSE message: ${event.data}`, 'api');
+                    
+                    try {
+                        const data = JSON.parse(event.data);
+                        log(`✅ Parsed SSE data: ${JSON.stringify(data, null, 2)}`, 'success');
+                    } catch (parseError) {
+                        log(`❌ Failed to parse SSE message: ${parseError.message}`, 'error');
+                    }
+                });
+                
+                sseConnection.addEventListener('error', (event) => {
+                    log('❌ SSE connection error', 'error');
+                    updateSSEStatus('error', 'Error');
+                });
+                
+            } catch (error) {
+                log(`❌ Error creating SSE connection: ${error.message}`, 'error');
+                updateSSEStatus('error', 'Connection Failed');
+            }
+        }
+
+        // Test valid sessionId
+        function testValidSessionId() {
+            log('🧪 Testing valid sessionId...', 'info');
+            
+            const validSessionId = 'valid-session-' + Date.now();
+            updateSSEStatus('connecting', 'Testing Valid SessionId...');
+            
+            try {
+                const testConnection = new EventSource(`/api/import/progress/${validSessionId}`);
+                
+                testConnection.addEventListener('open', (event) => {
+                    log('✅ Valid sessionId connection successful', 'success');
+                    updateSSEStatus('connected', 'Valid SessionId Connected');
+                });
+                
+                testConnection.addEventListener('error', (event) => {
+                    log('❌ Valid sessionId connection failed', 'error');
+                    updateSSEStatus('error', 'Valid SessionId Failed');
+                });
+                
+                // Close test connection after 5 seconds
+                setTimeout(() => {
+                    if (testConnection.readyState !== EventSource.CLOSED) {
+                        testConnection.close();
+                        log('🔄 Valid sessionId test connection closed', 'info');
+                    }
+                }, 5000);
+                
+            } catch (error) {
+                log(`❌ Valid sessionId test failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Test invalid sessionId
+        function testInvalidSessionId() {
+            log('🧪 Testing invalid sessionId...', 'info');
+            
+            const invalidSessionId = '';
+            updateSSEStatus('connecting', 'Testing Invalid SessionId...');
+            
+            try {
+                const testConnection = new EventSource(`/api/import/progress/${invalidSessionId}`);
+                
+                testConnection.addEventListener('error', (event) => {
+                    log('✅ Invalid sessionId properly rejected', 'success');
+                    updateSSEStatus('disconnected', 'Invalid SessionId Rejected');
+                });
+                
+                // Close test connection after 3 seconds
+                setTimeout(() => {
+                    if (testConnection.readyState !== EventSource.CLOSED) {
+                        testConnection.close();
+                        log('🔄 Invalid sessionId test connection closed', 'info');
+                    }
+                }, 3000);
+                
+            } catch (error) {
+                log(`✅ Invalid sessionId caught: ${error.message}`, 'success');
+            }
+        }
+
+        // Test non-existent endpoint
+        function testNonExistentEndpoint() {
+            log('🧪 Testing non-existent endpoint...', 'info');
+            
+            updateSSEStatus('connecting', 'Testing Non-Existent Endpoint...');
+            
+            try {
+                const testConnection = new EventSource('/api/non-existent-endpoint');
+                
+                testConnection.addEventListener('error', (event) => {
+                    log('✅ Non-existent endpoint properly handled', 'success');
+                    updateSSEStatus('error', 'Non-Existent Endpoint Handled');
+                });
+                
+                // Close test connection after 3 seconds
+                setTimeout(() => {
+                    if (testConnection.readyState !== EventSource.CLOSED) {
+                        testConnection.close();
+                        log('🔄 Non-existent endpoint test connection closed', 'info');
+                    }
+                }, 3000);
+                
+            } catch (error) {
+                log(`✅ Non-existent endpoint caught: ${error.message}`, 'success');
+            }
+        }
+
+        // Disconnect current connection
+        function disconnect() {
+            if (sseConnection) {
+                log('🔄 Disconnecting SSE connection...', 'warning');
+                sseConnection.close();
+                sseConnection = null;
+                updateSSEStatus('disconnected', 'Disconnected');
+                log('✅ SSE connection closed', 'success');
+            } else {
+                log('⚠️ No active SSE connection to disconnect', 'warning');
+            }
+        }
+
+        // Initialize test suite
+        log('🚀 SSE Connection Verification initialized', 'success');
+        log('Click "Test SSE Connection" to verify SSE functionality', 'info');
+    </script>
+</body>
+</html> 
+</html> 

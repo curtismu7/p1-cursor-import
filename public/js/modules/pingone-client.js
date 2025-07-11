@@ -28,6 +28,55 @@ export class PingOneClient {
     }
 
     /**
+     * Get the remaining time for the current cached token
+     * @returns {Object|null} Object with timeRemaining (seconds) and formatted time, or null if no valid token
+     */
+    getCurrentTokenTimeRemaining() {
+        try {
+            const token = this.getCachedToken();
+            if (!token) {
+                return null;
+            }
+            
+            const expiry = localStorage.getItem('pingone_token_expiry');
+            if (!expiry) {
+                return null;
+            }
+            
+            const expiryTime = parseInt(expiry, 10);
+            if (isNaN(expiryTime)) {
+                return null;
+            }
+            
+            const now = Date.now();
+            const timeRemainingSeconds = Math.max(0, Math.floor((expiryTime - now) / 1000));
+            
+            // Format the time remaining
+            const hours = Math.floor(timeRemainingSeconds / 3600);
+            const minutes = Math.floor((timeRemainingSeconds % 3600) / 60);
+            const seconds = timeRemainingSeconds % 60;
+            
+            let formattedTime = '';
+            if (hours > 0) {
+                formattedTime = `${hours}h ${minutes}m ${seconds}s`;
+            } else if (minutes > 0) {
+                formattedTime = `${minutes}m ${seconds}s`;
+            } else {
+                formattedTime = `${seconds}s`;
+            }
+            
+            return {
+                timeRemaining: timeRemainingSeconds,
+                formattedTime: formattedTime,
+                isExpired: timeRemainingSeconds <= 0
+            };
+        } catch (error) {
+            console.error('Error getting token time remaining:', error);
+            return null;
+        }
+    }
+
+    /**
      * Get the worker token from localStorage if available and not expired
      * @returns {string|null} Cached token or null if not available or expired
      */
@@ -167,17 +216,37 @@ export class PingOneClient {
             }
             this.accessToken = data.access_token; // Cache the token
             if (tokenSaved) {
+                // Calculate time remaining with better formatting
                 let timeLeftMsg = '';
-                const min = Math.floor(data.expires_in / 60);
-                const sec = data.expires_in % 60;
-                timeLeftMsg = ` (expires in ${min}m ${sec}s)`;
-                let msg = `✅ New PingOne Worker token obtained${timeLeftMsg}`;
-                if (!msg || msg.trim() === '' || msg === '✅') {
-                    msg = '✅ Token obtained successfully.';
+                if (data.expires_in) {
+                    const hours = Math.floor(data.expires_in / 3600);
+                    const minutes = Math.floor((data.expires_in % 3600) / 60);
+                    const seconds = data.expires_in % 60;
+                    
+                    if (hours > 0) {
+                        timeLeftMsg = ` (expires in ${hours}h ${minutes}m ${seconds}s)`;
+                    } else if (minutes > 0) {
+                        timeLeftMsg = ` (expires in ${minutes}m ${seconds}s)`;
+                    } else {
+                        timeLeftMsg = ` (expires in ${seconds}s)`;
+                    }
                 }
+                
+                const msg = `✅ New token acquired. Time left on token: ${timeLeftMsg.replace(/^ \(expires in |\)$/g, '')}`;
+                
                 if (window.app && window.app.uiManager) {
                     window.app.uiManager.updateConnectionStatus('connected', msg);
                     window.app.uiManager.showNotification(msg, 'success');
+                    
+                    // Also log to console if DEBUG_MODE is enabled
+                    if (window.DEBUG_MODE) {
+                        console.log('Token acquisition successful:', {
+                            tokenLength: data.access_token ? data.access_token.length : 0,
+                            expiresIn: data.expires_in,
+                            timeLeft: timeLeftMsg.replace(/^ \(expires in |\)$/g, ''),
+                            expiryTime: expiryTime
+                        });
+                    }
                 }
             }
             return data.access_token;

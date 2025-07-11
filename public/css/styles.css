@@ -3670,3 +3670,601 @@ label {
 .notification-area .notification .status-icon + .status-icon {
     display: none;
 }
+
+/* Token Status Display */
+.token-status {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin: 10px 0;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    border: 1px solid;
+}
+
+.token-status.valid {
+    background-color: #d4edda;
+    border-color: #c3e6cb;
+    color: #155724;
+}
+
+.token-status.expired {
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+    color: #721c24;
+}
+
+.token-status.no-token {
+    background-color: #f8f9fa;
+    border-color: #dee2e6;
+    color: #6c757d;
+}
+
+.token-status-display {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.token-status .status-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.token-status .status-text {
+    flex: 1;
+    font-weight: 600;
+}
+
+.token-status .time-remaining {
+    font-size: 13px;
+    opacity: 0.8;
+    font-weight: normal;
+}
+
+.token-status.valid .status-icon {
+    color: #28a745;
+}
+
+.token-status.expired .status-icon {
+    color: #dc3545;
+}
+
+.token-status.no-token .status-icon {
+    color: #6c757d;
+}
+
+/* Token status in settings page */
+#token-status {
+    margin: 15px 0;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    border: 1px solid;
+}
+
+#token-status.valid {
+    background-color: #d4edda;
+    border-color: #c3e6cb;
+    color: #155724;
+}
+
+#token-status.expired {
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+    color: #721c24;
+}
+
+#token-status.no-token {
+    background-color: #f8f9fa;
+    border-color: #dee2e6;
+    color: #6c757d;
+}
+
+#token-status .token-status-display {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+#token-status .status-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+#token-status .status-text {
+    flex: 1;
+    font-weight: 600;
+}
+
+#token-status .time-remaining {
+    font-size: 13px;
+    opacity: 0.8;
+    font-weight: normal;
+}
+
+#token-status.valid .status-icon {
+    color: #28a745;
+}
+
+#token-status.expired .status-icon {
+    color: #dc3545;
+}
+
+#token-status.no-token .status-icon {
+    color: #6c757d;
+}
+
+/* Responsive design for token status */
+@media (max-width: 768px) {
+    .token-status,
+    #token-status {
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+    
+    .token-status .time-remaining,
+    #token-status .time-remaining {
+        font-size: 12px;
+    }
+    
+    .token-status-display {
+        gap: 6px;
+    }
+}
+
+/* Universal Token Status Bar - Enhanced for better visibility and layout consistency */
+.universal-token-status {
+    /* Token status is now shown in the main content area for clarity */
+    /* Increased width improves visibility of long messages like expiration countdown */
+    /* Ensure layout does not conflict with page controls or headings */
+    position: relative;
+    z-index: 1000;
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 12px 20px;
+    margin: 15px 20px 20px 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+    max-width: 500px;
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.token-status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 15px;
+    width: 100%;
+}
+
+.token-status-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0; /* Allow text to shrink */
+}
+
+.token-status-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+    width: 24px;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.token-status-text {
+    font-size: 15px;
+    font-weight: 500;
+    color: #495057;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.token-status-time {
+    font-size: 14px;
+    color: #6c757d;
+    font-weight: normal;
+    margin-left: 8px;
+    flex-shrink: 0;
+}
+
+.token-status-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+/* Token Status States - Enhanced with better visual feedback */
+.universal-token-status.valid {
+    background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+    border-color: #28a745;
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.2);
+}
+
+.universal-token-status.valid .token-status-icon {
+    color: #28a745;
+}
+
+.universal-token-status.valid .token-status-text {
+    color: #155724;
+}
+
+.universal-token-status.valid .token-status-time {
+    color: #155724;
+}
+
+.universal-token-status.expired {
+    background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+    border-color: #dc3545;
+    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.2);
+}
+
+.universal-token-status.expired .token-status-icon {
+    color: #dc3545;
+}
+
+.universal-token-status.expired .token-status-text {
+    color: #721c24;
+}
+
+.universal-token-status.expired .token-status-time {
+    color: #721c24;
+}
+
+.universal-token-status.no-token {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-color: #6c757d;
+    box-shadow: 0 2px 8px rgba(108, 117, 125, 0.2);
+}
+
+.universal-token-status.no-token .token-status-icon {
+    color: #6c757d;
+}
+
+.universal-token-status.no-token .token-status-text {
+    color: #495057;
+}
+
+.universal-token-status.no-token .token-status-time {
+    color: #6c757d;
+}
+
+.universal-token-status.warning {
+    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+    border-color: #ffc107;
+    box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2);
+}
+
+.universal-token-status.warning .token-status-icon {
+    color: #856404;
+}
+
+.universal-token-status.warning .token-status-text {
+    color: #856404;
+}
+
+.universal-token-status.warning .token-status-time {
+    color: #856404;
+}
+
+.universal-token-status.loading {
+    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+    border-color: #2196f3;
+    box-shadow: 0 2px 8px rgba(33, 150, 243, 0.2);
+}
+
+.universal-token-status.loading .token-status-icon {
+    color: #1976d2;
+    animation: spin 1s linear infinite;
+}
+
+.universal-token-status.loading .token-status-text {
+    color: #1565c0;
+}
+
+.universal-token-status.loading .token-status-time {
+    color: #1565c0;
+}
+
+/* Token Status Button Styles - Enhanced for better usability */
+.token-status-actions .btn {
+    padding: 6px 10px;
+    font-size: 13px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+}
+
+.token-status-actions .btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+}
+
+.token-status-actions .btn:active {
+    transform: translateY(0);
+}
+
+/* Responsive Design for Token Status - Improved for mobile devices */
+@media (max-width: 768px) {
+    .universal-token-status {
+        margin: 10px 15px 15px 15px;
+        padding: 10px 15px;
+        max-width: calc(100% - 30px);
+    }
+    
+    .token-status-bar {
+        gap: 10px;
+    }
+    
+    .token-status-content {
+        gap: 8px;
+    }
+    
+    .token-status-text {
+        font-size: 14px;
+    }
+    
+    .token-status-time {
+        font-size: 13px;
+    }
+    
+    .token-status-actions {
+        gap: 6px;
+    }
+    
+    .token-status-actions .btn {
+        padding: 4px 8px;
+        font-size: 12px;
+    }
+}
+
+@media (max-width: 480px) {
+    .universal-token-status {
+        margin: 8px 10px 12px 10px;
+        padding: 8px 12px;
+    }
+    
+    .token-status-bar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .token-status-actions {
+        align-self: flex-end;
+    }
+    
+    .token-status-time {
+        display: block;
+        margin-left: 0;
+        margin-top: 4px;
+    }
+    
+    .token-status-text {
+        white-space: normal;
+        line-height: 1.3;
+    }
+}
+
+/* Animation for token status updates - Enhanced for better user feedback */
+@keyframes tokenStatusPulse {
+    0% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.8; transform: scale(1.02); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+.universal-token-status.updating {
+    animation: tokenStatusPulse 0.6s ease-in-out;
+}
+
+/* Ensure token status is always visible on all pages */
+.universal-token-status {
+    display: block !important;
+}
+
+/* Hover effects for better interactivity */
+.universal-token-status:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    transform: translateY(-1px);
+}
+
+.universal-token-status:focus-within {
+    outline: 2px solid #007bff;
+    outline-offset: 2px;
+}
+
+/* --- Circular Progress Spinner --- */
+.circular-progress {
+  position: relative;
+  display: inline-block;
+  width: 80px;
+  height: 80px;
+  vertical-align: middle;
+}
+.circular-progress svg {
+  transform: rotate(-90deg);
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.circular-progress .circular-bg {
+  stroke: #e0e0e0;
+  stroke-width: 8;
+  fill: none;
+}
+.circular-progress .circular-fg {
+  stroke: var(--brand-color, #7c3aed);
+  stroke-width: 8;
+  fill: none;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.5s cubic-bezier(0.4,0,0.2,1);
+}
+.circular-progress .circular-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -60%);
+  font-size: 1.2em;
+  font-weight: 600;
+  color: var(--brand-color, #7c3aed);
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+}
+.circular-progress .circular-status {
+  position: absolute;
+  left: 50%;
+  top: 70%;
+  transform: translate(-50%, 0);
+  font-size: 0.9em;
+  color: #444;
+  width: 100%;
+  text-align: center;
+  white-space: nowrap;
+}
+.circular-progress.error .circular-fg { stroke: #e53935; }
+.circular-progress.warning .circular-fg { stroke: #fbc02d; }
+.circular-progress.complete .circular-fg { stroke: #43a047; animation: pop-complete 0.5s; }
+@keyframes pop-complete {
+  0% { transform: scale(1); }
+  60% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+/* Legacy token status styles (for backward compatibility) */
+
+/* Legacy token status styles (for backward compatibility) */
+.token-status {
+    display: none; /* Hide legacy token status to prevent duplication */
+}
+
+#token-status {
+    display: none; /* Hide legacy token status to prevent duplication */
+}
+
+/* === DEBUG LOG PANEL STYLES === */
+.debug-log-panel {
+  background: #f5f6fa;
+  border: 1px solid #e0e3ea;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  border-radius: 10px;
+  padding: 16px;
+  margin: 2rem auto;
+  font-family: 'Fira Mono', 'Consolas', 'Menlo', monospace;
+  min-width: 600px;
+  max-width: 900px;
+  width: 90vw;
+  min-height: 350px;
+  max-height: 500px;
+  overflow-y: auto;
+  overflow-x: auto;
+  transition: max-height 0.4s cubic-bezier(0.4,0,0.2,1), opacity 0.3s;
+  opacity: 1;
+  position: relative;
+}
+
+.debug-log-panel.collapsed {
+  max-height: 0;
+  opacity: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition: max-height 0.4s cubic-bezier(0.4,0,0.2,1), opacity 0.3s;
+}
+
+.log-entries {
+  font-family: inherit;
+  font-size: 14px;
+  white-space: pre;
+  overflow-x: auto;
+  min-width: 100%;
+}
+
+.debug-log-label {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #444;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Debug Toggle Wrapper - Centered above footer */
+.debug-toggle-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+  padding: 10px 0;
+  /* Toggle Debug Logs button repositioned for better visibility */
+  /* Ensures user can always access logs without scrolling to find it */
+}
+
+.debug-log-toggle {
+  background: #e0e3ea;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 1rem;
+  font-family: inherit;
+  color: #333;
+  cursor: pointer;
+  margin-bottom: 10px;
+  margin-right: 10px;
+  transition: background 0.2s, color 0.2s;
+}
+.debug-log-toggle:focus {
+  outline: 2px solid #007bff;
+  outline-offset: 2px;
+}
+.debug-log-toggle:hover {
+  background: #d1d5db;
+  color: #111;
+}
+
+@media (max-width: 900px) {
+  .debug-log-panel {
+    min-width: 90vw;
+    max-width: 98vw;
+    padding: 10px;
+  }
+}
+@media (max-width: 600px) {
+  .debug-log-panel {
+    min-width: 100vw;
+    max-width: 100vw;
+    border-radius: 0;
+    padding: 6px;
+  }
+  .debug-log-label {
+    font-size: 1rem;
+  }
+  /* Responsive behavior for debug toggle wrapper */
+  .debug-toggle-wrapper {
+    margin-bottom: 0.5rem;
+    padding: 5px 0;
+  }
+  .debug-log-toggle {
+    font-size: 0.9rem;
+    padding: 5px 12px;
+  }
+}
+/* === END DEBUG LOG PANEL STYLES === */

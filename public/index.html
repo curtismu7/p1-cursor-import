@@ -58,7 +58,7 @@
         <main class="main-content">
             <!-- Version Badge -->
             <div id="version-badge-top" class="version-badge-top">
-                <span id="version-text">v4.8</span>
+                <span id="version-text">v4.9</span>
             </div>
             
             <!-- Universal Disclaimer Banner -->
@@ -73,6 +73,26 @@
             <div id="connection-status" class="connection-status" style="display: none;"></div>
             <!-- Notification Area -->
             <div id="notification-area" class="notification-area"></div>
+            
+            <!-- Universal Token Status Bar - Moved to main content area for better visibility -->
+            <div id="universal-token-status" class="universal-token-status">
+                <div class="token-status-bar">
+                    <div class="token-status-content">
+                        <span class="token-status-icon">⏳</span>
+                        <span class="token-status-text">Checking token status...</span>
+                        <span class="token-status-time"></span>
+                    </div>
+                    <div class="token-status-actions">
+                        <button id="refresh-token-status" class="btn btn-sm btn-outline-secondary" title="Refresh token status">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                        <button id="get-token-quick" class="btn btn-sm btn-success" title="Get new token" style="display: none;">
+                            <i class="fas fa-key"></i> Get Token
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
             <!-- Home View -->
             <div id="home-view" class="view active">
                 <div class="home-header">
@@ -81,42 +101,11 @@
                     <!-- Enhanced Disclaimer with Required Agreement -->
                     <div id="disclaimer" class="disclaimer-box">
                         <div class="disclaimer-header">
-                            <h2>🚨 CRITICAL WARNING - UNSUPPORTED TOOL - USE AT YOUR OWN RISK 🚨</h2>
-                            <div class="disclaimer-alert">
-                                <i class="fas fa-exclamation-triangle"></i>
-                                <span>THIS TOOL IS COMPLETELY UNSUPPORTED AND PROVIDED AS-IS WITH ABSOLUTELY NO WARRANTY OR SUPPORT FROM PING IDENTITY.</span>
-                            </div>
+                            <h3>⚠️ Important Disclaimer</h3>
+                            <p><strong>This tool is NOT an official Ping Identity product and is provided without any warranty or support. Use at your own risk. Backup your PingOne account and test in non-production environments only.</strong></p>
                         </div>
-                        
-                        <div class="warning-section">
-                            <h4>🚨 IMMEDIATE RISKS:</h4>
-                            <ul>
-                                <li><strong>DATA LOSS:</strong> This tool can permanently delete users and modify data</li>
-                                <li><strong>NO UNDO:</strong> Deleted users cannot be recovered</li>
-                                <li><strong>UNSUPPORTED:</strong> Ping Identity provides no support for this tool</li>
-                                <li><strong>NO WARRANTY:</strong> No guarantees regarding data integrity or operation</li>
-                                <li><strong>PRODUCTION RISK:</strong> Can cause service disruptions in production environments</li>
-                                <li><strong>UNOFFICIAL:</strong> This is not an official Ping Identity product</li>
-                                <li><strong>EXPERIMENTAL:</strong> This tool is experimental and may have bugs</li>
-                            </ul>
-                        </div>
-                        
-                        <div class="warning-section">
-                            <h4>🔒 REQUIRED SAFEGUARDS:</h4>
-                            <ul>
-                                <li><strong>BACKUP FIRST:</strong> You MUST backup your PingOne account before use - You can use Export to save users</li>
-                                <li><strong>TEST ENVIRONMENT:</strong> Test in non-production environments only</li>
-                                <li><strong>SMALL BATCHES:</strong> Start with small files to verify functionality</li>
-                                <li><strong>VERIFY DATA:</strong> Double-check all CSV data before processing</li>
-                                <li><strong>MONITOR LOGS:</strong> Watch logs carefully during operations</li>
-                                <li><strong>VALIDATE SETTINGS:</strong> Ensure all API credentials are correct</li>
-                                <li><strong>READ DOCUMENTATION:</strong> Understand the tool's limitations</li>
-                            </ul>
-                        </div>
-                        
                         <div class="warning-section">
                             <h4>📋 UNSUPPORTED TOOL DISCLAIMER:</h4>
-                            <p><strong>This tool is NOT an official Ping Identity product and is provided without any warranty or support:</strong></p>
                             <ul>
                                 <li>No technical support is available from Ping Identity</li>
                                 <li>No updates or bug fixes are guaranteed</li>
@@ -127,48 +116,19 @@
                                 <li>You are responsible for testing and validating all operations</li>
                             </ul>
                         </div>
-                        
                         <div class="acceptance-section">
                             <div class="agreement-checkbox">
+                                <!-- Simplifies UX for disclaimer acknowledgment while still ensuring legal consent -->
                                 <input type="checkbox" id="disclaimer-agreement" required>
                                 <label for="disclaimer-agreement">
-                                    <strong>I have read, understood, and agree to all terms and conditions above.</strong>
+                                    <strong>I acknowledge and accept the above disclaimer.</strong>
+                                    <span title="You must accept this disclaimer to use the tool." style="margin-left: 6px; color: #ffc107; cursor: help; font-size: 1.1em; vertical-align: middle;">
+                                        <i class="fas fa-info-circle" aria-hidden="true"></i>
+                                    </span>
                                 </label>
                             </div>
-                            <div class="agreement-checkbox">
-                                <input type="checkbox" id="risk-acceptance" required>
-                                <label for="risk-acceptance">
-                                    <strong>I understand this is an unsupported tool and accept full responsibility for any consequences.</strong>
-                                </label>
-                            </div>
-
-                            <button id="accept-disclaimer" class="btn btn-danger btn-lg" disabled>
-                                <i class="fas fa-exclamation-triangle"></i>
-                                I UNDERSTAND AND ACCEPT ALL RISKS
-                            </button>
-                            <p class="agreement-note">
-                                <i class="fas fa-info-circle"></i>
-                                <strong>Note:</strong> You must check all two boxes above to enable the tool.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Token Status Message -->
-                <div id="home-token-status" class="token-status-container" style="display: none; margin: 20px 0; padding: 15px; border-radius: 8px; background-color: #fff3cd; border: 1px solid #ffeaa7;">
-                    <div class="token-status-content">
-                        <div class="token-status-icon">
-                            <i class="fas fa-exclamation-triangle" style="color: #856404; font-size: 1.2em;"></i>
-                        </div>
-                        <div class="token-status-message">
-                            <h4 style="margin: 0 0 10px 0; color: #856404;">
-                                <i class="fas fa-key"></i> PingOne Token Required
-                            </h4>
-                            <p style="margin: 0 0 15px 0; color: #856404;">
-                                You need to configure your PingOne API credentials and get a token before using this tool.
-                            </p>
-                            <button id="go-to-settings-btn" class="btn btn-warning">
-                                <i class="fas fa-cog"></i> Go to Settings
+                            <button id="accept-disclaimer" class="btn btn-danger" disabled style="margin-top: 1rem; min-width: 120px;">
+                                Continue
                             </button>
                         </div>
                     </div>
@@ -301,6 +261,9 @@
                                 Upload a CSV file and select a population above to enable import functionality
                             </div>
                         </div>
+                        
+                        <!-- Import Progress Spinner -->
+                        <div id="import-progress-spinner" style="text-align:center; margin: 1.5rem 0;"></div>
                         
                         <!-- Import Progress Section (moved below Import Users button) -->
                         <div id="import-status" class="import-status" style="display: none; margin-top: 12px;">
@@ -469,6 +432,12 @@
                         <div id="settings-connection-status" class="connection-status status-disconnected">
                             <span class="status-icon">⚠️</span>
                             <span class="status-message">Please save your API credentials and test the connection</span>
+                        </div>
+                        <div id="token-status" class="token-status no-token">
+                            <div class="token-status-display">
+                                <span class="status-icon">❌</span>
+                                <span class="status-text">No valid token available</span>
+                            </div>
                         </div>
                     </div>
                 </form>
@@ -750,6 +719,9 @@
                   </div>
                 </div>
                 
+                <!-- CSV Delete Progress Spinner -->
+                <div id="delete-progress-spinner" style="text-align:center; margin: 1.5rem 0;"></div>
+                
                 <!-- CSV Delete Progress Section (moved to bottom) -->
                 <div id="delete-csv-status" class="import-status" style="display: none; margin-top: 30px; margin-bottom: 20px;">
                     <div class="progress-header">
@@ -972,6 +944,9 @@
                 </div>
             </div>
 
+            <!-- Modify Progress Spinner -->
+            <div id="modify-progress-spinner" style="text-align:center; margin: 1.5rem 0;"></div>
+
             <!-- Export View -->
             <div id="export-view" class="view">
                 <div class="import-header">
@@ -1142,6 +1117,9 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Export Progress Spinner -->
+            <div id="export-progress-spinner" style="text-align:center; margin: 1.5rem 0;"></div>
 
             <!-- Progress View -->
             <div id="progress-view" class="view">
@@ -1315,6 +1293,11 @@
             </div>
         </footer>
         
+        <!-- Debug Log Toggle Wrapper - Centered above footer -->
+        <div class="debug-toggle-wrapper">
+            <button id="debug-log-toggle" class="debug-log-toggle" aria-expanded="false" aria-controls="debug-log-panel" aria-label="Show Debug Log Console" tabindex="0">Show Debug Log</button>
+        </div>
+        
         <!-- Population ID Missing Modal -->
         <div id="population-id-modal" class="modal fade" tabindex="-1" role="dialog">
             <div class="modal-dialog" role="document">
@@ -1432,30 +1415,20 @@
     <!-- Live Status Message (real-time updates) -->
     <div id="status-live" class="status-message status-info" style="display:none;"></div>
 
-    <!-- Debug Log Window (dev mode only) -->
-    <div id="debug-log-toggle" style="position:fixed;bottom:10px;right:10px;z-index:9999;">
-        <button onclick="document.getElementById('debug-log-window').style.display = (document.getElementById('debug-log-window').style.display === 'none' ? 'block' : 'none');" class="btn btn-sm btn-secondary">Toggle Debug Log</button>
-    </div>
-    <div id="debug-log-window" style="display:none;position:fixed;bottom:50px;right:10px;width:420px;max-height:300px;overflow-y:auto;background:#222;color:#fff;font-size:12px;padding:10px;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,0.2);z-index:9999;">
-        <div style="margin-bottom:10px;border-bottom:1px solid #444;padding-bottom:5px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-                <strong>Debug Log</strong>
-                <button onclick="clearDebugLog()" class="btn btn-sm btn-danger" style="font-size:10px;">Clear</button>
-            </div>
-            <div style="display:flex;flex-wrap:wrap;gap:5px;font-size:10px;">
-                <label><input type="checkbox" checked onchange="toggleDebugFilter('fileupload')" /> FileUpload</label>
-                <label><input type="checkbox" checked onchange="toggleDebugFilter('csv')" /> CSV</label>
-                <label><input type="checkbox" checked onchange="toggleDebugFilter('population')" /> Population</label>
-                <label><input type="checkbox" checked onchange="toggleDebugFilter('import')" /> Import</label>
-                <label><input type="checkbox" checked onchange="toggleDebugFilter('sse')" /> SSE</label>
-                <label><input type="checkbox" checked onchange="toggleDebugFilter('user')" /> User</label>
-                <label><input type="checkbox" checked onchange="toggleDebugFilter('settings')" /> Settings</label>
-                <label><input type="checkbox" checked onchange="toggleDebugFilter('populations')" /> Populations</label>
-                <label><input type="checkbox" checked onchange="toggleDebugFilter('token')" /> Token</label>
-            </div>
-        </div>
-        <div id="debug-log-content" style="max-height:200px;overflow-y:auto;"></div>
-    </div>
+    <!-- === DEBUG LOG CONSOLE === -->
+    <section id="debug-log-section" aria-label="Debug Log Console">
+      <div class="debug-log-label">
+        <span>Debug Log Console</span>
+      </div>
+      <div id="debug-log-panel" class="debug-log-panel collapsed" tabindex="-1">
+        <div id="log-entries" class="log-entries" aria-live="polite"></div>
+      </div>
+      <!--
+        // Debug log panel widened and styled for readability
+        // Prevents text overlap and improves troubleshooting experience
+        // All log lines preserved as raw output (no truncation)
+      -->
+    </section>
 
     <script src="/js/bundle.js?v=3.8"></script>
     <script src="/setup-settings.js"></script>

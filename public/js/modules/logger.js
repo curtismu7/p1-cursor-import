@@ -352,102 +352,59 @@ export class Logger {
                 if (logEntry.data) {
                     const dataSection = document.createElement('div');
                     dataSection.className = 'log-detail-section';
-                    
                     const dataTitle = document.createElement('h4');
                     dataTitle.textContent = 'Data';
                     dataSection.appendChild(dataTitle);
-                    
                     const dataContent = document.createElement('pre');
                     dataContent.className = 'log-detail-json';
                     dataContent.textContent = JSON.stringify(logEntry.data, null, 2);
                     dataSection.appendChild(dataContent);
-                    
                     detailsElement.appendChild(dataSection);
                 }
-                
+
                 // Add context if it exists
                 if (logEntry.context) {
                     const contextSection = document.createElement('div');
                     contextSection.className = 'log-detail-section';
-                    
                     const contextTitle = document.createElement('h4');
                     contextTitle.textContent = 'Context';
                     contextSection.appendChild(contextTitle);
-                    
                     const contextContent = document.createElement('pre');
                     contextContent.className = 'log-detail-json';
                     contextContent.textContent = JSON.stringify(logEntry.context, null, 2);
                     contextSection.appendChild(contextContent);
-                    
                     detailsElement.appendChild(contextSection);
                 }
-                
-                logElement.appendChild(detailsElement);
-                
-                // Add click handler for expand/collapse functionality
-                logElement.addEventListener('click', (e) => {
-                    // Don't expand if clicking on the expand icon itself
-                    if (e.target === expandIcon) {
-                        return;
-                    }
-                    
-                    const details = logElement.querySelector('.log-details');
-                    const icon = logElement.querySelector('.log-expand-icon');
-                    
-                    if (details && icon) {
-                        const isExpanded = details.style.display !== 'none';
-                        
-                        if (isExpanded) {
-                            // Collapse
-                            details.style.display = 'none';
-                            icon.innerHTML = '▶';
-                            logElement.classList.remove('expanded');
-                        } else {
-                            // Expand
-                            details.style.display = 'block';
-                            icon.innerHTML = '▼';
-                            logElement.classList.add('expanded');
-                        }
-                    }
-                });
-                
-                // Add click handler for expand icon specifically
-                if (expandIcon) {
-                    expandIcon.addEventListener('click', (e) => {
-                        e.stopPropagation(); // Prevent triggering the log entry click
-                        
-                        const details = logElement.querySelector('.log-details');
-                        const icon = logElement.querySelector('.log-expand-icon');
-                        
-                        if (details && icon) {
-                            const isExpanded = details.style.display !== 'none';
-                            
-                            if (isExpanded) {
-                                // Collapse
-                                details.style.display = 'none';
-                                icon.innerHTML = '▶';
-                                logElement.classList.remove('expanded');
-                            } else {
-                                // Expand
-                                details.style.display = 'block';
-                                icon.innerHTML = '▼';
-                                logElement.classList.add('expanded');
-                            }
-                        }
-                    });
+
+                // Add details if it exists (as a string)
+                if (logEntry.details) {
+                    const detailsSection = document.createElement('div');
+                    detailsSection.className = 'log-detail-section';
+                    const detailsTitle = document.createElement('h4');
+                    detailsTitle.textContent = 'Details';
+                    detailsSection.appendChild(detailsTitle);
+                    const detailsContent = document.createElement('pre');
+                    detailsContent.className = 'log-detail-json';
+                    detailsContent.textContent = logEntry.details;
+                    detailsSection.appendChild(detailsContent);
+                    detailsElement.appendChild(detailsSection);
                 }
+                logElement.appendChild(detailsElement);
             }
-            
-            // Add to the top of the log container
+
+            // === LOG ENTRY INSERTION: NEWEST FIRST ===
+            // Logs are reversed so newest entries show first (top of the list)
+            // Makes recent events immediately visible without scrolling
+            // Maintain this ordering for all future log-related features
             if (this.logContainer.firstChild) {
                 this.logContainer.insertBefore(logElement, this.logContainer.firstChild);
             } else {
                 this.logContainer.appendChild(logElement);
             }
-            
-            // Auto-scroll to top (since we're adding to the top)
+
+            // Auto-scroll to top since newest entries are at the top
             this.logContainer.scrollTop = 0;
-            
+
             // Limit the number of log entries in the UI
             const maxUILogs = 100;
             while (this.logContainer.children.length > maxUILogs) {

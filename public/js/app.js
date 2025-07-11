@@ -329,7 +329,10 @@ class App {
             // Load application settings from storage
             await this.loadSettings();
             
-            // Setup event listeners for user interactions
+            // Initialize universal token status after UI manager is ready
+            this.updateUniversalTokenStatus();
+            
+            // Set up event listeners
             this.setupEventListeners();
             
             // Check disclaimer status and setup if needed
@@ -337,7 +340,15 @@ class App {
             const disclaimerPreviouslyAccepted = this.checkDisclaimerStatus();
             if (!disclaimerPreviouslyAccepted) {
                 console.log('Disclaimer not previously accepted, setting up disclaimer agreement');
-                this.setupDisclaimerAgreement();
+                // Ensure DOM is ready before setting up disclaimer
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', () => {
+                        this.setupDisclaimerAgreement();
+                    });
+                } else {
+                    // DOM is already loaded, setup immediately
+                    this.setupDisclaimerAgreement();
+                }
             } else {
                 console.log('Disclaimer previously accepted, tool already enabled');
             }
@@ -480,6 +491,16 @@ class App {
                 
                 this.populateSettingsForm(settings);
                 this.logger.info('Settings loaded and populated into form');
+                
+                // Show current token status if PingOneClient is available
+                if (this.pingOneClient) {
+                    const tokenInfo = this.pingOneClient.getCurrentTokenTimeRemaining();
+                    this.uiManager.showCurrentTokenStatus(tokenInfo);
+                    
+                    if (window.DEBUG_MODE) {
+                        console.log('Current token status:', tokenInfo);
+                    }
+                }
             } else {
                 this.logger.warn('No settings found or failed to load settings');
             }
@@ -817,6 +838,9 @@ class App {
             selectedView.style.display = 'block';
             this.currentView = view;
             
+            // Handle universal token status visibility
+            this.handleTokenStatusVisibility(view);
+            
             // Refresh progress page when progress view is shown
             if (view === 'progress') {
                 this.refreshProgressPage();
@@ -840,6 +864,36 @@ class App {
                     item.classList.add('active');
                 }
             });
+            
+            // Update universal token status when switching views
+            this.updateUniversalTokenStatus();
+        }
+    }
+
+    /**
+     * Handle token status visibility based on current view
+     * 
+     * Controls when the universal token status bar should be visible
+     * based on the current page. This ensures users see token status
+     * on functional pages but not on the home page with disclaimer.
+     * 
+     * @param {string} view - The current view being displayed
+     */
+    handleTokenStatusVisibility(view) {
+        try {
+            const tokenStatusBar = document.getElementById('universal-token-status');
+            if (!tokenStatusBar) return;
+            
+            // Hide token status on home page (disclaimer page)
+            if (view === 'home') {
+                tokenStatusBar.style.display = 'none';
+            } else {
+                // Show token status on all other pages
+                tokenStatusBar.style.display = 'block';
+            }
+            
+        } catch (error) {
+            console.error('Error handling token status visibility:', error);
         }
     }
 
@@ -1026,109 +1080,387 @@ class App {
          * 
          * Opens a persistent connection to receive progress events from the server.
          * Handles various event types: progress updates, errors, and completion.
-         * Includes retry logic for connection failures.
+         * Includes retry logic for connection failures and comprehensive debugging.
          * 
          * @param {string} sessionId - Unique session identifier for this import
          */
         const connectSSE = (sessionId) => {
+            // Full SSE lifecycle logging added for connection visibility and debugging
+            
+            // Validate sessionId before attempting connection
+            if (!sessionId || typeof sessionId !== 'string' || sessionId.trim() === '') {
+                console.error("SSE: ❌ SSE failed: sessionId is undefined or invalid", { sessionId });
+                this.uiManager.debugLog("SSE", "❌ Invalid sessionId - cannot establish connection", { sessionId });
+                this.uiManager.showError('SSE Connection Error', 'Invalid session ID. Cannot establish progress connection.');
+                this.uiManager.logMessage('error', 'SSE connection failed — missing session ID');
+                this.isImporting = false;
+                return;
+            }
+
+            // Check if EventSource is supported in the browser
+            if (!window.EventSource) {
+                console.error("SSE: ❌ EventSource not supported in this browser");
+                this.uiManager.debugLog("SSE", "❌ EventSource not supported in this browser");
+                this.uiManager.showError('SSE Not Supported', 'Your browser does not support Server-Sent Events. Progress updates will not be available.');
+                this.uiManager.logMessage('error', 'SSE not supported in this browser');
+                this.isImporting = false;
+                return;
+            }
+
             // Log SSE connection attempt for debugging
-            this.uiManager.debugLog("SSE", `Connecting with sessionId: ${sessionId}`);
-            
-            // Create EventSource for Server-Sent Events connection
-            // This establishes a persistent HTTP connection for real-time updates
-            sseSource = new window.EventSource(`/api/import/progress/${sessionId}`);
-            
-            // Track if server has sent an error event to prevent false retries
-            let serverErrorReceived = false;
-            
-            // Handle progress updates from the server
-            // Each event contains current progress, total count, and status information
-            sseSource.addEventListener('progress', (event) => {
-                this.uiManager.debugLog("SSE", "Progress event received", event.data);
-                let data;
-                try {
-                    data = JSON.parse(event.data);
-                } catch (e) {
-                    this.uiManager.debugLog("SSE", "Failed to parse progress event data", event.data);
-                    return;
-                }
-                // Log which user is currently being processed
-                if (data.user) {
-                    this.uiManager.debugLog("Import", `Processing user: ${data.user.username}`);
-                }
-                
-                // Log progress update with current/total counts
-                if (data.current !== undefined && data.total !== undefined) {
-                    this.uiManager.debugLog("Import", `Progress update: ${data.current} of ${data.total}`);
-                }
-                
-                // Update UI with progress information
-                // This updates the progress bar, counts, and status messages
-                this.uiManager.updateImportProgress(
-                    data.current || 0,
-                    data.total || 0,
-                    data.message || '',
-                    data.counts || {},
-                    data.populationName || '',
-                    data.populationId || ''
-                );
-                
-                // Display status message to user if provided
-                if (data.message) {
-                    this.uiManager.logMessage('info', data.message);
-                }
+            console.log("SSE: 🔌 SSE opening with sessionId:", sessionId);
+            this.uiManager.debugLog("SSE", `🔄 Attempting SSE connection with sessionId: ${sessionId}`, { 
+                retryCount: sseRetryCount, 
+                maxRetries: maxSseRetries,
+                browserSupport: !!window.EventSource
             });
-            // Handle explicit server error events
-            // These are sent by the server when import fails due to server-side issues
-            sseSource.addEventListener('error', (event) => {
-                serverErrorReceived = true;
-                let data = {};
-                try { data = JSON.parse(event.data); } catch {}
-                this.uiManager.debugLog("SSE", "Server error event received", data);
-                
-                // Update UI with error information
-                const errorSummary = 'Import failed due to server error';
-                const errorDetails = [data.error || 'SSE server error'];
-                this.uiManager.updateImportErrorStatus(errorSummary, errorDetails);
-                this.uiManager.showError('Import failed', data.error || 'SSE server error');
-                
-                // Clean up connection and state
-                sseSource.close();
-                this.isImporting = false;
-            });
+            this.uiManager.logMessage('info', `SSE: Opening connection with sessionId: ${sessionId}`);
             
-            // Handle import completion event
-            // Sent by server when import process finishes (success or failure)
-            sseSource.addEventListener('done', (event) => {
-                this.uiManager.debugLog("SSE", "Done event received", event.data);
-                sseSource.close();
-                this.isImporting = false;
-            });
-            
-            // Log when SSE connection successfully opens
-            // This confirms the connection is established and ready for events
-            sseSource.onopen = (event) => {
-                this.uiManager.debugLog("SSE", "Connection opened", { readyState: sseSource.readyState });
-                this.uiManager.logMessage('api', 'SSE connection opened for import progress.');
-                sseRetryCount = 0;
-            };
-            
-            // Handle connection errors and implement retry logic
-            // Distinguishes between network errors and server errors
-            sseSource.onerror = (err) => {
-                this.uiManager.debugLog("SSE", "Connection error", { readyState: sseSource.readyState, sessionId });
-                if (!serverErrorReceived) {
-                    this.uiManager.logMessage('warning', 'SSE connection lost. Retrying...');
+            try {
+                // Close existing connection if any
+                if (sseSource) {
+                    console.log("SSE: 🔄 Closing existing SSE connection before creating new one");
+                    this.uiManager.debugLog("SSE", "🔄 Closing existing SSE connection before creating new one");
                     sseSource.close();
-                    if (sseRetryCount < maxSseRetries) {
+                    sseSource = null;
+                }
+
+                // Create EventSource for Server-Sent Events connection
+                // This establishes a persistent HTTP connection for real-time updates
+                const sseUrl = `/api/import/progress/${sessionId}`;
+                console.log("SSE: 🔌 Creating EventSource for URL:", sseUrl);
+                this.uiManager.debugLog("SSE", `🔄 Creating EventSource for URL: ${sseUrl}`);
+                sseSource = new window.EventSource(sseUrl);
+                
+                // Track if server has sent an error event to prevent false retries
+                let serverErrorReceived = false;
+                let connectionEstablished = false;
+                let lastHeartbeat = Date.now();
+                
+                // Handle connection opened event
+                sseSource.addEventListener('open', (event) => {
+                    connectionEstablished = true;
+                    lastHeartbeat = Date.now();
+                    console.log("SSE: ✅ SSE connected");
+                    this.uiManager.debugLog("SSE", "✅ SSE connection opened successfully", { 
+                        sessionId, 
+                        readyState: sseSource.readyState,
+                        url: sseSource.url 
+                    });
+                    this.uiManager.logMessage('success', 'SSE: Connection established successfully');
+                    
+                    // Reset retry count on successful connection
+                    sseRetryCount = 0;
+                    
+                    // Log connection details for debugging
+                    this.uiManager.logMessage('info', `SSE connected for import (sessionId: ${sessionId})`);
+                });
+
+                // Handle progress updates from the server
+                // Each event contains current progress, total count, and status information
+                sseSource.addEventListener('progress', (event) => {
+                    lastHeartbeat = Date.now();
+                    console.log("SSE: 📩 SSE message received:", event.data);
+                    this.uiManager.debugLog("SSE", "📊 Progress event received", { 
+                        data: event.data,
+                        lastEventId: event.lastEventId,
+                        origin: event.origin 
+                    });
+                    this.uiManager.logMessage('info', `SSE: Progress update received`);
+                    
+                    let data;
+                    try {
+                        data = JSON.parse(event.data);
+                        console.log("SSE: ✅ Progress data parsed successfully:", data);
+                        this.uiManager.debugLog("SSE", "✅ Progress data parsed successfully", data);
+                    } catch (e) {
+                        console.error("SSE: ❌ Failed to parse progress event data:", e.message, "Raw data:", event.data);
+                        this.uiManager.debugLog("SSE", "❌ Failed to parse progress event data", { 
+                            rawData: event.data, 
+                            error: e.message 
+                        });
+                        this.uiManager.logMessage('error', 'SSE: Received malformed progress data from server');
+                        return;
+                    }
+
+                    // Validate required fields in progress data
+                    if (data.current === undefined || data.total === undefined) {
+                        console.error("SSE: ❌ Progress event missing required fields:", data);
+                        this.uiManager.debugLog("SSE", "❌ Progress event missing required fields", data);
+                        this.uiManager.logMessage('error', 'SSE: Progress event missing required fields (current/total)');
+                        return;
+                    }
+
+                    // Log which user is currently being processed
+                    if (data.user) {
+                        console.log("SSE: 👤 Processing user:", data.user.username || data.user.email || 'unknown');
+                        this.uiManager.debugLog("SSE", `👤 Processing user: ${data.user.username || data.user.email || 'unknown'}`);
+                    }
+
+                    // Log progress update with current/total counts
+                    if (data.current !== undefined && data.total !== undefined) {
+                        const percentage = Math.round(data.current/data.total*100);
+                        console.log(`SSE: 📈 Progress update: ${data.current} of ${data.total} (${percentage}%)`);
+                        this.uiManager.debugLog("SSE", `📈 Progress update: ${data.current} of ${data.total} (${percentage}%)`);
+                    }
+
+                    // Update UI with progress information
+                    // This updates the progress bar, counts, and status messages
+                    this.uiManager.updateImportProgress(
+                        data.current || 0, 
+                        data.total || 0, 
+                        data.message || '', 
+                        data.counts || {}, 
+                        data.populationName || '', 
+                        data.populationId || ''
+                    );
+
+                    // Display status message to user if provided
+                    if (data.message) {
+                        this.uiManager.logMessage('info', data.message);
+                    }
+                });
+
+                // Handle explicit server error events
+                // These are sent by the server when import fails due to server-side issues
+                sseSource.addEventListener('error', (event) => {
+                    serverErrorReceived = true;
+                    console.error("SSE: ❌ SSE error event:", event);
+                    this.uiManager.debugLog("SSE", "❌ SSE error event received", { 
+                        readyState: sseSource.readyState,
+                        error: event,
+                        serverErrorReceived 
+                    });
+                    this.uiManager.logMessage('error', 'SSE: Error event received from server');
+
+                    let data = {};
+                    try {
+                        if (event.data) {
+                            data = JSON.parse(event.data);
+                            console.log("SSE: ✅ Error event data parsed:", data);
+                            this.uiManager.debugLog("SSE", "✅ Error event data parsed", data);
+                        }
+                    } catch (e) {
+                        console.error("SSE: ❌ Failed to parse error event data:", e.message, "Raw data:", event.data);
+                        this.uiManager.debugLog("SSE", "❌ Failed to parse error event data", { 
+                            rawData: event.data, 
+                            error: e.message 
+                        });
+                    }
+
+                    // Update UI with error information
+                    const errorSummary = 'Import failed due to server error';
+                    const errorDetails = [data.error || 'SSE server error'];
+                    this.uiManager.updateImportErrorStatus(errorSummary, errorDetails);
+                    this.uiManager.showError('Import failed', data.error || 'SSE server error');
+
+                    // Clean up connection and state
+                    console.log("SSE: 🧹 Cleaning up SSE connection after error");
+                    this.uiManager.debugLog("SSE", "🧹 Cleaning up SSE connection after error");
+                    sseSource.close();
+                    importProgressStreams.delete(sessionId);
+                    this.isImporting = false;
+                });
+
+                // Handle import completion event
+                sseSource.addEventListener('complete', (event) => {
+                    lastHeartbeat = Date.now();
+                    console.log("SSE: ✅ Import completion event received:", event.data);
+                    this.uiManager.debugLog("SSE", "✅ Import completion event received", { 
+                        data: event.data,
+                        lastEventId: event.lastEventId 
+                    });
+                    this.uiManager.logMessage('success', 'SSE: Import completion event received');
+                    
+                    let data;
+                    try {
+                        data = JSON.parse(event.data);
+                        console.log("SSE: ✅ Completion data parsed successfully:", data);
+                        this.uiManager.debugLog("SSE", "✅ Completion data parsed successfully", data);
+                    } catch (e) {
+                        console.error("SSE: ❌ Failed to parse completion event data:", e.message, "Raw data:", event.data);
+                        this.uiManager.debugLog("SSE", "❌ Failed to parse completion event data", { 
+                            rawData: event.data, 
+                            error: e.message 
+                        });
+                        return;
+                    }
+
+                    // Update final progress and show completion message
+                    this.uiManager.updateImportProgress(
+                        data.current || 0, 
+                        data.total || 0, 
+                        data.message || 'Import completed', 
+                        data.counts || {}, 
+                        data.populationName || '', 
+                        data.populationId || ''
+                    );
+
+                    if (data.message) {
+                        this.uiManager.logMessage('success', data.message);
+                    }
+
+                    // Clean up connection
+                    console.log("SSE: 🧹 Cleaning up SSE connection after completion");
+                    this.uiManager.debugLog("SSE", "🧹 Cleaning up SSE connection after completion");
+                    sseSource.close();
+                    importProgressStreams.delete(sessionId);
+                    this.isImporting = false;
+                });
+
+                // Handle population conflict events
+                sseSource.addEventListener('population_conflict', (event) => {
+                    lastHeartbeat = Date.now();
+                    console.log("SSE: ⚠️ Population conflict event received:", event.data);
+                    this.uiManager.debugLog("SSE", "⚠️ Population conflict event received", { 
+                        data: event.data,
+                        lastEventId: event.lastEventId 
+                    });
+                    this.uiManager.logMessage('warning', 'SSE: Population conflict detected');
+                    
+                    let data;
+                    try {
+                        data = JSON.parse(event.data);
+                        console.log("SSE: ✅ Population conflict data parsed:", data);
+                        this.uiManager.debugLog("SSE", "✅ Population conflict data parsed", data);
+                    } catch (e) {
+                        console.error("SSE: ❌ Failed to parse population conflict data:", e.message, "Raw data:", event.data);
+                        this.uiManager.debugLog("SSE", "❌ Failed to parse population conflict data", { 
+                            rawData: event.data, 
+                            error: e.message 
+                        });
+                        return;
+                    }
+
+                    // Show population conflict modal
+                    this.showPopulationConflictModal(data, sessionId);
+                });
+
+                // Handle invalid population events
+                sseSource.addEventListener('invalid_population', (event) => {
+                    lastHeartbeat = Date.now();
+                    console.log("SSE: ⚠️ Invalid population event received:", event.data);
+                    this.uiManager.debugLog("SSE", "⚠️ Invalid population event received", { 
+                        data: event.data,
+                        lastEventId: event.lastEventId 
+                    });
+                    this.uiManager.logMessage('warning', 'SSE: Invalid population detected');
+                    
+                    let data;
+                    try {
+                        data = JSON.parse(event.data);
+                        console.log("SSE: ✅ Invalid population data parsed:", data);
+                        this.uiManager.debugLog("SSE", "✅ Invalid population data parsed", data);
+                    } catch (e) {
+                        console.error("SSE: ❌ Failed to parse invalid population data:", e.message, "Raw data:", event.data);
+                        this.uiManager.debugLog("SSE", "❌ Failed to parse invalid population data", { 
+                            rawData: event.data, 
+                            error: e.message 
+                        });
+                        return;
+                    }
+
+                    // Show invalid population modal
+                    this.showInvalidPopulationModal(data, sessionId);
+                });
+
+                // Handle connection close events
+                sseSource.addEventListener('close', (event) => {
+                    console.warn("SSE: ⚠️ SSE connection closed");
+                    this.uiManager.debugLog("SSE", "⚠️ SSE connection closed", { 
+                        readyState: sseSource.readyState,
+                        event: event 
+                    });
+                    this.uiManager.logMessage('warning', 'SSE: Connection closed');
+                    
+                    // Clean up connection
+                    importProgressStreams.delete(sessionId);
+                    this.isImporting = false;
+                });
+
+                // Handle connection errors (network, timeout, etc.)
+                sseSource.onerror = (event) => {
+                    console.error("SSE: ❌ SSE connection error:", event);
+                    this.uiManager.debugLog("SSE", "❌ SSE connection error", { 
+                        readyState: sseSource.readyState,
+                        error: event 
+                    });
+                    this.uiManager.logMessage('error', 'SSE: Connection error occurred');
+
+                    // Only retry if no server error was received and we haven't exceeded max retries
+                    if (!serverErrorReceived && sseRetryCount < maxSseRetries) {
                         sseRetryCount++;
-                        setTimeout(() => connectSSE(sessionId), retryDelay);
+                        console.warn(`SSE: 🔁 SSE reconnecting... Attempt #${sseRetryCount}`);
+                        this.uiManager.debugLog("SSE", `🔁 SSE reconnecting... Attempt #${sseRetryCount}`, {
+                            retryCount: sseRetryCount,
+                            maxRetries: maxSseRetries
+                        });
+                        this.uiManager.logMessage('warning', `SSE: Reconnecting... Attempt #${sseRetryCount}`);
+
+                        // Close current connection
+                        if (sseSource) {
+                            sseSource.close();
+                            sseSource = null;
+                        }
+
+                        // Retry connection with exponential backoff
+                        const retryDelay = Math.min(1000 * Math.pow(2, sseRetryCount - 1), 30000);
+                        console.log(`SSE: ⏱️ Retrying in ${retryDelay}ms`);
+                        this.uiManager.logMessage('info', `SSE: Retrying connection in ${retryDelay}ms`);
+
+                        setTimeout(() => {
+                            connectSSE(sessionId);
+                        }, retryDelay);
                     } else {
-                        this.uiManager.showError('Import progress stream lost', 'Real-time updates unavailable. Progress will not update live, but import will continue.');
+                        console.error("SSE: ❌ Max retries exceeded or server error received, stopping retries");
+                        this.uiManager.debugLog("SSE", "❌ Max retries exceeded or server error received", {
+                            retryCount: sseRetryCount,
+                            maxRetries: maxSseRetries,
+                            serverErrorReceived
+                        });
+                        this.uiManager.logMessage('error', 'SSE: Max retries exceeded, stopping connection attempts');
+                        
+                        // Clean up connection
+                        if (sseSource) {
+                            sseSource.close();
+                            sseSource = null;
+                        }
+                        importProgressStreams.delete(sessionId);
                         this.isImporting = false;
                     }
-                }
-            };
+                };
+
+                // Set up heartbeat monitoring
+                const heartbeatInterval = setInterval(() => {
+                    const timeSinceLastHeartbeat = Date.now() - lastHeartbeat;
+                    if (timeSinceLastHeartbeat > 60000) { // 60 seconds
+                        console.warn("SSE: ⚠️ No heartbeat received for 60 seconds");
+                        this.uiManager.debugLog("SSE", "⚠️ No heartbeat received for 60 seconds", {
+                            timeSinceLastHeartbeat,
+                            lastHeartbeat: new Date(lastHeartbeat).toISOString()
+                        });
+                        this.uiManager.logMessage('warning', 'SSE: No heartbeat received for 60 seconds');
+                    }
+                }, 30000); // Check every 30 seconds
+
+                // Clean up heartbeat monitoring when connection closes
+                sseSource.addEventListener('close', () => {
+                    clearInterval(heartbeatInterval);
+                });
+
+                // Store connection for cleanup
+                importProgressStreams.set(sessionId, sseSource);
+
+            } catch (error) {
+                console.error("SSE: ❌ Error creating SSE connection:", error.message);
+                this.uiManager.debugLog("SSE", "❌ Error creating SSE connection", { 
+                    error: error.message,
+                    stack: error.stack 
+                });
+                this.uiManager.logMessage('error', `SSE: Failed to create connection - ${error.message}`);
+                this.uiManager.showError('SSE Connection Error', `Failed to establish connection: ${error.message}`);
+                this.isImporting = false;
+            }
         };
         try {
             // Set import state to prevent multiple simultaneous imports
@@ -1578,6 +1910,60 @@ class App {
         }
     }
 
+    /**
+     * Format duration in seconds to a human-readable string
+     * @param {number} seconds - Duration in seconds
+     * @returns {string} Formatted duration string
+     */
+    formatDuration(seconds) {
+        if (!seconds || seconds <= 0) {
+            return '0s';
+        }
+        
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = seconds % 60;
+        
+        let result = '';
+        if (hours > 0) {
+            result += `${hours}h `;
+        }
+        if (minutes > 0 || hours > 0) {
+            result += `${minutes}m `;
+        }
+        result += `${secs}s`;
+        
+        return result.trim();
+    }
+
+    /**
+     * Get time remaining until expiration from JWT token
+     * @param {string} token - JWT token
+     * @returns {number|null} Time remaining in seconds, or null if invalid
+     */
+    getTimeRemainingFromJWT(token) {
+        try {
+            // Simple JWT decode (just the payload part)
+            const parts = token.split('.');
+            if (parts.length !== 3) {
+                return null;
+            }
+            
+            const payload = JSON.parse(atob(parts[1]));
+            if (!payload.exp) {
+                return null;
+            }
+            
+            const now = Math.floor(Date.now() / 1000);
+            const timeRemaining = payload.exp - now;
+            
+            return timeRemaining > 0 ? timeRemaining : 0;
+        } catch (error) {
+            console.error('Error decoding JWT token:', error);
+            return null;
+        }
+    }
+
     async getToken() {
         try {
             console.log('Get Token button clicked - starting token retrieval...');
@@ -1610,9 +1996,51 @@ class App {
             }
             
             if (token) {
-                this.uiManager.updateConnectionStatus('connected', 'Token retrieved and stored successfully');
-                this.uiManager.showSuccess('Token retrieved and stored successfully', 'Token has been saved to your browser for future use.');
+                // Calculate time remaining
+                let timeLeft = '';
+                const storedExpiry = localStorage.getItem('pingone_token_expiry');
+                
+                if (storedExpiry) {
+                    const expiryTime = parseInt(storedExpiry, 10);
+                    const now = Date.now();
+                    const timeRemainingSeconds = Math.max(0, Math.floor((expiryTime - now) / 1000));
+                    timeLeft = this.formatDuration(timeRemainingSeconds);
+                } else {
+                    // Fallback: try to decode JWT if no expiry stored
+                    const timeRemainingSeconds = this.getTimeRemainingFromJWT(token);
+                    if (timeRemainingSeconds !== null) {
+                        timeLeft = this.formatDuration(timeRemainingSeconds);
+                    }
+                }
+                
+                // Show success message with time remaining
+                const successMessage = timeLeft ? 
+                    `✅ New token acquired. Time left on token: ${timeLeft}` :
+                    '✅ New token acquired successfully';
+                
+                this.uiManager.updateConnectionStatus('connected', successMessage);
+                this.uiManager.showSuccess('Token retrieved and stored successfully', 
+                    timeLeft ? `Token has been saved to your browser. Time left: ${timeLeft}` : 
+                    'Token has been saved to your browser for future use.');
                 this.uiManager.updateHomeTokenStatus(false);
+                
+                // Refresh token status display on settings page
+                if (this.pingOneClient) {
+                    const tokenInfo = this.pingOneClient.getCurrentTokenTimeRemaining();
+                    this.uiManager.showCurrentTokenStatus(tokenInfo);
+                }
+                
+                // Update universal token status across all pages
+                this.updateUniversalTokenStatus();
+                
+                // Log success message if DEBUG_MODE is enabled
+                if (window.DEBUG_MODE) {
+                    console.log('Token acquisition successful:', {
+                        tokenLength: token.length,
+                        timeLeft: timeLeft,
+                        successMessage: successMessage
+                    });
+                }
             } else {
                 this.uiManager.updateConnectionStatus('error', 'Failed to get token');
                 this.uiManager.showError('Failed to get token', 'No token received from server');
@@ -1688,155 +2116,87 @@ class App {
         };
     }
 
-    // Robust disclaimer agreement setup
+    // Simplifies UX for disclaimer acknowledgment while still ensuring legal consent
     setupDisclaimerAgreement() {
-        console.log('=== Setting up Disclaimer Agreement ===');
-        
-        // Ensure home view is visible
-        const homeView = document.getElementById('home-view');
-        if (homeView) {
-            homeView.style.display = 'block';
-            homeView.classList.add('active');
-            console.log('✅ Home view made visible');
-        } else {
-            console.error('❌ Home view not found');
-        }
-        
-        // Get the required elements
-        const disclaimerCheckbox = document.getElementById('disclaimer-agreement');
-        const riskCheckbox = document.getElementById('risk-acceptance');
-        const acceptButton = document.getElementById('accept-disclaimer');
-        
-        // Validate elements exist
-        if (!disclaimerCheckbox || !riskCheckbox || !acceptButton) {
-            console.error('Required disclaimer elements not found:', {
-                disclaimerCheckbox: !!disclaimerCheckbox,
-                riskCheckbox: !!riskCheckbox,
-                acceptButton: !!acceptButton
-            });
-            
-            // Try to find elements with different selectors
-            console.log('Trying alternative selectors...');
-            const altDisclaimerCheckbox = document.querySelector('input[id="disclaimer-agreement"]');
-            const altRiskCheckbox = document.querySelector('input[id="risk-acceptance"]');
-            const altAcceptButton = document.querySelector('button[id="accept-disclaimer"]');
-            
-            console.log('Alternative selector results:', {
-                altDisclaimerCheckbox: !!altDisclaimerCheckbox,
-                altRiskCheckbox: !!altRiskCheckbox,
-                altAcceptButton: !!altAcceptButton
-            });
-            
-            return;
-        }
-        
-        console.log('All disclaimer elements found successfully');
-        console.log('Disclaimer checkbox:', disclaimerCheckbox);
-        console.log('Risk checkbox:', riskCheckbox);
-        console.log('Accept button:', acceptButton);
-        
-        // Function to check if both checkboxes are checked
-        const checkAgreementStatus = () => {
-            const disclaimerChecked = disclaimerCheckbox.checked;
-            const riskChecked = riskCheckbox.checked;
-            const bothChecked = disclaimerChecked && riskChecked;
-            
-            console.log('Agreement status check:', {
-                disclaimerChecked,
-                riskChecked,
-                bothChecked
-            });
-            
-            // Enable/disable button based on checkbox status
-            acceptButton.disabled = !bothChecked;
-            
-            // Update button appearance
-            if (bothChecked) {
-                acceptButton.classList.remove('btn-secondary');
-                acceptButton.classList.add('btn-danger');
-                console.log('✅ Disclaimer button enabled');
-            } else {
-                acceptButton.classList.remove('btn-danger');
-                acceptButton.classList.add('btn-secondary');
-                console.log('❌ Disclaimer button disabled');
-            }
-        };
-        
-        // Set up event listeners for both checkboxes
-        disclaimerCheckbox.addEventListener('change', (e) => {
-            console.log('Disclaimer checkbox changed:', e.target.checked);
-            checkAgreementStatus();
-        });
-        
-        riskCheckbox.addEventListener('change', (e) => {
-            console.log('Risk checkbox changed:', e.target.checked);
-            checkAgreementStatus();
-        });
-        
-        // Set up event listener for the accept button
-        acceptButton.addEventListener('click', (e) => {
-            e.preventDefault();
-            console.log('Disclaimer accept button clicked');
-            
-            // Validate both checkboxes are still checked
-            if (disclaimerCheckbox.checked && riskCheckbox.checked) {
-                console.log('✅ Disclaimer accepted - enabling tool');
-                this.enableToolAfterDisclaimer();
-            } else {
-                console.warn('❌ Disclaimer button clicked but checkboxes not checked');
-                this.uiManager.showError('Disclaimer Error', 'Please check both agreement boxes before proceeding.');
-            }
-        });
-        
-        // Initial status check
-        checkAgreementStatus();
-        
-        console.log('=== Disclaimer Agreement Setup Complete ===');
-    }
-    
-    // Enable the tool after disclaimer is accepted
-    enableToolAfterDisclaimer() {
-        console.log('=== Enabling Tool After Disclaimer ===');
-        
+        // Validate presence of disclaimer elements before attaching listeners  
+        // Prevents crash when elements are missing or page changes structure
         try {
-            // Hide the disclaimer section
-            const disclaimerSection = document.getElementById('disclaimer');
-            if (disclaimerSection) {
-                disclaimerSection.style.display = 'none';
-                console.log('Disclaimer section hidden');
+            // Get required elements with defensive programming
+            const disclaimerCheckbox = document.getElementById('disclaimer-agreement');
+            const acceptButton = document.getElementById('accept-disclaimer');
+            const disclaimerBox = document.getElementById('disclaimer');
+
+            // Presence check for all required elements
+            if (!disclaimerCheckbox || !acceptButton || !disclaimerBox) {
+                console.warn('[Disclaimer] Required disclaimer elements not found:', {
+                    disclaimerCheckbox: !!disclaimerCheckbox,
+                    acceptButton: !!acceptButton,
+                    disclaimerBox: !!disclaimerBox
+                });
+                
+                // Retry mechanism: if elements are not found, try again after a short delay
+                if (document.readyState === 'loading') {
+                    console.log('[Disclaimer] DOM still loading, retrying in 100ms...');
+                    setTimeout(() => this.setupDisclaimerAgreement(), 100);
+                    return;
+                }
+                
+                // Optional: Show a user-friendly message if disclaimer is broken
+                if (disclaimerBox) {
+                    disclaimerBox.innerHTML = '<div class="alert alert-danger">Unable to load disclaimer controls. Please refresh or contact support.</div>';
+                }
+                return;
             }
-            
-            // Enable navigation tabs
-            const navItems = document.querySelectorAll('[data-view]');
-            navItems.forEach(item => {
-                item.style.pointerEvents = 'auto';
-                item.style.opacity = '1';
+
+            console.log('[Disclaimer] All required elements found successfully');
+
+            // Function to check if the checkbox is checked
+            const checkAgreementStatus = () => {
+                const isChecked = disclaimerCheckbox.checked;
+                acceptButton.disabled = !isChecked;
+                
+                // Update button appearance based on checkbox status
+                if (isChecked) {
+                    acceptButton.classList.remove('btn-secondary');
+                    acceptButton.classList.add('btn-danger');
+                    console.log('[Disclaimer] ✅ Button enabled');
+                } else {
+                    acceptButton.classList.remove('btn-danger');
+                    acceptButton.classList.add('btn-secondary');
+                    console.log('[Disclaimer] ❌ Button disabled');
+                }
+            };
+
+            // Attach event listener to checkbox
+            disclaimerCheckbox.addEventListener('change', (e) => {
+                console.log('[Disclaimer] Checkbox changed:', e.target.checked);
+                checkAgreementStatus();
             });
-            
-            // Enable feature cards
-            const featureCards = document.querySelectorAll('.feature-card');
-            featureCards.forEach(card => {
-                card.style.pointerEvents = 'auto';
-                card.style.opacity = '1';
+
+            // Attach event listener to accept button
+            acceptButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                console.log('[Disclaimer] Accept button clicked');
+                
+                // Validate checkbox is still checked
+                if (disclaimerCheckbox.checked) {
+                    console.log('[Disclaimer] ✅ Disclaimer accepted - enabling tool');
+                    this.enableToolAfterDisclaimer();
+                } else {
+                    console.warn('[Disclaimer] ❌ Button clicked but checkbox not checked');
+                    this.uiManager.showError('Disclaimer Error', 'Please check the agreement box before proceeding.');
+                }
             });
+
+            // Initial status check
+            checkAgreementStatus();
+            console.log('[Disclaimer] Setup completed successfully');
             
-            // Show success message
-            this.uiManager.showSuccess('Tool Enabled', 'You have accepted the disclaimer. The tool is now enabled.');
-            
-            // Store disclaimer acceptance in localStorage
-            if (typeof localStorage !== 'undefined') {
-                localStorage.setItem('disclaimerAccepted', 'true');
-                localStorage.setItem('disclaimerAcceptedDate', new Date().toISOString());
-            }
-            
-            console.log('✅ Tool enabled successfully after disclaimer acceptance');
-            
-        } catch (error) {
-            console.error('Error enabling tool after disclaimer:', error);
-            this.uiManager.showError('Error', 'Failed to enable tool after disclaimer acceptance.');
+        } catch (err) {
+            console.error('[Disclaimer] Error in setupDisclaimerAgreement:', err);
         }
     }
-    
+
     // Check if disclaimer was previously accepted
     checkDisclaimerStatus() {
         if (typeof localStorage !== 'undefined') {
@@ -2318,6 +2678,78 @@ class App {
             };
         });
     }
+
+    /**
+     * Update universal token status across all pages
+     * 
+     * This method provides a centralized way to update the token status
+     * display that appears on all pages. It ensures consistent token
+     * status visibility and helps users understand their token state
+     * without navigating to the settings page.
+     * 
+     * Called after token acquisition, expiration, or manual refresh
+     * to keep all pages synchronized with current token state.
+     */
+    updateUniversalTokenStatus() {
+        try {
+            if (this.uiManager && this.uiManager.updateUniversalTokenStatus) {
+                // Get current token info for accurate display
+                let tokenInfo = null;
+                if (this.pingOneClient) {
+                    tokenInfo = this.pingOneClient.getCurrentTokenTimeRemaining();
+                }
+                
+                // Update the universal token status bar
+                this.uiManager.updateUniversalTokenStatus(tokenInfo);
+                
+                if (window.DEBUG_MODE) {
+                    console.log('Universal token status updated:', tokenInfo);
+                }
+            }
+        } catch (error) {
+            console.error('Error updating universal token status:', error);
+        }
+    }
+
+    // Enable the tool after disclaimer is accepted
+    enableToolAfterDisclaimer() {
+        console.log('[Disclaimer] === Enabling Tool After Disclaimer ===');
+        try {
+            // Hide the disclaimer section
+            const disclaimerSection = document.getElementById('disclaimer');
+            if (disclaimerSection) {
+                disclaimerSection.style.display = 'none';
+                console.log('[Disclaimer] Disclaimer section hidden');
+            }
+
+            // Enable navigation tabs
+            const navItems = document.querySelectorAll('[data-view]');
+            navItems.forEach(item => {
+                item.style.pointerEvents = 'auto';
+                item.style.opacity = '1';
+            });
+
+            // Enable feature cards
+            const featureCards = document.querySelectorAll('.feature-card');
+            featureCards.forEach(card => {
+                card.style.pointerEvents = 'auto';
+                card.style.opacity = '1';
+            });
+
+            // Show success message
+            this.uiManager.showSuccess('Tool Enabled', 'You have accepted the disclaimer. The tool is now enabled.');
+
+            // Store disclaimer acceptance in localStorage
+            if (typeof localStorage !== 'undefined') {
+                localStorage.setItem('disclaimerAccepted', 'true');
+                localStorage.setItem('disclaimerAcceptedDate', new Date().toISOString());
+            }
+            console.log('[Disclaimer] ✅ Tool enabled successfully after disclaimer acceptance');
+        } catch (error) {
+            console.error('[Disclaimer] Error enabling tool after disclaimer:', error);
+            this.uiManager.showError('Error', 'Failed to enable tool after disclaimer acceptance.');
+        }
+    }
 }
 
 // Initialize app when DOM is loaded
@@ -2453,3 +2885,57 @@ document.addEventListener('DOMContentLoaded', () => {
         window.addExpandIconsToLogEntries();
     }, 100);
 });
+
+// === DEBUG LOG PANEL TOGGLE LOGIC ===
+
+// === DEBUG LOG PANEL TOGGLE LOGIC ===
+// Handles open/close, accessibility, and scroll position for the debug log panel
+(function setupDebugLogToggle() {
+  const toggleBtn = document.getElementById('debug-log-toggle');
+  const panel = document.getElementById('debug-log-panel');
+  const logEntries = document.getElementById('log-entries');
+  let lastScrollTop = 0;
+
+  if (!toggleBtn || !panel) return; // SAFEGUARD: Only run if elements exist
+
+  // Toggle panel open/close
+  function togglePanel(forceOpen) {
+    const isOpen = !panel.classList.contains('collapsed');
+    if (forceOpen === true || (!isOpen && forceOpen === undefined)) {
+      panel.classList.remove('collapsed');
+      toggleBtn.setAttribute('aria-expanded', 'true');
+      toggleBtn.setAttribute('aria-label', 'Hide Debug Log Console');
+      // Restore scroll position
+      if (lastScrollTop) logEntries.scrollTop = lastScrollTop;
+      panel.focus();
+    } else {
+      lastScrollTop = logEntries.scrollTop;
+      panel.classList.add('collapsed');
+      toggleBtn.setAttribute('aria-expanded', 'false');
+      toggleBtn.setAttribute('aria-label', 'Show Debug Log Console');
+      toggleBtn.focus();
+    }
+  }
+
+  // Click handler
+  toggleBtn.addEventListener('click', () => togglePanel());
+  // Keyboard accessibility (Enter/Space)
+  toggleBtn.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      togglePanel();
+    }
+  });
+  // Optionally, close with Escape when focused
+  panel.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      togglePanel(false);
+    }
+  });
+  // Default to collapsed
+  panel.classList.add('collapsed');
+  toggleBtn.setAttribute('aria-expanded', 'false');
+  // Optionally, open if hash is #debug-log
+  if (window.location.hash === '#debug-log') togglePanel(true);
+})();

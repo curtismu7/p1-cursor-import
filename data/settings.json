@@ -1,8 +1,8 @@
 {
-  "environment-id": "b9817c16-9910-4415-b67e-4ac687da74d9",
-  "api-client-id": "26e7f07c-11a4-402a-b064-07b55aee189e",
-  "api-secret": "9p3hLItWFzw5BxKjH3.~TIGVPP~uj4os6fY93170dMvXadn1GEsWTP2lHSTAoevq",
-  "population-id": "",
+  "environmentId": "b9817c16-9910-4415-b67e-4ac687da74d9",
+  "apiClientId": "26e7f07c-11a4-402a-b064-07b55aee189e",
+  "apiSecret": "9p3hLItWFzw5BxKjH3.~TIGVPP~uj4os6fY93170dMvXadn1GEsWTP2lHSTAoevq",
+  "populationId": "not set",
   "region": "NorthAmerica",
-  "rate-limit": "100"
+  "rateLimit": 90
 }
