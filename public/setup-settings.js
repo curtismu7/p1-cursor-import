@@ -34,11 +34,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Update connection status if available
                     const statusContainer = document.getElementById('settings-connection-status');
                     if (statusContainer && settings.connectionStatus) {
-                        statusContainer.className = `connection-status status-${settings.connectionStatus}`;
-                        const statusMessage = statusContainer.querySelector('.status-message');
-                        if (statusMessage) {
-                            statusMessage.textContent = settings.connectionMessage || 'Connection status unknown';
-                        }
+                        // Remove any previous status message
+                        statusContainer.innerHTML = '';
+                        let type = settings.connectionStatus === 'connected' ? 'success' : (settings.connectionStatus === 'error' ? 'error' : 'info');
+                        let icon = type === 'success' ? '✅' : (type === 'error' ? '❌' : 'ℹ️');
+                        let bgClass = `status-message status-${type}`;
+                        let message = settings.connectionMessage || 'Connection status unknown';
+                        // Render status message with correct classes and icon
+                        const statusMsg = document.createElement('div');
+                        statusMsg.className = bgClass;
+                        statusMsg.innerHTML = `<span class="status-icon">${icon}</span> <span class="status-title">${message}</span>`;
+                        statusContainer.appendChild(statusMsg);
+                        console.log(`Message rendered: "${message}", type = ${type}`);
                     }
                 }
             }

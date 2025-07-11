@@ -198,6 +198,18 @@ export class LocalAPIClient {
      * @private
      */
     _getBadRequestMessage(data, url) {
+        // Check if it's an import endpoint error
+        if (url.includes('/import')) {
+            if (data && data.error) {
+                // Return the specific error message from the server
+                return data.error;
+            }
+            if (data && data.message) {
+                return data.message;
+            }
+            return '🔍 Import failed. Please check your CSV file and settings.';
+        }
+        
         // Check if it's a user modification endpoint
         if (url.includes('/users/') && url.includes('PUT')) {
             return '🔍 User data validation failed. Please check the user information and try again.';

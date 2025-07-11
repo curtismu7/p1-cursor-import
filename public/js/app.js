@@ -47,6 +47,9 @@ class SecretFieldToggle {
         // Set up the eye button click handler
         this.setupToggleHandler();
         
+        // Set up input change handler
+        this.handleInputChange();
+        
         this.isInitialized = true;
         console.log('✅ Secret field toggle initialized');
     }
@@ -202,6 +205,9 @@ class App {
 
         this.populationPromptShown = false;
         this.populationChoice = null; // 'override', 'ignore', 'use-csv'
+        
+        // Error tracking for import operations
+        this.importErrors = [];
     }
 
     async init() {
@@ -216,6 +222,9 @@ class App {
             
             // Initialize UI manager
             await this.uiManager.init();
+            
+            // Initialize settings manager
+            await this.settingsManager.init();
             
             // Initialize file handler
             this.fileHandler = new FileHandler(this.logger, this.uiManager);
@@ -241,6 +250,12 @@ class App {
             
             // Check server connection status
             await this.checkServerConnectionStatus();
+            
+            // Update import button state after initialization
+            this.updateImportButtonState();
+            
+            // Update version information in UI
+            this.versionManager.updateTitle();
             
             console.log('App initialization complete');
             
@@ -587,6 +602,18 @@ class App {
                 await this.toggleFeatureFlag(flag, enabled);
             });
         });
+
+        // Import progress close button
+        const closeImportStatusBtn = document.getElementById('close-import-status');
+        if (closeImportStatusBtn) {
+            closeImportStatusBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const importStatus = document.getElementById('import-status');
+                if (importStatus) {
+                    importStatus.style.display = 'none';
+                }
+            });
+        }
     }
 
     async checkServerConnectionStatus() {
@@ -747,7 +774,7 @@ class App {
             // Now update connection status area with check mark and message
             const connStatus = document.getElementById('settings-connection-status');
             if (connStatus) {
-                connStatus.textContent = '✅ Settings saved! Please test the connection.';
+                connStatus.textContent = '✅ Settings saved! Please - Get token';
                 connStatus.classList.remove('status-disconnected', 'status-error');
                 connStatus.classList.add('status-success');
                 console.log('Updated #settings-connection-status after save (post-populate)');
@@ -800,102 +827,129 @@ class App {
         }
     }
 
+    // Helper: Validate UUID v4
+    isValidUUID(uuid) {
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uuid);
+    }
+
     async startImport() {
         if (this.isImporting) {
             this.logger.warn('Import already in progress');
             return;
         }
-        
+        let sseSource;
+        let sseRetryCount = 0;
+        const maxSseRetries = 3;
+        const retryDelay = 5000;
+        const connectSSE = (sessionId) => {
+            console.log('Connecting to SSE with sessionId:', sessionId);
+            sseSource = new window.EventSource(`/api/import/progress/${sessionId}`);
+            sseSource.addEventListener('progress', (event) => {
+                console.log('SSE progress event received:', event);
+                let data;
+                try {
+                    data = JSON.parse(event.data);
+                } catch (e) {
+                    console.error('Failed to parse SSE progress event data:', event.data);
+                    return;
+                }
+                // Log user and progress
+                if (data.user) {
+                    console.log('Processing user:', data.user.username);
+                }
+                if (data.current !== undefined && data.total !== undefined) {
+                    console.log('Progress screen update:', data.current, 'of', data.total);
+                }
+                // Update UI
+                this.uiManager.updateImportProgress(
+                    data.current || 0,
+                    data.total || 0,
+                    data.message || '',
+                    data.counts || {},
+                    data.populationName || '',
+                    data.populationId || ''
+                );
+                // Log progress message
+                if (data.message) {
+                    this.uiManager.logMessage('info', data.message);
+                }
+            });
+            sseSource.onmessage = (event) => {
+                console.log('SSE generic message event:', event);
+            };
+            sseSource.addEventListener('population_conflict', (event) => {
+                console.log('SSE population_conflict event:', event);
+            });
+            sseSource.addEventListener('invalid_population', (event) => {
+                console.log('SSE invalid_population event:', event);
+            });
+            sseSource.addEventListener('done', (event) => {
+                console.log('SSE done event:', event);
+            });
+            sseSource.addEventListener('error', (event) => {
+                console.log('SSE error event:', event);
+                this.uiManager.logMessage('error', 'SSE connection error during import.');
+                let data = {};
+                try { data = JSON.parse(event.data); } catch {}
+                const errorSummary = 'Import failed due to connection error';
+                const errorDetails = [data.error || 'SSE connection error'];
+                this.uiManager.updateImportErrorStatus(errorSummary, errorDetails);
+                this.uiManager.showError('Import failed', data.error || 'SSE connection error');
+                sseSource.close();
+                this.isImporting = false;
+                // Retry logic
+                if (sseRetryCount < maxSseRetries) {
+                    sseRetryCount++;
+                    this.uiManager.showInfo('Reconnecting to import progress stream...', `Attempt ${sseRetryCount} of ${maxSseRetries}`);
+                    setTimeout(() => connectSSE(sessionId), retryDelay);
+                } else {
+                    this.uiManager.showError('Import progress stream lost', 'Real-time updates unavailable. Progress will not update live, but import will continue.');
+                }
+            });
+            sseSource.addEventListener('open', (event) => {
+                console.log('SSE connection opened for import progress.');
+                this.uiManager.logMessage('api', 'SSE connection opened for import progress.');
+                sseRetryCount = 0;
+            });
+        };
+        // === NEW CODE: Get sessionId from backend ===
         try {
             this.isImporting = true;
             this.importAbortController = new AbortController();
-            
-            // Force refresh population selection to ensure it's current
-            const currentPopulation = this.forceRefreshPopulationSelection();
-            console.log('=== startImport - Current Population ===');
-            console.log('Current population selection:', currentPopulation);
-            
-            if (!currentPopulation) {
-                this.uiManager.showError('No population selected', 'Please select a population before starting the import.');
+            const importOptions = this.getImportOptions();
+            if (!importOptions) {
+                this.isImporting = false;
                 return;
             }
-            
-            // Create import options with the current population selection
-            const totalUsers = this.fileHandler.getTotalUsers();
-            if (!totalUsers || totalUsers === 0) {
-                this.uiManager.showError('No users to import', 'Please select a CSV file with users to import.');
-                return;
-            }
-            
-            const importOptions = {
-                selectedPopulationId: currentPopulation.id,
-                selectedPopulationName: currentPopulation.name,
-                totalUsers,
-                file: this.fileHandler.getCurrentFile()
-            };
-            
-            // Debug: Log the population being used for import
-            console.log('=== startImport Debug ===');
-            console.log('Import options:', importOptions);
-            console.log('Population ID for this import:', importOptions.selectedPopulationId);
-            console.log('Population name for this import:', importOptions.selectedPopulationName);
-            console.log('========================');
-            
-            // Capture the selected population name and ID at the start of the import
-            const { selectedPopulationName, selectedPopulationId } = importOptions;
-            const populationNameForThisRun = selectedPopulationName;
-            const populationIdForThisRun = selectedPopulationId;
-            
-            // Show import status
-            this.uiManager.showImportStatus(importOptions.totalUsers, populationNameForThisRun, populationIdForThisRun);
-            
-            // Start import process - send file as FormData
+            // Show import progress screen immediately
+            console.log('Progress screen activated.');
+            console.log('Import started');
+            this.uiManager.showImportStatus(importOptions.totalUsers, importOptions.selectedPopulationName, importOptions.selectedPopulationId);
+            // Prepare FormData for file upload
             const formData = new FormData();
             formData.append('file', importOptions.file);
             formData.append('selectedPopulationId', importOptions.selectedPopulationId);
             formData.append('selectedPopulationName', importOptions.selectedPopulationName);
-            formData.append('totalUsers', importOptions.totalUsers.toString());
-            
-            // Debug: Log the FormData contents
-            console.log('=== FormData Debug ===');
-            console.log('File being sent:', importOptions.file);
-            console.log('Population ID:', importOptions.selectedPopulationId);
-            console.log('Population Name:', importOptions.selectedPopulationName);
-            console.log('Total Users:', importOptions.totalUsers);
-            console.log('========================');
-            
-            const response = await this.localClient.postFormData('/api/import', formData, {
-                signal: this.importAbortController.signal,
-                onProgress: (current, total, message, counts) => {
-                    this.uiManager.updateImportProgress(current, total, message, counts, populationNameForThisRun, populationIdForThisRun);
-                }
+            formData.append('totalUsers', importOptions.totalUsers);
+            // Start import and get sessionId
+            const response = await fetch('/api/import', {
+                method: 'POST',
+                body: formData,
+                signal: this.importAbortController.signal
             });
-            
-            // Handle completion
-            if (response.success) {
-                this.uiManager.updateImportProgress(importOptions.totalUsers, importOptions.totalUsers, 'Import completed successfully', response.counts, populationNameForThisRun, populationIdForThisRun);
-                this.uiManager.showSuccess('Import completed successfully', response.message);
-            } else {
-                this.uiManager.updateImportProgress(0, importOptions.totalUsers, 'Import failed', response.counts, populationNameForThisRun, populationIdForThisRun);
-                this.uiManager.showError('Import failed', response.error);
+            const result = await response.json();
+            const sessionId = result.sessionId;
+            if (!sessionId) {
+                console.error('Session ID is undefined. Import cannot proceed.');
+                this.uiManager.showError('Import failed', 'Session ID is undefined. Import cannot proceed.');
+                this.isImporting = false;
+                return;
             }
-            
+            connectSSE(sessionId);
         } catch (error) {
-            // Get current population for error handling
-            const currentPopulation = this.forceRefreshPopulationSelection();
-            const populationNameForThisRun = currentPopulation ? currentPopulation.name : '';
-            const populationIdForThisRun = currentPopulation ? currentPopulation.id : '';
-            
-            if (error.name === 'AbortError') {
-                this.uiManager.updateImportProgress(0, 0, 'Import cancelled', {}, populationNameForThisRun, populationIdForThisRun);
-                this.uiManager.showInfo('Import cancelled');
-            } else {
-                this.uiManager.updateImportProgress(0, 0, 'Import failed: ' + error.message, {}, populationNameForThisRun, populationIdForThisRun);
-                this.uiManager.showError('Import failed', error.message);
-            }
-        } finally {
+            console.error('Error starting import:', error);
+            this.uiManager.showError('Import failed', error.message || error);
             this.isImporting = false;
-            this.importAbortController = null;
         }
     }
 
@@ -1354,10 +1408,60 @@ class App {
         try {
             await this.fileHandler.setFile(file);
             this.uiManager.showSuccess('File selected successfully', `Selected file: ${file.name}`);
-            
             // Update import button state after file selection
             this.updateImportButtonState();
-            // Show population prompt if needed
+
+            // --- Population conflict detection ---
+            const users = this.fileHandler.getParsedUsers ? this.fileHandler.getParsedUsers() : [];
+            const populationSelect = document.getElementById('import-population-select');
+            const uiPopulationId = populationSelect && populationSelect.value;
+            let hasCsvPopulation = false;
+            if (users.length) {
+                hasCsvPopulation = Object.keys(users[0]).some(
+                    h => h.toLowerCase() === 'populationid' || h.toLowerCase() === 'population_id'
+                ) && users.some(u => u.populationId && u.populationId.trim() !== '');
+            }
+            if (uiPopulationId && hasCsvPopulation) {
+                // Show conflict modal
+                const modal = document.getElementById('population-conflict-modal');
+                if (modal) {
+                    modal.style.display = 'flex';
+                    // Set up modal buttons
+                    const useUiBtn = document.getElementById('use-ui-population');
+                    const useCsvBtn = document.getElementById('use-csv-population');
+                    const cancelBtn = document.getElementById('cancel-population-conflict');
+                    useUiBtn.onclick = () => {
+                        modal.style.display = 'none';
+                        // Overwrite all user records with UI populationId
+                        users.forEach(u => u.populationId = uiPopulationId);
+                        this.populationChoice = 'ui';
+                        console.log('Population conflict resolved: using UI dropdown');
+                        this.uiManager.logMessage('info', 'Population conflict resolved: using UI dropdown');
+                    };
+                    useCsvBtn.onclick = () => {
+                        modal.style.display = 'none';
+                        // Use CSV populationId as-is
+                        this.populationChoice = 'csv';
+                        console.log('Population conflict resolved: using CSV file');
+                        this.uiManager.logMessage('info', 'Population conflict resolved: using CSV file');
+                    };
+                    cancelBtn.onclick = () => {
+                        modal.style.display = 'none';
+                        this.populationChoice = null;
+                        this.uiManager.logMessage('warning', 'Population conflict prompt cancelled.');
+                    };
+                }
+                return;
+            }
+            // If only UI or only CSV, no prompt needed
+            if (uiPopulationId && !hasCsvPopulation) {
+                // Overwrite all user records with UI populationId
+                users.forEach(u => u.populationId = uiPopulationId);
+                this.populationChoice = 'ui';
+            } else if (!uiPopulationId && hasCsvPopulation) {
+                this.populationChoice = 'csv';
+            }
+            // Show population prompt if needed (legacy)
             this.showPopulationChoicePrompt();
         } catch (error) {
             this.uiManager.showError('Failed to select file', error.message);
@@ -1616,6 +1720,427 @@ class App {
                 this.showView('settings');
             };
         }
+    }
+
+    showPopulationConflictModal(conflictData, sessionId) {
+        console.log('Showing population conflict modal:', conflictData);
+        
+        // Create modal HTML if it doesn't exist
+        let modal = document.getElementById('population-conflict-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'population-conflict-modal';
+            modal.className = 'modal fade show';
+            modal.style.display = 'flex';
+            modal.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+            modal.style.position = 'fixed';
+            modal.style.top = '0';
+            modal.style.left = '0';
+            modal.style.width = '100%';
+            modal.style.height = '100%';
+            modal.style.zIndex = '9999';
+            
+            modal.innerHTML = `
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Population Conflict Detected</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="alert alert-warning">
+                                <strong>Conflict:</strong> Your CSV file contains population data AND you selected a population in the UI.
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h6>CSV Population Data</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <p><strong>Users with population IDs:</strong> ${conflictData.csvPopulationCount}</p>
+                                            <p>Users in your CSV file have their own population assignments.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h6>UI Selected Population</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <p><strong>Selected population:</strong> ${conflictData.uiSelectedPopulation}</p>
+                                            <p>You selected this population in the dropdown.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <p><strong>Please choose which population to use:</strong></p>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" id="use-csv-population">
+                                Use CSV Population Data
+                            </button>
+                            <button type="button" class="btn btn-primary" id="use-ui-population">
+                                Use UI Selected Population
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" id="cancel-conflict-resolution">
+                                Cancel Import
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        } else {
+            modal.style.display = 'flex';
+        }
+        
+        // Set up event listeners
+        const useCsvBtn = document.getElementById('use-csv-population');
+        const useUiBtn = document.getElementById('use-ui-population');
+        const cancelBtn = document.getElementById('cancel-conflict-resolution');
+        
+        const closeModal = () => {
+            modal.style.display = 'none';
+        };
+        
+        const resolveConflict = async (useCsvPopulation) => {
+            try {
+                const response = await fetch('/api/import/resolve-conflict', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        sessionId,
+                        useCsvPopulation,
+                        useUiPopulation: !useCsvPopulation
+                    })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    closeModal();
+                    this.uiManager.showSuccess('Conflict resolved', 'Import will continue with your selection.');
+                    
+                    // Restart the import with the resolved conflict
+                    await this.startImport();
+                } else {
+                    this.uiManager.showError('Failed to resolve conflict', result.error || 'Unknown error');
+                }
+            } catch (error) {
+                this.uiManager.showError('Failed to resolve conflict', error.message);
+            }
+        };
+        
+        useCsvBtn.onclick = () => resolveConflict(true);
+        useUiBtn.onclick = () => resolveConflict(false);
+        cancelBtn.onclick = () => {
+            closeModal();
+            this.uiManager.showInfo('Import cancelled', 'Population conflict resolution was cancelled.');
+        };
+    }
+
+    showInvalidPopulationModal(invalidData, sessionId) {
+        console.log('Showing invalid population modal:', invalidData);
+        // Get UI-selected population
+        let uiPopulationName = '';
+        let uiPopulationId = '';
+        const populationSelect = document.getElementById('import-population-select');
+        if (populationSelect) {
+            uiPopulationId = populationSelect.value;
+            uiPopulationName = populationSelect.selectedOptions[0]?.text || '';
+        }
+        // Create modal HTML if it doesn't exist
+        let modal = document.getElementById('invalid-population-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'invalid-population-modal';
+            modal.className = 'modal fade show';
+            modal.style.display = 'flex';
+            modal.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+            modal.style.position = 'fixed';
+            modal.style.top = '0';
+            modal.style.left = '0';
+            modal.style.width = '100%';
+            modal.style.height = '100%';
+            modal.style.zIndex = '9999';
+            modal.innerHTML = `
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Invalid Populations Detected</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="alert alert-warning">
+                                <strong>Warning:</strong> Your CSV file contains population IDs that don't exist in PingOne.
+                            </div>
+                            <div class="ui-selected-population" style="background:#f8f9fa; border:1px solid #dee2e6; border-radius:5px; padding:8px 12px; margin-bottom:12px;">
+                                <strong>UI-selected population:</strong> ${uiPopulationName ? uiPopulationName : '(none selected)'}${uiPopulationId ? ` <span style='color:#888'>(ID: ${uiPopulationId})</span>` : ''}
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h6>Invalid Populations</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <p><strong>Invalid population IDs:</strong></p>
+                                            <ul>
+                                                ${invalidData.invalidPopulations.map(id => `<li><code>${id}</code></li>`).join('')}
+                                            </ul>
+                                            <p><strong>Affected users:</strong> ${invalidData.affectedUserCount}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h6>Select Valid Population</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <p>Please select a valid population to use for these users:</p>
+                                            <select class="form-select" id="valid-population-select">
+                                                <option value="">Loading populations...</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-primary" id="use-selected-population" disabled>
+                                Use Selected Population
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" id="cancel-invalid-population-resolution">
+                                Cancel Import
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        } else {
+            // Update UI-selected population info if modal already exists
+            const uiPopDiv = modal.querySelector('.ui-selected-population');
+            if (uiPopDiv) {
+                uiPopDiv.innerHTML = `<strong>UI-selected population:</strong> ${uiPopulationName ? uiPopulationName : '(none selected)'}${uiPopulationId ? ` <span style='color:#888'>(ID: ${uiPopulationId})</span>` : ''}`;
+            }
+            modal.style.display = 'flex';
+        }
+        // Use a different variable for the modal's population select
+        const modalPopulationSelect = document.getElementById('valid-population-select');
+        // Load available populations
+        this.loadPopulationsForModal(invalidData, sessionId);
+        
+        // Set up event listeners
+        const useSelectedBtn = document.getElementById('use-selected-population');
+        const cancelBtn = document.getElementById('cancel-invalid-population-resolution');
+        const populationSelectForModal = document.getElementById('valid-population-select');
+        
+        const closeModal = () => {
+            modal.style.display = 'none';
+        };
+        
+        const resolveInvalidPopulation = async (selectedPopulationId) => {
+            try {
+                const response = await fetch('/api/import/resolve-invalid-population', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        sessionId,
+                        selectedPopulationId
+                    })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    closeModal();
+                    this.uiManager.showSuccess('Invalid population resolved', 'Import will continue with the selected population.');
+                    
+                    // Restart the import with the resolved invalid population
+                    await this.startImport();
+                } else {
+                    this.uiManager.showError('Failed to resolve invalid population', result.error || 'Unknown error');
+                }
+            } catch (error) {
+                this.uiManager.showError('Failed to resolve invalid population', error.message);
+            }
+        };
+        
+        useSelectedBtn.onclick = () => {
+            const selectedPopulationId = populationSelectForModal.value;
+            if (selectedPopulationId) {
+                // Apply selected population to all affected users (fallback to all if indexes missing)
+                const users = this.fileHandler.getParsedUsers ? this.fileHandler.getParsedUsers() : [];
+                let indexes = [];
+                if (invalidData && Array.isArray(invalidData.affectedUserIndexes) && invalidData.affectedUserIndexes.length > 0) {
+                    indexes = invalidData.affectedUserIndexes;
+                } else {
+                    indexes = users.map((_, idx) => idx);
+                }
+                console.log("Affected indexes:", indexes);
+                console.log("Users before update:", users.slice(0, 5));
+                indexes.forEach(idx => {
+                    if (users[idx]) users[idx].populationId = selectedPopulationId;
+                });
+                console.log("User resolved population conflict with:", selectedPopulationId);
+                this.uiManager.logMessage('info', `User resolved population conflict with: ${selectedPopulationId}`);
+                closeModal();
+                // Resume import
+                this.startImport();
+            }
+        };
+        
+        cancelBtn.onclick = () => {
+            closeModal();
+            this.uiManager.showInfo('Import cancelled', 'Invalid population resolution was cancelled.');
+        };
+        
+        // Enable/disable button based on selection
+        populationSelectForModal.addEventListener('change', () => {
+            useSelectedBtn.disabled = !populationSelectForModal.value;
+        });
+    }
+
+    async loadPopulationsForModal(invalidData, sessionId) {
+        try {
+            const response = await fetch('/api/pingone/populations');
+            if (response.ok) {
+                const populations = await response.json();
+                const populationSelect = document.getElementById('valid-population-select');
+                
+                if (populationSelect) {
+                    populationSelect.innerHTML = '<option value="">Select a population...</option>';
+                    populations.forEach(population => {
+                        const option = document.createElement('option');
+                        option.value = population.id;
+                        option.textContent = population.name;
+                        populationSelect.appendChild(option);
+                    });
+                }
+            } else {
+                console.error('Failed to load populations for modal');
+            }
+        } catch (error) {
+            console.error('Error loading populations for modal:', error);
+        }
+    }
+
+    // Error tracking methods for import operations
+    trackImportError(errorMessage) {
+        this.importErrors.push(errorMessage);
+        this.updateImportErrorDisplay();
+    }
+
+    clearImportErrors() {
+        this.importErrors = [];
+        this.uiManager.hideImportErrorStatus();
+    }
+
+    updateImportErrorDisplay() {
+        if (this.importErrors.length > 0) {
+            const errorSummary = `Import completed with ${this.importErrors.length} error(s)`;
+            this.uiManager.updateImportErrorStatus(errorSummary, this.importErrors);
+        } else {
+            this.uiManager.hideImportErrorStatus();
+        }
+    }
+
+    resetImportErrorTracking() {
+        this.importErrors = [];
+        this.uiManager.hideImportErrorStatus();
+    }
+
+    // Prompt user to pick a valid population if none is selected
+    async promptForPopulationSelection(affectedIndexes, users) {
+        return new Promise((resolve) => {
+            // Build modal
+            let modal = document.getElementById('pick-population-modal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'pick-population-modal';
+                modal.className = 'modal fade show';
+                modal.style.display = 'flex';
+                modal.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+                modal.style.position = 'fixed';
+                modal.style.top = '0';
+                modal.style.left = '0';
+                modal.style.width = '100%';
+                modal.style.height = '100%';
+                modal.style.zIndex = '9999';
+                modal.innerHTML = `
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Select Population for Import</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="alert alert-warning">
+                                    <strong>Warning:</strong> No valid population is selected. Please pick a population to use for all users missing or with invalid population IDs.
+                                </div>
+                                <div class="form-group">
+                                    <label for="pick-population-select">Select Population:</label>
+                                    <select class="form-select" id="pick-population-select">
+                                        <option value="">Loading populations...</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-primary" id="pick-population-confirm" disabled>Use Selected Population</button>
+                                <button type="button" class="btn btn-outline-secondary" id="pick-population-cancel">Cancel Import</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+            } else {
+                modal.style.display = 'flex';
+            }
+            // Populate dropdown
+            const populationSelect = document.getElementById('pick-population-select');
+            populationSelect.innerHTML = '<option value="">Select a population...</option>';
+            const importPopSelect = document.getElementById('import-population-select');
+            if (importPopSelect) {
+                Array.from(importPopSelect.options).forEach(opt => {
+                    if (opt.value) {
+                        const option = document.createElement('option');
+                        option.value = opt.value;
+                        option.textContent = opt.text;
+                        populationSelect.appendChild(option);
+                    }
+                });
+            }
+            // Enable confirm button only if a valid selection
+            const confirmBtn = document.getElementById('pick-population-confirm');
+            populationSelect.addEventListener('change', () => {
+                confirmBtn.disabled = !populationSelect.value;
+            });
+            // Confirm handler
+            confirmBtn.onclick = () => {
+                const selectedId = populationSelect.value;
+                if (selectedId) {
+                    // Set the UI dropdown to this value
+                    if (importPopSelect) importPopSelect.value = selectedId;
+                    modal.style.display = 'none';
+                    resolve(selectedId);
+                }
+            };
+            // Cancel handler
+            document.getElementById('pick-population-cancel').onclick = () => {
+                modal.style.display = 'none';
+                this.uiManager.showInfo('Import cancelled', 'No population selected.');
+                resolve(null);
+            };
+        });
     }
 }
 

@@ -1,0 +1,3 @@
+username,email,populationId,firstName,middleName,lastName,prefix,suffix,formattedName,nickname,title,preferredLanguage,locale,timezone,externalId,type,active,primaryPhone,mobilePhone,streetAddress,countryCode,locality,region,postalCode,password
+testuser1,testuser1@mailinator.com,1dd684e3-82ee-4e68-9d25-00401bc62e7a,John,A,Smith,Mr.,Jr.,"Mr. John A Smith, Jr.",Johnny,Engineer,en,US,America/New_York,ext-test1,employee,True,555-111-1111,555-222-2222,123 Test St,US,Test City,TS,12345,TestPass123!
+testuser2,testuser2@mailinator.com,1dd684e3-82ee-4e68-9d25-00401bc62e7a,Jane,B,Jones,Ms.,PhD,"Ms. Jane B Jones, PhD",Janey,Manager,en,US,America/New_York,ext-test2,employee,True,555-333-3333,555-444-4444,456 Test Ave,US,Test Town,TT,67890,TestPass456! 

@@ -2525,3 +2525,5 @@ if (process.env.NODE_ENV === 'test') {
 export { app };
 export { testServer };
 export default app;
+
+console.log("Server running - version 4.7");

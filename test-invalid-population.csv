@@ -1,0 +1,5 @@
+firstName,lastName,email,username,populationId
+John,Doe,john.doe@example.com,johndoe,invalid-population-1
+Jane,Smith,jane.smith@example.com,janesmith,invalid-population-2
+Bob,Johnson,bob.johnson@example.com,bobjohnson,invalid-population-3
+Alice,Brown,alice.brown@example.com,alicebrown,invalid-population-4 

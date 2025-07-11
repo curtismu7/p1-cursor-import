@@ -11,8 +11,23 @@ class SettingsManager {
         // Initialize logger
         this.initializeLogger(logger);
         
-        // Initialize encryption
-        this.initializeEncryption();
+        // Initialize encryption (will be called in init method)
+        this.encryptionInitialized = false;
+    }
+    
+    /**
+     * Initialize the settings manager
+     */
+    async init() {
+        try {
+            await this.initializeEncryption();
+            this.encryptionInitialized = true;
+            this.logger.info('Settings manager initialized successfully');
+        } catch (error) {
+            this.logger.error('Failed to initialize settings manager:', error);
+            // Continue without encryption if it fails
+            this.encryptionInitialized = false;
+        }
     }
     
     /**

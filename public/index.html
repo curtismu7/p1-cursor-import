@@ -58,7 +58,7 @@
         <main class="main-content">
             <!-- Version Badge -->
             <div id="version-badge-top" class="version-badge-top">
-                                        <span id="version-text">v4.5</span>
+                                        <span id="version-text">v4.7</span>
             </div>
             
             <!-- Universal Disclaimer Banner -->
@@ -232,56 +232,12 @@
                             <span>Choose CSV File</span>
                         </label>
 
-                        
-                        <!-- Population Selection Options -->
-                        <div class="population-selection-container" style="margin-top: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;">
-                            <h4 style="margin-bottom: 15px; color: #333;">
-                                <i class="fas fa-users"></i> Population Selection
-                            </h4>
-                            
-                            <div class="form-group">
-                                <label for="import-population-select">Select Population from PingOne:</label>
-                                <select id="import-population-select" class="form-control">
-                                    <option value="">Loading populations...</option>
-                                </select>
-                                <small class="form-text text-muted">Choose a population from your PingOne environment where users will be imported. <strong>You must select a population or enable one of the options below before importing.</strong></small>
-                            </div>
-                            
-                            <div class="form-group">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="use-csv-population-id">
-                                    <label class="form-check-label" for="use-csv-population-id">
-                                        <i class="fas fa-file-csv"></i> Use Population ID from CSV file
-                                    </label>
-                                </div>
-                                <small class="form-text text-muted">If checked, will use the population ID specified in each row of the CSV file. If a row doesn't have a population ID, the selected population above will be used as fallback.</small>
-                            </div>
-                            
-                            <div class="form-group">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="use-default-population">
-                                    <label class="form-check-label" for="use-default-population">
-                                        <i class="fas fa-cog"></i> Use default population from settings
-                                    </label>
-                                </div>
-                                <small class="form-text text-muted">If checked, will use the default population ID configured in your settings as fallback when no population is specified.</small>
-                            </div>
-                            
-                            <div class="alert alert-warning" style="margin-top: 15px;">
-                                <i class="fas fa-exclamation-triangle"></i>
-                                <strong>Required:</strong> You must select a population from the dropdown above OR enable "Use default population from settings" before importing users.
-                            </div>
-                            
-                            <div class="alert alert-info" style="margin-top: 15px;">
-                                <i class="fas fa-info-circle"></i>
-                                <strong>Population Priority:</strong><br>
-                                1. CSV Population ID (if enabled and present in row)<br>
-                                2. Selected Population from dropdown<br>
-                                3. Default Population from settings (if enabled)
-                            </div>
+                        <!-- File Information Section (moved here) -->
+                        <div id="file-info" class="file-info" style="margin-top: 10px;">
+                            <!-- File info will be displayed here -->
                         </div>
-                        
-                        <!-- Import Status Section -->
+
+                        <!-- Import Status Section (moved here) -->
                         <div id="import-status" class="import-status" style="display: none;">
                             <div class="progress-header">
                                 <h3>
@@ -345,8 +301,11 @@
                                     <span class="stat-label">Skipped:</span>
                                     <span id="import-skipped-count" class="stat-value warning">0</span>
                                 </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Modified:</span>
+                                    <span id="import-modified-count" class="stat-value info">0</span>
+                                </div>
                             </div>
-                            
                             <!-- Real-time Progress Log -->
                             <div id="import-progress-log" class="import-progress-log">
                                 <div class="progress-log-header">
@@ -359,24 +318,86 @@
                                     <!-- Progress log entries will be displayed here -->
                                 </div>
                             </div>
+                            <!-- Error Status Overview -->
+                            <div id="import-error-status" class="import-error-status" style="display: none; margin-top: 20px; padding: 15px; border-radius: 5px; background-color: #f8f9fa; border: 1px solid #dee2e6;">
+                                <div class="error-status-header">
+                                    <h4 style="margin-bottom: 10px; color: #dc3545;">
+                                        <i class="fas fa-exclamation-triangle"></i> Error Overview
+                                    </h4>
+                                </div>
+                                <div id="import-error-summary" class="error-summary">
+                                    <!-- Error summary will be displayed here -->
+                                </div>
+                                <div id="import-error-details" class="error-details" style="margin-top: 10px; max-height: 200px; overflow-y: auto;">
+                                    <!-- Detailed error information will be displayed here -->
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    
-                    <div id="preview-container" class="preview-container">
-                        <!-- CSV preview will be displayed here -->
-                    </div>
-                    
-                    <!-- Bottom Import Button -->
-                    <div class="import-bottom-actions" style="margin-top: 30px; text-align: center; padding: 20px; border-top: 1px solid #ddd;">
-                        <button id="start-import-btn-bottom" class="btn btn-primary btn-lg" disabled>
-                            <i class="fas fa-upload"></i> Import Users (v4.5)
-                        </button>
-                        <button id="cancel-import-btn-bottom" class="btn btn-secondary btn-lg" style="display: none;">
-                            <i class="fas fa-times"></i> Cancel Import
-                        </button>
-                        <div class="import-bottom-info" style="margin-top: 15px; font-size: 0.9em; color: #666;">
-                            <i class="fas fa-info-circle"></i>
-                            Upload a CSV file and select a population above to enable import functionality
+                        
+                        <!-- Population Selection Options -->
+                        <div class="population-selection-container" style="margin-top: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;">
+                            <h4 style="margin-bottom: 15px; color: #333;">
+                                <i class="fas fa-users"></i> Population Selection
+                            </h4>
+                            
+                            <div class="form-group">
+                                <label for="import-population-select">Select Population from PingOne:</label>
+                                <select id="import-population-select" class="form-control">
+                                    <option value="">Loading populations...</option>
+                                </select>
+                                <small class="form-text text-muted">Choose a population from your PingOne environment where users will be imported. <strong>You must select a population or enable one of the options below before importing.</strong></small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="use-csv-population-id">
+                                    <label class="form-check-label" for="use-csv-population-id">
+                                        <i class="fas fa-file-csv"></i> Use Population ID from CSV file
+                                    </label>
+                                </div>
+                                <small class="form-text text-muted">If checked, will use the population ID specified in each row of the CSV file. If a row doesn't have a population ID, the selected population above will be used as fallback.</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="use-default-population">
+                                    <label class="form-check-label" for="use-default-population">
+                                        <i class="fas fa-cog"></i> Use default population from settings
+                                    </label>
+                                </div>
+                                <small class="form-text text-muted">If checked, will use the default population ID configured in your settings as fallback when no population is specified.</small>
+                            </div>
+                            
+                            <div class="alert alert-warning" style="margin-top: 15px;">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <strong>Required:</strong> You must select a population from the dropdown above OR enable "Use default population from settings" before importing users.
+                            </div>
+                            
+                            <div class="alert alert-info" style="margin-top: 15px;">
+                                <i class="fas fa-info-circle"></i>
+                                <strong>Population Priority:</strong><br>
+                                1. CSV Population ID (if enabled and present in row)<br>
+                                2. Selected Population from dropdown<br>
+                                3. Default Population from settings (if enabled)
+                            </div>
+                        </div>
+                        
+                        <div id="preview-container" class="preview-container">
+                            <!-- CSV preview will be displayed here -->
+                        </div>
+                        
+                        <!-- Bottom Import Button -->
+                        <div class="import-bottom-actions" style="margin-top: 30px; text-align: center; padding: 20px; border-top: 1px solid #ddd;">
+                            <button id="start-import-btn-bottom" class="btn btn-primary btn-lg" disabled>
+                                <i class="fas fa-upload"></i> Import Users (v4.5)
+                            </button>
+                            <button id="cancel-import-btn-bottom" class="btn btn-secondary btn-lg" style="display: none;">
+                                <i class="fas fa-times"></i> Cancel Import
+                            </button>
+                            <div class="import-bottom-info" style="margin-top: 15px; font-size: 0.9em; color: #666;">
+                                <i class="fas fa-info-circle"></i>
+                                Upload a CSV file and select a population above to enable import functionality
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1409,7 +1430,10 @@
         <i class="fas fa-toggle-on"></i>
     </button>
 
-    <script src="/js/bundle.js?v=3.7"></script>
+    <!-- Live Status Message (real-time updates) -->
+    <div id="status-live" class="status-message status-info" style="display:none;"></div>
+
+    <script src="/js/bundle.js?v=3.8"></script>
     <script src="/setup-settings.js"></script>
     <script src="/setup-settings.js"></script>
     <script>

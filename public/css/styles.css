@@ -1186,42 +1186,51 @@ label {
 
 /* Log Entry Styles */
 .log-entry {
-    padding: 8px 12px;
-    margin-bottom: 4px;
-    border-radius: 4px;
-    font-family: 'Courier New', monospace;
-    font-size: 12px;
-    line-height: 1.4;
-    border-left: 3px solid transparent;
-    transition: all 0.2s ease;
-}
-
-.log-content {
     display: flex;
     align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
+    padding: 6px 12px;
+    margin-bottom: 4px;
+    border-radius: 6px;
+    font-size: 15px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
 }
-
+.log-icon {
+    margin-right: 8px;
+    font-size: 18px;
+}
 .log-timestamp {
-    color: #666;
-    font-size: 11px;
-    min-width: 140px;
+    color: #888;
+    margin-right: 8px;
+    font-size: 13px;
 }
-
-.log-level {
-    padding: 2px 6px;
-    border-radius: 3px;
-    font-size: 10px;
-    font-weight: bold;
-    text-transform: uppercase;
-    min-width: 50px;
-    text-align: center;
-}
-
 .log-message {
     flex: 1;
-    color: #333;
+}
+.log-details {
+    margin-left: 30px;
+    color: #444;
+    font-size: 13px;
+}
+.log-success {
+    background: #d4edda;
+    color: #155724;
+}
+.log-api {
+    background: #e7f3fe;
+    color: #0056b3;
+    font-style: italic;
+}
+.log-warning {
+    background: #fff3cd;
+    color: #856404;
+}
+.log-info {
+    background: #e7f3fe;
+    color: #0c5460;
+}
+.log-error {
+    background: #f8d7da;
+    color: #721c24;
 }
 
 .log-expand-icon {
@@ -3570,4 +3579,94 @@ label {
         height: 45px;
         font-size: 1.1rem;
     }
+}
+
+/* Expandable error overview styles */
+.error-row {
+  background: #fff;
+  border: 1px solid #f8d7da;
+  border-radius: 5px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  transition: box-shadow 0.2s;
+}
+.error-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.error-label {
+  color: #721c24;
+  font-size: 15px;
+}
+.error-toggle-btn {
+  background: none;
+  border: none;
+  color: #007bff;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 8px;
+  outline: none;
+  transition: color 0.2s;
+}
+.error-toggle-btn:hover {
+  color: #0056b3;
+  text-decoration: underline;
+}
+.error-details {
+  background: #f8d7da;
+  color: #721c24;
+  border-radius: 4px;
+  margin-top: 8px;
+  padding: 10px 14px;
+  font-family: 'Fira Mono', 'Consolas', 'Courier New', monospace;
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* Enhanced notification area for settings */
+.notification-area {
+    margin-top: 18px;
+    margin-bottom: 18px;
+    padding: 0;
+    min-height: 32px;
+    display: flex;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.notification-area .notification {
+    background: #f8f9fa;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    color: #333;
+    padding: 10px 16px;
+    font-size: 15px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    margin-top: 8px;
+    margin-bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 320px;
+    max-width: 480px;
+    z-index: 10;
+    position: relative;
+}
+
+.notification-area .notification .status-icon {
+    font-size: 18px;
+    margin-right: 8px;
+}
+
+/* Add spacing below the settings action buttons */
+.form-actions {
+    margin-bottom: 18px;
+}
+
+/* Only show one icon in notification area */
+.notification-area .notification .status-icon + .status-icon {
+    display: none;
 }

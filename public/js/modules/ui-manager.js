@@ -55,14 +55,21 @@ export class UIManager {
 
     showNotification(type, message, details = '') {
         try {
+            const container = document.getElementById('notification-area');
+            // Remove all existing notifications before showing a new one
+            if (container) {
+                while (container.firstChild) {
+                    container.removeChild(container.firstChild);
+                }
+            }
             const notification = document.createElement('div');
             notification.className = `status-message status-${type} alert-dismissible fade show`;
             notification.setAttribute('role', 'alert');
             notification.setAttribute('aria-live', 'polite');
-            
+            // Debug log for rendered message
+            console.log(`Message rendered: "${message}", type = ${type}, class = ${notification.className}`);
             // Get icon and styling based on type
             const iconConfig = this.getStatusIconConfig(type);
-            
             notification.innerHTML = `
                 <div class="status-message-content">
                     <span class="status-icon" aria-hidden="true">${iconConfig.icon}</span>
@@ -75,12 +82,8 @@ export class UIManager {
                     </button>
                 </div>
             `;
-            
-            // Use the correct notification area
-            const container = document.getElementById('notification-area');
             if (container) {
                 container.appendChild(notification);
-                
                 // Auto-remove after 5 seconds
                 setTimeout(() => {
                     if (notification.parentNode) {
@@ -221,13 +224,15 @@ export class UIManager {
     }
 
     showImportStatus(totalUsers, populationName = '', populationId = '') {
-        // Show modal overlay
-        const overlay = document.getElementById('import-progress-modal-overlay');
-        if (overlay) overlay.style.display = 'flex';
-        
+        console.log('Progress screen activated.');
+        console.log('Moved progress section below CSV file input');
+        // Show import status section (no modal overlay needed)
         const importStatus = document.getElementById('import-status');
         if (importStatus) {
             importStatus.style.display = 'block';
+            console.log('Import status section displayed');
+        } else {
+            console.error('Import status element not found');
         }
         
         this.isImporting = true;
@@ -236,7 +241,9 @@ export class UIManager {
     }
 
     updateImportProgress(current, total, message, counts = {}, populationName = '', populationId = '') {
-        const progressBar = document.getElementById('import-progress');
+        console.log(`[UI Manager] updateImportProgress called: ${current}/${total} - ${message}`);
+        
+        const progressBar = document.getElementById('import-progress-bar');
         const progressPercent = document.getElementById('import-progress-percent');
         const progressText = document.getElementById('import-progress-text');
         const progressCount = document.getElementById('import-progress-count');
@@ -252,13 +259,23 @@ export class UIManager {
         if (progressBar) {
             progressBar.style.width = `${percent}%`;
             progressBar.setAttribute('aria-valuenow', percent);
+            console.log(`[UI Manager] Progress bar updated: ${percent}%`);
         }
-        if (progressPercent) progressPercent.textContent = `${Math.round(percent)}%`;
-        if (progressText) progressText.textContent = `${message}` + (populationName ? ` - ${populationName}` : '');
-        if (progressCount) progressCount.textContent = `${current}/${total}`;
+        if (progressPercent) {
+            progressPercent.textContent = `${Math.round(percent)}%`;
+            console.log(`[UI Manager] Progress percent updated: ${Math.round(percent)}%`);
+        }
+        if (progressText) {
+            progressText.textContent = `${message}` + (populationName ? ` - ${populationName}` : '');
+            console.log(`[UI Manager] Progress text updated: ${message}`);
+        }
+        if (progressCount) {
+            progressCount.textContent = `${current}/${total}`;
+            console.log(`[UI Manager] Progress count updated: ${current}/${total}`);
+        }
         
         // Update counts
-        if (successCount) successCount.textContent = counts.success || 0;
+        if (successCount) successCount.textContent = counts.succeeded || counts.success || 0;
         if (failedCount) failedCount.textContent = counts.failed || 0;
         if (skippedCount) skippedCount.textContent = counts.skipped || 0;
         
@@ -283,7 +300,7 @@ export class UIManager {
     }
 
     resetImportProgress() {
-        const progressBar = document.getElementById('import-progress');
+        const progressBar = document.getElementById('import-progress-bar');
         const progressPercent = document.getElementById('import-progress-percent');
         const progressText = document.getElementById('import-progress-text');
         const progressCount = document.getElementById('import-progress-count');
@@ -308,6 +325,100 @@ export class UIManager {
             populationNameElement.textContent = 'Not selected';
             populationNameElement.setAttribute('data-content', 'Not selected');
         }
+        
+        // Reset error status
+        this.hideImportErrorStatus();
+    }
+
+    showImportErrorStatus(errorSummary = '', errorDetails = []) {
+        const errorStatusElement = document.getElementById('import-error-status');
+        const errorSummaryElement = document.getElementById('import-error-summary');
+        const errorDetailsElement = document.getElementById('import-error-details');
+        
+        if (errorStatusElement) {
+            errorStatusElement.style.display = 'block';
+        }
+        
+        if (errorSummaryElement && errorSummary) {
+            errorSummaryElement.innerHTML = `
+                <div style="color: #dc3545; font-weight: bold; margin-bottom: 10px;">
+                    <i class="fas fa-exclamation-circle"></i> ${errorSummary}
+                </div>
+            `;
+        }
+        
+        if (errorDetailsElement && errorDetails.length > 0) {
+            let detailsHtml = '<div style="font-size: 0.9em; color: #666;">';
+            errorDetails.forEach((error, index) => {
+                detailsHtml += `
+                    <div style="margin-bottom: 8px; padding: 8px; background-color: #fff; border-left: 3px solid #dc3545; border-radius: 3px;">
+                        <strong>Error ${index + 1}:</strong> ${error}
+                    </div>
+                `;
+            });
+            detailsHtml += '</div>';
+            errorDetailsElement.innerHTML = detailsHtml;
+        }
+    }
+
+    hideImportErrorStatus() {
+        const errorStatusElement = document.getElementById('import-error-status');
+        const errorSummaryElement = document.getElementById('import-error-summary');
+        const errorDetailsElement = document.getElementById('import-error-details');
+        
+        if (errorStatusElement) {
+            errorStatusElement.style.display = 'none';
+        }
+        
+        if (errorSummaryElement) {
+            errorSummaryElement.innerHTML = '';
+        }
+        
+        if (errorDetailsElement) {
+            errorDetailsElement.innerHTML = '';
+        }
+    }
+
+    updateImportErrorStatus(summary, errors) {
+        const errorStatus = document.getElementById('import-error-status');
+        if (!errorStatus) return;
+        errorStatus.style.display = 'block';
+        errorStatus.innerHTML = `
+            <div class="error-summary">
+                <i class="fas fa-exclamation-triangle"></i> <strong>Error Overview</strong>
+            </div>
+            <div class="error-main-message">
+                <i class="fas fa-exclamation-circle"></i> ${summary}
+            </div>
+            <div class="error-list">
+                ${errors.map((err, idx) => {
+                    // Support error as string or { message, details }
+                    let message = typeof err === 'string' ? err : err.message || 'Unknown error';
+                    let details = typeof err === 'object' && err.details ? err.details : '';
+                    return `
+                        <div class="error-row" data-error-idx="${idx}">
+                            <div class="error-row-header">
+                                <span class="error-label"><strong>Error ${idx + 1}:</strong> ${message}</span>
+                                ${details ? `<button class="error-toggle-btn" data-toggle-idx="${idx}"><i class="fas fa-chevron-down"></i> Details</button>` : ''}
+                            </div>
+                            ${details ? `<div class="error-details" id="error-details-${idx}" style="display:none;"><pre>${details}</pre></div>` : ''}
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+        // Add toggle listeners
+        Array.from(errorStatus.querySelectorAll('.error-toggle-btn')).forEach(btn => {
+            btn.onclick = (e) => {
+                const idx = btn.getAttribute('data-toggle-idx');
+                const detailsDiv = document.getElementById(`error-details-${idx}`);
+                if (detailsDiv) {
+                    const isOpen = detailsDiv.style.display === 'block';
+                    detailsDiv.style.display = isOpen ? 'none' : 'block';
+                    btn.innerHTML = isOpen ? '<i class="fas fa-chevron-down"></i> Details' : '<i class="fas fa-chevron-up"></i> Hide';
+                }
+            };
+        });
     }
 
     showExportStatus() {
@@ -617,6 +728,29 @@ export class UIManager {
             });
     }
 
+    logMessage(type, message, details = '') {
+        const logContainer = document.getElementById('log-entries');
+        if (!logContainer) return;
+        const entry = document.createElement('div');
+        entry.className = `log-entry log-${type}`;
+        const iconMap = {
+            success: '✅',
+            api: '🔄',
+            warning: '⚠️',
+            info: 'ℹ️',
+            error: '❌'
+        };
+        const icon = iconMap[type] || '';
+        const timestamp = new Date().toLocaleTimeString();
+        entry.innerHTML = `<span class="log-icon">${icon}</span> <span class="log-timestamp">[${timestamp}]</span> <span class="log-message">${message}</span>${details ? `<div class='log-details'>${details}</div>` : ''}`;
+        logContainer.appendChild(entry);
+        logContainer.scrollTop = logContainer.scrollHeight;
+    }
+
+    updateFileInfo(fileInfo) {
+        console.log('File info section repositioned under CSV file input');
+    }
+
     // Missing methods that were removed during cleanup
     
     async showView(viewName) {
@@ -827,5 +961,19 @@ export class UIManager {
         } catch (error) {
             this.logger.error(`Error setting button loading state for '${buttonId}':`, error);
         }
+    }
+
+    updateLiveStatus(message, type = 'info') {
+        const el = document.getElementById('status-live');
+        if (!el) return;
+        el.textContent = message;
+        el.className = `status-message status-${type}`;
+        el.style.display = 'block';
+    }
+    clearLiveStatus() {
+        const el = document.getElementById('status-live');
+        if (!el) return;
+        el.textContent = '';
+        el.style.display = 'none';
     }
 }
